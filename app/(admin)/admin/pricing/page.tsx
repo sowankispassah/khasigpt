@@ -744,6 +744,11 @@ async function ModelPricingContent({
     activePlans.filter((plan) => plan.isActive && !plan.deletedAt)
   );
   const walletUnitsPerInr = calculateWalletUnitsPerInr(basePlan);
+  const pricingPreviewContext = {
+    basePlanName: basePlan?.name ?? null,
+    usdToInr,
+    walletUnitsPerInr,
+  };
   const models = buildModelPricingRows({
     modelSnapshot: modelsState.data,
     usdToInr,
@@ -774,13 +779,13 @@ async function ModelPricingContent({
     ...Object.fromEntries(
       chatModels.map((model) => [
         `chat:${model.id}`,
-        <ChatModelConfigurationForm key={model.id} model={model} />,
+        <ChatModelConfigurationForm context={pricingPreviewContext} key={model.id} model={model} />,
       ])
     ),
     ...Object.fromEntries(
       imageModels.map((model) => [
         `image:${model.id}`,
-        <ImageModelConfigurationForm key={model.id} model={model} />,
+        <ImageModelConfigurationForm context={pricingPreviewContext} key={model.id} model={model} />,
       ])
     ),
     ...Object.fromEntries(
@@ -791,8 +796,8 @@ async function ModelPricingContent({
     ),
   };
   const createForms: Record<ModelType, ReactNode> = {
-    chat: <ChatModelConfigurationForm />,
-    image: <ImageModelConfigurationForm />,
+    chat: <ChatModelConfigurationForm context={pricingPreviewContext} />,
+    image: <ImageModelConfigurationForm context={pricingPreviewContext} />,
     live_voice: <LiveVoiceModelConfigurationForm />,
   };
   const modelsConfirmed = modelsState.ok;

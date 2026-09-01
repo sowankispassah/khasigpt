@@ -1,6 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import {
+  CostPlusPreviewCard,
+  type PricingPreviewContext,
+} from "@/app/(admin)/admin/pricing/cost-plus-pricing-fields";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
 import { toast } from "@/components/toast";
@@ -46,8 +50,48 @@ export function WebSearchSettingsForm({ config }: { config: WebSearchConfig }) {
     String(config.providerCostPerCallUsd.openai_web_search)
   );
   const [isSaving, setIsSaving] = useState(false);
+  const [pricingContext, setPricingContext] =
+    useState<PricingPreviewContext | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/admin/pricing-preview", {
+      cache: "no-store",
+      credentials: "same-origin",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("pricing_context_unavailable");
+        }
+        return (await response.json()) as PricingPreviewContext;
+      })
+      .then(setPricingContext)
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        setPricingContext(null);
+      });
+    return () => controller.abort();
+  }, []);
 
   const save = async () => {
+    if (
+      Number(geminiCostPerCallUsd) <= 0 ||
+      Number(openaiCostPerCallUsd) <= 0 ||
+      Number(markupMultiplier) < 1 ||
+      Number(markupMultiplier) > 20
+    ) {
+      toast({
+        type: "error",
+        description: translate(
+          "admin.web_search.invalid_pricing",
+          "Provider costs must be greater than zero and markup must be between 1 and 20."
+        ),
+      });
+      return;
+    }
     setIsSaving(true);
     try {
       const response = await fetch("/api/admin/settings/web-search", {
@@ -161,7 +205,7 @@ export function WebSearchSettingsForm({ config }: { config: WebSearchConfig }) {
         </label>
         <label className="flex flex-col gap-2 text-sm">
           <span className="font-medium">{label("admin.web_search.multiplier", "Customer markup")}</span>
-          <input className="cursor-pointer rounded-md border bg-background px-3 py-2" disabled={isSaving} max={20} min={1} onChange={(event) => setMarkupMultiplier(event.target.value)} step={0.01} type="number" value={markupMultiplier} />
+          <input className="cursor-pointer rounded-md border bg-background px-3 py-2" disabled={isSaving} max={20} min={1} onChange={(event) => setMarkupMultiplier(event.target.value)} required step={0.01} type="number" value={markupMultiplier} />
         </label>
       </div>
 
@@ -179,6 +223,7 @@ export function WebSearchSettingsForm({ config }: { config: WebSearchConfig }) {
             max={100}
             min={0.000001}
             onChange={(event) => setGeminiCostPerCallUsd(event.target.value)}
+            required
             step={0.000001}
             type="number"
             value={geminiCostPerCallUsd}
@@ -197,11 +242,33 @@ export function WebSearchSettingsForm({ config }: { config: WebSearchConfig }) {
             max={100}
             min={0.000001}
             onChange={(event) => setOpenaiCostPerCallUsd(event.target.value)}
+            required
             step={0.000001}
             type="number"
             value={openaiCostPerCallUsd}
           />
         </label>
+      </div>
+
+      <div className="space-y-3">
+        <CostPlusPreviewCard
+          context={pricingContext}
+          markupMultiplier={Number(markupMultiplier)}
+          providerCostUsd={Number(geminiCostPerCallUsd)}
+          title={label(
+            "admin.web_search.gemini_price_preview",
+            "Grounded search pricing per call"
+          )}
+        />
+        <CostPlusPreviewCard
+          context={pricingContext}
+          markupMultiplier={Number(markupMultiplier)}
+          providerCostUsd={Number(openaiCostPerCallUsd)}
+          title={label(
+            "admin.web_search.openai_price_preview",
+            "Fallback search pricing per call"
+          )}
+        />
       </div>
 
       <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/30 p-3 text-muted-foreground text-xs">

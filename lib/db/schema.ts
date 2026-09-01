@@ -207,8 +207,6 @@ export const imageModelConfig = pgTable(
     displayName: varchar("displayName", { length: 128 }).notNull(),
     description: text("description").notNull().default(""),
     config: jsonb("config"),
-    priceInPaise: integer("priceInPaise").notNull().default(0),
-    tokensPerImage: integer("tokensPerImage").notNull().default(100),
     providerCostPerOutputUsd: doublePrecision("providerCostPerOutputUsd")
       .notNull()
       .default(0),

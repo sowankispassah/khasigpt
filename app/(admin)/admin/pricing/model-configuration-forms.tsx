@@ -14,6 +14,11 @@ import {
   GOOGLE_LIVE_VOICE_OPTIONS,
   LIVE_VOICE_MEDIA_RESOLUTION_OPTIONS,
 } from "@/lib/voice/live";
+import {
+  type PricingPreviewContext,
+  TokenCostPlusFields,
+  UnitCostPlusFields,
+} from "./cost-plus-pricing-fields";
 
 const PROVIDER_OPTIONS = [
   { label: "OpenAI", value: "openai" },
@@ -281,8 +286,10 @@ function SubmitRow({ create }: { create: boolean }) {
 }
 
 export function ChatModelConfigurationForm({
+  context,
   model,
 }: {
+  context: PricingPreviewContext;
   model?: AdminModelPricingSnapshotRow;
 }) {
   const create = !model;
@@ -301,29 +308,12 @@ export function ChatModelConfigurationForm({
         step={1}
         translationKey="admin.pricing.model_form.free_messages"
       />
-      <NumberField
-        defaultValue={Number(model?.inputProviderCostPerMillion ?? 0)}
-        id={`${prefix}-input-cost`}
-        label="Provider input cost (USD / 1M tokens)"
-        name="inputProviderCostPerMillion"
-        translationKey="admin.pricing.provider_input_cost"
-      />
-      <NumberField
-        defaultValue={Number(model?.outputProviderCostPerMillion ?? 0)}
-        id={`${prefix}-output-cost`}
-        label="Provider output cost (USD / 1M tokens)"
-        name="outputProviderCostPerMillion"
-        translationKey="admin.pricing.provider_output_cost"
-      />
-      <NumberField
-        defaultValue={Number(model?.markupMultiplier ?? 4)}
-        id={`${prefix}-markup`}
-        label="Customer markup"
-        max={20}
-        min={1}
-        name="markupMultiplier"
-        step={0.01}
-        translationKey="admin.pricing.markup"
+      <TokenCostPlusFields
+        context={context}
+        initialInputCost={Number(model?.inputProviderCostPerMillion ?? 0)}
+        initialMarkup={Number(model?.markupMultiplier ?? 4)}
+        initialOutputCost={Number(model?.outputProviderCostPerMillion ?? 0)}
+        prefix={prefix}
       />
       <TextareaField
         defaultValue={model?.systemPrompt ?? ""}
@@ -369,8 +359,10 @@ export function ChatModelConfigurationForm({
 }
 
 export function ImageModelConfigurationForm({
+  context,
   model,
 }: {
+  context: PricingPreviewContext;
   model?: AdminModelPricingSnapshotRow;
 }) {
   const create = !model;
@@ -381,38 +373,11 @@ export function ImageModelConfigurationForm({
       className="grid gap-4 md:grid-cols-2"
     >
       <CommonFields model={model} prefix={prefix} provider="google" />
-      <NumberField
-        defaultValue={Number(model?.providerCostPerOutputUsd ?? 0)}
-        id={`${prefix}-provider-cost`}
-        label="Provider cost (USD / completed image)"
-        name="providerCostPerOutputUsd"
-        translationKey="admin.pricing.provider_image_cost"
-      />
-      <NumberField
-        defaultValue={Number(model?.markupMultiplier ?? 2)}
-        id={`${prefix}-markup`}
-        label="Customer markup"
-        max={20}
-        min={1}
-        name="markupMultiplier"
-        step={0.01}
-        translationKey="admin.pricing.markup"
-      />
-      <NumberField
-        defaultValue={Number(model?.priceInPaise ?? 0) / 100}
-        id={`${prefix}-legacy-price`}
-        label="Legacy fixed price (₹ / image)"
-        name="priceInRupees"
-        step={0.01}
-        translationKey="admin.pricing.model_form.image_legacy_price"
-      />
-      <NumberField
-        defaultValue={Number(model?.tokensPerImage ?? 100) / 1000}
-        id={`${prefix}-legacy-credits`}
-        label="Legacy credits per image"
-        name="creditsPerImage"
-        step={0.01}
-        translationKey="admin.pricing.model_form.image_legacy_credits"
+      <UnitCostPlusFields
+        context={context}
+        initialMarkup={Number(model?.markupMultiplier ?? 2)}
+        initialProviderCost={Number(model?.providerCostPerOutputUsd ?? 0)}
+        prefix={prefix}
       />
       <CheckboxField
         defaultChecked={model?.isEnabled ?? true}

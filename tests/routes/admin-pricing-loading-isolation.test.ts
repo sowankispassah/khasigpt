@@ -177,4 +177,51 @@ test.describe("admin pricing loading isolation", () => {
       'DROP COLUMN IF EXISTS "isMarginBaseline"'
     );
   });
+
+  test("requires cost-plus pricing and removes image legacy billing", async () => {
+    const [
+      formSource,
+      previewSource,
+      actionSource,
+      querySource,
+      schemaSource,
+      migrationSource,
+      searchSource,
+      previewRouteSource,
+    ] = await Promise.all([
+      readWorkspaceFile(
+        "app/(admin)/admin/pricing/model-configuration-forms.tsx"
+      ),
+      readWorkspaceFile(
+        "app/(admin)/admin/pricing/cost-plus-pricing-fields.tsx"
+      ),
+      readWorkspaceFile("app/(admin)/actions.ts"),
+      readWorkspaceFile("lib/db/queries.ts"),
+      readWorkspaceFile("lib/db/schema.ts"),
+      readWorkspaceFile(
+        "lib/db/migrations/0094_drop_image_legacy_pricing.sql"
+      ),
+      readWorkspaceFile(
+        "app/(admin)/admin/settings/web-search-settings-form.tsx"
+      ),
+      readWorkspaceFile("app/api/admin/pricing-preview/route.ts"),
+    ]);
+
+    expect(formSource).toContain("<TokenCostPlusFields");
+    expect(formSource).toContain("<UnitCostPlusFields");
+    expect(formSource).not.toContain("Legacy fixed price");
+    expect(formSource).not.toContain("Legacy credits per image");
+    expect(previewSource).toContain("calculateCostPlusPreview");
+    expect(previewSource).toContain("Profit margin");
+    expect(previewSource).toContain("Credits deducted");
+    expect(actionSource).not.toContain("resolveImageModelPricing");
+    expect(querySource).not.toContain("legacyTokensPerImage");
+    expect(schemaSource).not.toContain('tokensPerImage: integer("tokensPerImage")');
+    expect(migrationSource).toContain('DROP COLUMN IF EXISTS "priceInPaise"');
+    expect(migrationSource).toContain('DROP COLUMN IF EXISTS "tokensPerImage"');
+    expect(searchSource).toContain("<CostPlusPreviewCard");
+    expect(searchSource).toContain('required\n            step={0.000001}');
+    expect(previewRouteSource).toContain("requireAdminApiUser");
+    expect(previewRouteSource).toContain('"Cache-Control": "no-store"');
+  });
 });

@@ -125,6 +125,12 @@ const NOTICE_MESSAGES: Record<
     key: "admin.pricing.notice.model_create_error",
     type: "error",
   },
+  "model-provider-cost-required": {
+    defaultText:
+      "Provider costs must be greater than zero and markup must be between 1 and 20.",
+    key: "admin.pricing.notice.provider_cost_required",
+    type: "error",
+  },
   "model-created": {
     defaultText: "Model configuration created.",
     key: "admin.pricing.notice.model_created",

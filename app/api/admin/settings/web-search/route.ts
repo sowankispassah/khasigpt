@@ -77,7 +77,14 @@ export async function POST(request: NextRequest) {
     geminiCostPerCallUsd === null ||
     openaiCostPerCallUsd === null
   ) {
-    return NextResponse.json({ error: "invalid_value", message: "Search limits and multiplier are outside the allowed range." }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: "invalid_pricing",
+        message:
+          "Provider costs must be greater than zero and markup must be between 1 and 20.",
+      },
+      { status: 400 }
+    );
   }
 
   const values: Record<string, unknown> = {

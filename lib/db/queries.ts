@@ -6599,8 +6599,8 @@ export async function createModelConfig({
   isEnabled = true,
   isDefault = false,
   freeMessagesPerDay = DEFAULT_FREE_MESSAGES_PER_DAY,
-  inputProviderCostPerMillion = 0,
-  outputProviderCostPerMillion = 0,
+  inputProviderCostPerMillion,
+  outputProviderCostPerMillion,
   markupMultiplier = DEFAULT_CHAT_MARKUP_MULTIPLIER,
 }: {
   key: string;
@@ -6616,10 +6616,21 @@ export async function createModelConfig({
   isEnabled?: boolean;
   isDefault?: boolean;
   freeMessagesPerDay?: number;
-  inputProviderCostPerMillion?: number;
-  outputProviderCostPerMillion?: number;
+  inputProviderCostPerMillion: number;
+  outputProviderCostPerMillion: number;
   markupMultiplier?: number;
 }): Promise<ModelConfig> {
+  if (
+    !Number.isFinite(inputProviderCostPerMillion) ||
+    inputProviderCostPerMillion <= 0 ||
+    !Number.isFinite(outputProviderCostPerMillion) ||
+    outputProviderCostPerMillion <= 0
+  ) {
+    throw new ChatSDKError(
+      "bad_request:configuration",
+      "Chat provider costs must be greater than zero"
+    );
+  }
   const now = new Date();
 
   try {
@@ -6867,10 +6878,28 @@ export async function updateModelConfig({
       updateData.isEnabled = patch.isEnabled;
     }
     if (patch.inputProviderCostPerMillion !== undefined) {
+      if (
+        !Number.isFinite(patch.inputProviderCostPerMillion) ||
+        patch.inputProviderCostPerMillion <= 0
+      ) {
+        throw new ChatSDKError(
+          "bad_request:configuration",
+          "Chat provider input cost must be greater than zero"
+        );
+      }
       updateData.inputProviderCostPerMillion =
         patch.inputProviderCostPerMillion;
     }
     if (patch.outputProviderCostPerMillion !== undefined) {
+      if (
+        !Number.isFinite(patch.outputProviderCostPerMillion) ||
+        patch.outputProviderCostPerMillion <= 0
+      ) {
+        throw new ChatSDKError(
+          "bad_request:configuration",
+          "Chat provider output cost must be greater than zero"
+        );
+      }
       updateData.outputProviderCostPerMillion =
         patch.outputProviderCostPerMillion;
     }
@@ -7052,9 +7081,7 @@ export async function createImageModelConfig({
   displayName,
   description = "",
   config = null,
-  priceInPaise = 0,
-  tokensPerImage = TOKENS_PER_CREDIT,
-  providerCostPerOutputUsd = 0,
+  providerCostPerOutputUsd,
   markupMultiplier = DEFAULT_IMAGE_MARKUP_MULTIPLIER,
   isEnabled = true,
   isActive = false,
@@ -7065,16 +7092,18 @@ export async function createImageModelConfig({
   displayName: string;
   description?: string;
   config?: Record<string, unknown> | null;
-  priceInPaise?: number;
-  tokensPerImage?: number;
-  providerCostPerOutputUsd?: number;
+  providerCostPerOutputUsd: number;
   markupMultiplier?: number;
   isEnabled?: boolean;
   isActive?: boolean;
 }): Promise<ImageModelConfig> {
   const now = new Date();
-  const resolvedTokensPerImage = Math.max(1, Math.round(tokensPerImage));
-  const resolvedPriceInPaise = Math.max(0, Math.round(priceInPaise));
+  if (!Number.isFinite(providerCostPerOutputUsd) || providerCostPerOutputUsd <= 0) {
+    throw new ChatSDKError(
+      "bad_request:configuration",
+      "Image provider cost must be greater than zero"
+    );
+  }
 
   try {
     return await db.transaction(async (tx) => {
@@ -7087,9 +7116,7 @@ export async function createImageModelConfig({
           displayName,
           description,
           config,
-          priceInPaise: resolvedPriceInPaise,
-          tokensPerImage: resolvedTokensPerImage,
-          providerCostPerOutputUsd: Math.max(0, providerCostPerOutputUsd),
+          providerCostPerOutputUsd,
           markupMultiplier: normalizeMarkupMultiplier(
             markupMultiplier,
             DEFAULT_IMAGE_MARKUP_MULTIPLIER
@@ -7288,8 +7315,6 @@ export async function updateImageModelConfig({
   displayName?: string;
   description?: string | null;
   config?: Record<string, unknown> | null;
-  priceInPaise?: number;
-  tokensPerImage?: number;
   providerCostPerOutputUsd?: number;
   markupMultiplier?: number;
   isEnabled?: boolean;
@@ -7312,20 +7337,17 @@ export async function updateImageModelConfig({
     if (patch.config !== undefined) {
       updateData.config = patch.config ?? null;
     }
-    if (patch.priceInPaise !== undefined) {
-      updateData.priceInPaise = Math.max(0, Math.round(patch.priceInPaise));
-    }
-    if (patch.tokensPerImage !== undefined) {
-      updateData.tokensPerImage = Math.max(
-        1,
-        Math.round(patch.tokensPerImage)
-      );
-    }
     if (patch.providerCostPerOutputUsd !== undefined) {
-      updateData.providerCostPerOutputUsd = Math.max(
-        0,
-        patch.providerCostPerOutputUsd
-      );
+      if (
+        !Number.isFinite(patch.providerCostPerOutputUsd) ||
+        patch.providerCostPerOutputUsd <= 0
+      ) {
+        throw new ChatSDKError(
+          "bad_request:configuration",
+          "Image provider cost must be greater than zero"
+        );
+      }
+      updateData.providerCostPerOutputUsd = patch.providerCostPerOutputUsd;
     }
     if (patch.markupMultiplier !== undefined) {
       updateData.markupMultiplier = normalizeMarkupMultiplier(
@@ -8438,7 +8460,6 @@ export type AdminModelPricingSnapshotRow = {
   markupMultiplier: number;
   mediaResolution: string | null;
   outputProviderCostPerMillion: number | null;
-  priceInPaise: number | null;
   provider: string;
   providerCostPerOutputUsd: number | null;
   providerModelId: string;
@@ -8446,7 +8467,6 @@ export type AdminModelPricingSnapshotRow = {
   supportsReasoning: boolean;
   systemInstruction: string | null;
   systemPrompt: string | null;
-  tokensPerImage: number | null;
   type: "chat" | "image" | "live_voice";
   updatedAt: Date;
   voiceName: string | null;
@@ -8481,8 +8501,6 @@ export async function listAdminModelPricingSnapshot(): Promise<
             ${modelConfig.reasoningTag} AS "reasoningTag",
             ${modelConfig.config} AS "config",
             ${modelConfig.freeMessagesPerDay} AS "freeMessagesPerDay",
-            NULL::integer AS "priceInPaise",
-            NULL::integer AS "tokensPerImage",
             NULL::text AS "systemInstruction",
             NULL::text AS "voiceName",
             NULL::text AS "mediaResolution",
@@ -8516,8 +8534,6 @@ export async function listAdminModelPricingSnapshot(): Promise<
             NULL::text AS "reasoningTag",
             ${imageModelConfig.config} AS "config",
             NULL::integer AS "freeMessagesPerDay",
-            ${imageModelConfig.priceInPaise} AS "priceInPaise",
-            ${imageModelConfig.tokensPerImage} AS "tokensPerImage",
             NULL::text AS "systemInstruction",
             NULL::text AS "voiceName",
             NULL::text AS "mediaResolution",
@@ -8551,8 +8567,6 @@ export async function listAdminModelPricingSnapshot(): Promise<
             NULL::text AS "reasoningTag",
             ${liveVoiceModelConfig.config} AS "config",
             NULL::integer AS "freeMessagesPerDay",
-            NULL::integer AS "priceInPaise",
-            NULL::integer AS "tokensPerImage",
             ${liveVoiceModelConfig.systemInstruction} AS "systemInstruction",
             ${liveVoiceModelConfig.voiceName} AS "voiceName",
             ${liveVoiceModelConfig.mediaResolution} AS "mediaResolution",
@@ -11194,7 +11208,6 @@ export async function getCostPlusCreditQuote({
 export async function deductImageCredits({
   userId,
   chatId,
-  tokensToDeduct,
   allowManualCredits = true,
   imageModelConfigId = null,
   outputCount = 1,
@@ -11202,7 +11215,6 @@ export async function deductImageCredits({
 }: {
   userId: string;
   chatId: string;
-  tokensToDeduct: number;
   allowManualCredits?: boolean;
   imageModelConfigId?: string | null;
   outputCount?: number;
@@ -11243,8 +11255,13 @@ export async function deductImageCredits({
         ),
       })
     : null;
-  const resolvedTokens =
-    costPlusQuote?.creditUnits ?? Math.max(1, Math.round(tokensToDeduct));
+  if (!imagePricing || !costPlusQuote || costPlusQuote.creditUnits <= 0) {
+    throw new ChatSDKError(
+      "bad_request:configuration",
+      "Image generation pricing is unavailable"
+    );
+  }
+  const resolvedTokens = costPlusQuote.creditUnits;
 
   if (resolvedTokens <= 0) {
     throw new ChatSDKError(
@@ -11335,24 +11352,21 @@ export async function deductImageCredits({
         subscriptionId: subscription.id,
         tokenUsageId: usageRecord.id,
         imageModelConfigId,
-        category: costPlusQuote ? "image" : "legacy",
-        providerKey: imagePricing?.providerKey ?? "legacy",
+        category: "image",
+        providerKey: imagePricing.providerKey,
         requestKey,
         unitCount: normalizedOutputCount,
-        providerCostUsd: costPlusQuote?.providerCostUsd ?? 0,
-        usdToInr: costPlusQuote?.usdToInr ?? 0,
-        markupMultiplier: costPlusQuote?.markupMultiplier ?? 1,
-        customerChargeInr: costPlusQuote?.customerChargeInr ?? 0,
+        providerCostUsd: costPlusQuote.providerCostUsd,
+        usdToInr: costPlusQuote.usdToInr,
+        markupMultiplier: costPlusQuote.markupMultiplier,
+        customerChargeInr: costPlusQuote.customerChargeInr,
         creditUnits: resolvedTokens,
         manualCreditUnits: manualTokensDeducted,
         paidCreditUnits: paidTokensDeducted,
-        pricingMetadata: costPlusQuote
-          ? {
-              pricingReferencePlanId:
-                costPlusQuote.pricingReferencePlanId,
-              walletUnitsPerInr: costPlusQuote.walletUnitsPerInr,
-            }
-          : { legacyTokensPerImage: tokensToDeduct },
+        pricingMetadata: {
+          pricingReferencePlanId: costPlusQuote.pricingReferencePlanId,
+          walletUnitsPerInr: costPlusQuote.walletUnitsPerInr,
+        },
         status: "settled",
         createdAt: now,
       });

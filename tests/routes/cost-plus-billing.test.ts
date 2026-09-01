@@ -1,11 +1,13 @@
 import { expect, test } from "@playwright/test";
 import {
+  calculateCostPlusPreview,
   calculateTokenProviderCostUsd,
   calculateUnitProviderCostUsd,
   calculateWalletUnitsPerInr,
   priceCostPlusLineItems,
   selectBaseCreditPlan,
 } from "@/lib/billing/cost-plus";
+import { TOKENS_PER_CREDIT } from "@/lib/constants";
 
 const USD_TO_INR = 95.12;
 // ₹500 for 2,500 displayed credits establishes ₹0.20 per credit. Higher
@@ -73,6 +75,32 @@ test("prices image output and web search by actual billable units", () => {
       walletUnitsPerInr: WALLET_UNITS_PER_INR,
     }).totalCreditUnits
   ).toBe(1998);
+});
+
+test("uses the exact billed credit rounding in the live profit preview", () => {
+  const preview = calculateCostPlusPreview({
+    markupMultiplier: 2.5,
+    providerCostUsd: 0.0336,
+    usdToInr: USD_TO_INR,
+    walletUnitsPerCredit: TOKENS_PER_CREDIT,
+    walletUnitsPerInr: WALLET_UNITS_PER_INR,
+  });
+
+  expect(preview).not.toBeNull();
+  expect(preview?.providerCostInr).toBeCloseTo(3.196_032, 8);
+  expect(preview?.customerChargeInr).toBeCloseTo(
+    (preview?.providerCostInr ?? 0) * 2.5,
+    8
+  );
+  expect(preview?.profitInr).toBeCloseTo(
+    (preview?.providerCostInr ?? 0) * 1.5,
+    8
+  );
+  expect(preview?.marginPercent).toBeCloseTo(60, 8);
+  expect(preview?.credits).toBe(
+    Math.ceil((preview?.customerChargeInr ?? 0) * WALLET_UNITS_PER_INR) /
+      TOKENS_PER_CREDIT
+  );
 });
 
 test("rounds once after combining independently marked-up line items", () => {

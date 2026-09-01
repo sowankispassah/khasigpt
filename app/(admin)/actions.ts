@@ -1225,52 +1225,6 @@ function parseNumber(value: FormDataEntryValue | null | undefined) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function parseCreditsToTokens(value: FormDataEntryValue | null | undefined) {
-  const credits = parseNumber(value);
-  const tokens = Math.round(credits * TOKENS_PER_CREDIT);
-  return Math.max(1, tokens);
-}
-
-function parseCurrencyToPaise(value: FormDataEntryValue | null | undefined) {
-  const amount = parseNumber(value);
-  return Math.max(0, Math.round(amount * 100));
-}
-
-async function resolveImageModelPricing(formData: FormData) {
-  const priceInPaise = parseCurrencyToPaise(formData.get("priceInRupees"));
-  const creditsFallback = parseCreditsToTokens(
-    formData.get("creditsPerImage")
-  );
-
-  if (!priceInPaise) {
-    return { tokensPerImage: creditsFallback, priceInPaise: 0 };
-  }
-
-  const recommendedPlanId = await getAppSetting<string | null>(
-    RECOMMENDED_PRICING_PLAN_SETTING_KEY
-  );
-
-  if (!recommendedPlanId) {
-    return { tokensPerImage: creditsFallback, priceInPaise };
-  }
-
-  const plan = await getPricingPlanById({ id: recommendedPlanId });
-  const planPriceInPaise = plan?.priceInPaise ?? 0;
-  const planTokenAllowance = plan?.tokenAllowance ?? 0;
-
-  if (planPriceInPaise <= 0 || planTokenAllowance <= 0) {
-    return { tokensPerImage: creditsFallback, priceInPaise };
-  }
-
-  const pricePerTokenPaise = planPriceInPaise / planTokenAllowance;
-  const tokensPerImage = Math.max(
-    1,
-    Math.ceil(priceInPaise / pricePerTokenPaise)
-  );
-
-  return { tokensPerImage, priceInPaise };
-}
-
 function parseDateInput(value: FormDataEntryValue | null | undefined) {
   if (value === null || value === undefined) {
     return null;
@@ -1510,6 +1464,14 @@ export async function createModelConfigAction(formData: FormData) {
     formData.get("outputProviderCostPerMillion")
   );
   const markupMultiplier = parseNumber(formData.get("markupMultiplier"));
+  if (
+    inputProviderCostPerMillion <= 0 ||
+    outputProviderCostPerMillion <= 0 ||
+    markupMultiplier < 1 ||
+    markupMultiplier > 20
+  ) {
+    redirect("/admin/pricing?notice=model-provider-cost-required");
+  }
   const freeMessagesRaw = formData.get("freeMessagesPerDay");
   const resolvedFreeMessages =
     freeMessagesRaw === null
@@ -1665,6 +1627,15 @@ export async function updateModelConfigAction(formData: FormData) {
       0,
       Math.round(parseNumber(formData.get("freeMessagesPerDay")))
     );
+  }
+
+  if (
+    (patch.inputProviderCostPerMillion ?? 0) <= 0 ||
+    (patch.outputProviderCostPerMillion ?? 0) <= 0 ||
+    (patch.markupMultiplier ?? 0) < 1 ||
+    (patch.markupMultiplier ?? 0) > 20
+  ) {
+    redirect("/admin/pricing?notice=model-provider-cost-required");
   }
 
   const updated = await updateModelConfig({
@@ -2023,11 +1994,17 @@ export async function createImageModelConfigAction(formData: FormData) {
   const config = parseJson(formData.get("configJson"));
   const isEnabled = parseBoolean(formData.get("isEnabled"));
   const isActive = parseBoolean(formData.get("isActive"));
-  const pricing = await resolveImageModelPricing(formData);
   const providerCostPerOutputUsd = parseNumber(
     formData.get("providerCostPerOutputUsd")
   );
   const markupMultiplier = parseNumber(formData.get("markupMultiplier"));
+  if (
+    providerCostPerOutputUsd <= 0 ||
+    markupMultiplier < 1 ||
+    markupMultiplier > 20
+  ) {
+    redirect("/admin/pricing?notice=model-provider-cost-required");
+  }
 
   const existingConfig = await getImageModelConfigByKey({
     key,
@@ -2051,8 +2028,6 @@ export async function createImageModelConfigAction(formData: FormData) {
       displayName,
       description,
       config,
-      priceInPaise: pricing.priceInPaise,
-      tokensPerImage: pricing.tokensPerImage,
       providerCostPerOutputUsd,
       markupMultiplier,
       isEnabled,
@@ -2090,8 +2065,6 @@ export async function updateImageModelConfigAction(formData: FormData) {
     displayName?: string;
     description?: string | null;
     config?: Record<string, unknown> | null;
-    priceInPaise?: number;
-    tokensPerImage?: number;
     providerCostPerOutputUsd?: number;
     markupMultiplier?: number;
     isEnabled?: boolean;
@@ -2120,12 +2093,6 @@ export async function updateImageModelConfigAction(formData: FormData) {
     patch.config = parseJson(formData.get("configJson"));
   }
 
-  if (formData.has("creditsPerImage") || formData.has("priceInRupees")) {
-    const pricing = await resolveImageModelPricing(formData);
-    patch.tokensPerImage = pricing.tokensPerImage;
-    patch.priceInPaise = pricing.priceInPaise;
-  }
-
   if (formData.has("providerCostPerOutputUsd")) {
     patch.providerCostPerOutputUsd = parseNumber(
       formData.get("providerCostPerOutputUsd")
@@ -2134,6 +2101,14 @@ export async function updateImageModelConfigAction(formData: FormData) {
 
   if (formData.has("markupMultiplier")) {
     patch.markupMultiplier = parseNumber(formData.get("markupMultiplier"));
+  }
+
+  if (
+    (patch.providerCostPerOutputUsd ?? 0) <= 0 ||
+    (patch.markupMultiplier ?? 0) < 1 ||
+    (patch.markupMultiplier ?? 0) > 20
+  ) {
+    redirect("/admin/pricing?notice=model-provider-cost-required");
   }
 
   const isEnabledValue = parseBooleanFromEntries(formData, "isEnabled");
@@ -2183,6 +2158,12 @@ export async function updateChatModelPricingAction(formData: FormData) {
       4
     ),
   };
+  if (
+    pricing.inputProviderCostPerMillion <= 0 ||
+    pricing.outputProviderCostPerMillion <= 0
+  ) {
+    redirect("/admin/pricing?notice=model-provider-cost-required");
+  }
 
   try {
     const updated = await updateModelConfig({ id, ...pricing });
@@ -2225,6 +2206,9 @@ export async function updateImageModelPricingAction(formData: FormData) {
       2
     ),
   };
+  if (pricing.providerCostPerOutputUsd <= 0) {
+    redirect("/admin/pricing?notice=model-provider-cost-required");
+  }
 
   try {
     const updated = await updateImageModelConfig({ id, ...pricing });

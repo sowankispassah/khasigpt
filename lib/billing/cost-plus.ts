@@ -37,6 +37,15 @@ export type CreditPlanForConversion = {
   tokenAllowance: number;
 };
 
+export type CostPlusPreview = {
+  creditUnits: number;
+  credits: number;
+  customerChargeInr: number;
+  marginPercent: number;
+  profitInr: number;
+  providerCostInr: number;
+};
+
 function finiteNonNegative(value: unknown) {
   const numeric = typeof value === "number" ? value : Number(value);
   return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
@@ -193,5 +202,49 @@ export function priceCostPlusLineItems({
       .sort((left, right) => left._index - right._index)
       .map(({ _index: _discarded, ...lineItem }) => lineItem),
     totalCreditUnits,
+  };
+}
+
+export function calculateCostPlusPreview({
+  markupMultiplier,
+  providerCostUsd,
+  usdToInr,
+  walletUnitsPerInr,
+  walletUnitsPerCredit,
+}: {
+  markupMultiplier: number;
+  providerCostUsd: number;
+  usdToInr: number;
+  walletUnitsPerInr: number;
+  walletUnitsPerCredit: number;
+}): CostPlusPreview | null {
+  const priced = priceCostPlusLineItems({
+    lineItems: [{ category: "chat", markupMultiplier, providerCostUsd }],
+    usdToInr,
+    walletUnitsPerInr,
+  });
+  const [lineItem] = priced.lineItems;
+  if (
+    !lineItem ||
+    priced.totalCreditUnits <= 0 ||
+    !Number.isFinite(walletUnitsPerCredit) ||
+    walletUnitsPerCredit <= 0
+  ) {
+    return null;
+  }
+
+  const providerCostInr = lineItem.providerCostUsd * usdToInr;
+  const profitInr = lineItem.customerChargeInr - providerCostInr;
+
+  return {
+    creditUnits: priced.totalCreditUnits,
+    credits: priced.totalCreditUnits / walletUnitsPerCredit,
+    customerChargeInr: lineItem.customerChargeInr,
+    marginPercent:
+      lineItem.customerChargeInr > 0
+        ? (profitInr / lineItem.customerChargeInr) * 100
+        : 0,
+    profitInr,
+    providerCostInr,
   };
 }

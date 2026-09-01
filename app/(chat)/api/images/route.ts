@@ -585,7 +585,6 @@ export async function POST(request: Request) {
     await deductImageCredits({
       userId: session.user.id,
       chatId,
-      tokensToDeduct: access.tokensPerImage,
       allowManualCredits: true,
       imageModelConfigId: access.model.id,
       outputCount: images.length,

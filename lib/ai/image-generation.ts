@@ -17,7 +17,6 @@ import { resolveLanguageModel } from "@/lib/ai/providers";
 import {
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
-  TOKENS_PER_CREDIT,
 } from "@/lib/constants";
 import {
   getActiveSubscriptionForUser,
@@ -123,14 +122,10 @@ function buildModelSummary(
   activeModel: Awaited<ReturnType<typeof getActiveImageModel>>,
   quotedTokensPerImage?: number | null
 ) {
-  const tokensPerImage = Math.max(
-    1,
-    Math.round(
-      quotedTokensPerImage ??
-        activeModel?.tokensPerImage ??
-        TOKENS_PER_CREDIT
-    )
-  );
+  const tokensPerImage =
+    quotedTokensPerImage && quotedTokensPerImage > 0
+      ? Math.max(1, Math.round(quotedTokensPerImage))
+      : 0;
 
   return {
     modelSummary: activeModel
@@ -172,7 +167,7 @@ export async function getImageGenerationAvailability({
       quotedTokensPerImage = quote?.creditUnits ?? null;
     } catch (error) {
       console.warn(
-        "[image-generation] Cost-plus quote unavailable; using legacy image credits.",
+        "[image-generation] Cost-plus quote unavailable; image pricing remains unavailable.",
         error
       );
     }
@@ -181,7 +176,7 @@ export async function getImageGenerationAvailability({
     activeModel,
     quotedTokensPerImage
   );
-  const enabled = featureEnabled && modelEnabled;
+  const enabled = featureEnabled && modelEnabled && tokensPerImage > 0;
 
   return {
     enabled,
@@ -217,7 +212,10 @@ export async function isImageGenerationEnabledForAllUsers(): Promise<boolean> {
   }
 
   const activeModel = await getActiveImageModel();
-  return Boolean(activeModel?.isEnabled);
+  return Boolean(
+    activeModel?.isEnabled &&
+      Number(activeModel.providerCostPerOutputUsd ?? 0) > 0
+  );
 }
 
 export async function getImageGenerationAccess({
@@ -240,7 +238,6 @@ export async function getImageGenerationAccess({
   const isAdmin = resolvedRole === "admin";
   const featureEnabled = isFeatureEnabledForRole(featureMode, resolvedRole);
   const modelEnabled = Boolean(activeModel?.isEnabled);
-  const enabled = featureEnabled && modelEnabled;
   let quotedTokensPerImage: number | null = null;
   if (
     activeModel &&
@@ -254,7 +251,7 @@ export async function getImageGenerationAccess({
       quotedTokensPerImage = quote?.creditUnits ?? null;
     } catch (error) {
       console.warn(
-        "[image-generation] Submit-time quote unavailable; using legacy image credits.",
+        "[image-generation] Submit-time quote unavailable; image pricing remains unavailable.",
         error
       );
     }
@@ -263,6 +260,7 @@ export async function getImageGenerationAccess({
     activeModel,
     quotedTokensPerImage
   );
+  const enabled = featureEnabled && modelEnabled && tokensPerImage > 0;
   if (!enabled || !userId || !modelSummary) {
     return {
       enabled,
