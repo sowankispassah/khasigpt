@@ -35,7 +35,6 @@ const HARD_CODED_DEFAULT_CHAT_MODEL: ModelConfig = {
   inputProviderCostPerMillion: 0.25,
   isDefault: true,
   isEnabled: true,
-  isMarginBaseline: true,
   key: "gemini-3.1-flash-lite-preview",
   markupMultiplier: 4,
   outputProviderCostPerMillion: 1.5,

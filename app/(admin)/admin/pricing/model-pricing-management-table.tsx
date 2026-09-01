@@ -14,7 +14,6 @@ import {
   setActiveImageModelConfigAction,
   setDefaultLiveVoiceModelConfigAction,
   setDefaultModelConfigAction,
-  setMarginBaselineModelAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { useTranslation } from "@/components/language-provider";
@@ -47,7 +46,6 @@ export type ModelPricingRow = {
   isActive: boolean;
   isDefault: boolean;
   isEnabled: boolean;
-  isMarginBaseline: boolean;
   key: string;
   markupMultiplier: number;
   name: string;
@@ -239,7 +237,7 @@ export function ModelPricingManagementTable({
                     <span className="block">{model.type === "image" ? formatCredits(model.creditOutputCharge) : `${translate("admin.pricing.output", "Output")}: ${formatCredits(model.creditOutputCharge)}`}</span>
                     <span className="block text-muted-foreground">{unitLabel}</span>
                   </td>
-                  <td className="px-4 py-3"><div className="flex flex-wrap gap-1"><span className={cn("rounded-full px-2 py-0.5 text-xs", model.isEnabled ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>{model.isEnabled ? translate("admin.pricing.active", "Active") : translate("admin.pricing.inactive", "Inactive")}</span>{model.isDefault ? <span className="rounded-full bg-blue-100 px-2 py-0.5 text-blue-700 text-xs">{translate("admin.pricing.default", "Default")}</span> : null}{model.isActive ? <span className="rounded-full bg-blue-100 px-2 py-0.5 text-blue-700 text-xs">{translate("admin.pricing.selected", "Selected")}</span> : null}{model.isMarginBaseline ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700 text-xs">{translate("admin.pricing.margin_baseline", "Margin baseline")}</span> : null}</div></td>
+                  <td className="px-4 py-3"><div className="flex flex-wrap gap-1"><span className={cn("rounded-full px-2 py-0.5 text-xs", model.isEnabled ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>{model.isEnabled ? translate("admin.pricing.active", "Active") : translate("admin.pricing.inactive", "Inactive")}</span>{model.isDefault ? <span className="rounded-full bg-blue-100 px-2 py-0.5 text-blue-700 text-xs">{translate("admin.pricing.default", "Default")}</span> : null}{model.isActive ? <span className="rounded-full bg-blue-100 px-2 py-0.5 text-blue-700 text-xs">{translate("admin.pricing.selected", "Selected")}</span> : null}</div></td>
                   <td className="whitespace-nowrap px-4 py-3 text-muted-foreground text-xs">{formatUpdatedAt(model.updatedAt)}</td>
                   <td className="px-4 py-3 text-right">
                     <DropdownMenu>
@@ -247,7 +245,6 @@ export function ModelPricingManagementTable({
                       <DropdownMenuContent align="end" className="min-w-48">
                         <DropdownMenuItem className="cursor-pointer" onSelect={() => { setSelectedKey(model.key); setDialogMode("edit"); }}>{translate("admin.pricing.edit_model_action", "Edit model")}</DropdownMenuItem>
                         {model.type === "chat" && !model.isDefault ? <ModelActionForm action={setDefaultModelConfigAction} id={model.id} label={translate("admin.pricing.make_default", "Make default")} pendingLabel={translate("common.updating", "Updating...")} /> : null}
-                        {model.type === "chat" && !model.isMarginBaseline ? <ModelActionForm action={setMarginBaselineModelAction} id={model.id} label={translate("admin.pricing.make_margin_baseline", "Use as margin baseline")} pendingLabel={translate("common.updating", "Updating...")} /> : null}
                         {model.type === "image" && !model.isActive ? <ModelActionForm action={setActiveImageModelConfigAction} id={model.id} label={translate("admin.pricing.make_active", "Make active")} pendingLabel={translate("common.updating", "Updating...")} /> : null}
                         {model.type === "live_voice" && !model.isDefault ? <ModelActionForm action={setDefaultLiveVoiceModelConfigAction} id={model.id} label={translate("admin.pricing.make_default", "Make default")} pendingLabel={translate("common.updating", "Updating...")} /> : null}
                         <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive" onSelect={() => { setSelectedKey(model.key); setDialogMode("delete"); }}>{translate("admin.pricing.delete_model", "Delete model")}</DropdownMenuItem>

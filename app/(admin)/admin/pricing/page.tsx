@@ -102,7 +102,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 
 type ModelCostPreview = {
   id: string;
-  isMarginBaseline: boolean;
+  isDefault: boolean;
   name: string;
   providerCostPerMillionInr: number;
   providerCostPerMillionUsd: number;
@@ -134,7 +134,7 @@ function buildModelCostPreviews(
         Number(model.outputProviderCostPerMillion ?? 0);
       return {
         id: model.id,
-        isMarginBaseline: Boolean(model.isMarginBaseline),
+        isDefault: model.isDefault,
         name: model.displayName,
         providerCostPerMillionInr: providerCostPerMillionUsd * usdToInr,
         providerCostPerMillionUsd,
@@ -257,19 +257,19 @@ type PricingPlans = Awaited<ReturnType<typeof listAdminPricingPlans>>;
 
 function serializePlans({
   activePlans,
-  baselineModel,
+  referenceModel,
   models,
   recommendedPlanId,
   usdToInr,
 }: {
   activePlans: PricingPlans;
-  baselineModel: ModelCostPreview | null;
+  referenceModel: ModelCostPreview | null;
   models: AdminModelPricingSnapshotRow[];
   recommendedPlanId: string | null;
   usdToInr: number;
 }) {
-  const baselineModelRecord = baselineModel
-    ? models.find((model) => model.id === baselineModel.id)
+  const referenceModelRecord = referenceModel
+    ? models.find((model) => model.id === referenceModel.id)
     : null;
 
   return activePlans.map((plan) => {
@@ -286,10 +286,10 @@ function serializePlans({
     const marginPercent =
       effectivePerMillionInr !== null &&
       effectivePerMillionInr > 0 &&
-      baselineModel
+      referenceModel
         ? ((effectivePerMillionInr -
-            baselineModel.providerCostPerMillionInr) /
-            effectivePerMillionInr) *
+            referenceModel.providerCostPerMillionInr) /
+          effectivePerMillionInr) *
           100
         : null;
 
@@ -306,11 +306,11 @@ function serializePlans({
       marginPercent,
       name: plan.name,
       priceInPaise: plan.priceInPaise,
-      providerInputCostUsd: baselineModelRecord
-        ? Number(baselineModelRecord.inputProviderCostPerMillion ?? 0)
+      providerInputCostUsd: referenceModelRecord
+        ? Number(referenceModelRecord.inputProviderCostPerMillion ?? 0)
         : null,
-      providerOutputCostUsd: baselineModelRecord
-        ? Number(baselineModelRecord.outputProviderCostPerMillion ?? 0)
+      providerOutputCostUsd: referenceModelRecord
+        ? Number(referenceModelRecord.outputProviderCostPerMillion ?? 0)
         : null,
       tokenAllowance: plan.tokenAllowance,
       updatedAt: toIsoString(plan.updatedAt),
@@ -371,7 +371,6 @@ function buildModelPricingRows({
         isActive: model.isActive,
         isDefault: model.isDefault,
         isEnabled: model.isEnabled,
-        isMarginBaseline: model.isMarginBaseline,
         key: `chat:${model.id}`,
         markupMultiplier: markup,
         name: model.displayName,
@@ -406,7 +405,6 @@ function buildModelPricingRows({
         isActive: model.isActive,
         isDefault: model.isDefault,
         isEnabled: model.isEnabled,
-        isMarginBaseline: model.isMarginBaseline,
         key: `image:${model.id}`,
         markupMultiplier: markup,
         name: model.displayName,
@@ -450,7 +448,6 @@ function buildModelPricingRows({
         isActive: model.isActive,
         isDefault: model.isDefault,
         isEnabled: model.isEnabled,
-        isMarginBaseline: model.isMarginBaseline,
         key: `live_voice:${model.id}`,
         markupMultiplier: markup,
         name: model.displayName,
@@ -576,8 +573,8 @@ async function PricingManagementContent({
     : null;
   const usdToInr = exchangeRateState.data.rate;
   const modelCosts = buildModelCostPreviews(modelsState.data, usdToInr);
-  const baselineModel =
-    modelCosts.find((model) => model.isMarginBaseline) ??
+  const referenceModel =
+    modelCosts.find((model) => model.isDefault) ??
     modelCosts[0] ??
     null;
   const translationDefinitions = activePlans.flatMap((plan) => [
@@ -608,7 +605,7 @@ async function PricingManagementContent({
   );
   const serializedPlans = serializePlans({
     activePlans,
-    baselineModel,
+    referenceModel,
     models: modelsState.data,
     recommendedPlanId,
     usdToInr,
@@ -670,7 +667,7 @@ async function PricingManagementContent({
 
   return (
     <PricingManagementTable
-      baselineModelName={baselineModel?.name ?? null}
+      referenceModelName={referenceModel?.name ?? null}
       createForm={
         <CreatePricingPlanForm modelCosts={modelCosts} usdToInr={usdToInr} />
       }
@@ -693,7 +690,7 @@ function PricingManagementLoading({
   const usdToInr = getFallbackUsdToInrRate();
   const serializedPlans = serializePlans({
     activePlans,
-    baselineModel: null,
+    referenceModel: null,
     models: [],
     recommendedPlanId: null,
     usdToInr,
@@ -701,7 +698,7 @@ function PricingManagementLoading({
 
   return (
     <PricingManagementTable
-      baselineModelName={null}
+      referenceModelName={null}
       createForm={
         <CreatePricingPlanForm modelCosts={[]} usdToInr={usdToInr} />
       }
@@ -912,7 +909,7 @@ export default async function AdminPricingPage({
         </Suspense>
       ) : (
         <PricingManagementTable
-          baselineModelName={null}
+          referenceModelName={null}
           createForm={
             <CreatePricingPlanForm
               modelCosts={[]}

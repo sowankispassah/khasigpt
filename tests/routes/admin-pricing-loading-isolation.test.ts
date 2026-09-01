@@ -132,4 +132,49 @@ test.describe("admin pricing loading isolation", () => {
     expect(tableSource).toContain("deletePricingPlanAction");
     expect(tableSource).toContain("Delete pricing plan?");
   });
+
+  test("uses the default chat model for previews without a margin-baseline control", async () => {
+    const [
+      pageSource,
+      modelTableSource,
+      modelFormSource,
+      planFieldsSource,
+      actionSource,
+      querySource,
+      schemaSource,
+      migrationSource,
+    ] = await Promise.all([
+      readWorkspaceFile("app/(admin)/admin/pricing/page.tsx"),
+      readWorkspaceFile(
+        "app/(admin)/admin/pricing/model-pricing-management-table.tsx"
+      ),
+      readWorkspaceFile(
+        "app/(admin)/admin/pricing/model-configuration-forms.tsx"
+      ),
+      readWorkspaceFile(
+        "app/(admin)/admin/settings/plan-pricing-fields.tsx"
+      ),
+      readWorkspaceFile("app/(admin)/actions.ts"),
+      readWorkspaceFile("lib/db/queries.ts"),
+      readWorkspaceFile("lib/db/schema.ts"),
+      readWorkspaceFile(
+        "lib/db/migrations/0093_drop-model-margin-baseline.sql"
+      ),
+    ]);
+
+    expect(pageSource).toContain(
+      "modelCosts.find((model) => model.isDefault)"
+    );
+    expect(planFieldsSource).toContain("Default model");
+    expect(modelTableSource).not.toContain("setMarginBaselineModelAction");
+    expect(modelTableSource).not.toContain("Use as margin baseline");
+    expect(modelFormSource).not.toContain('name="isMarginBaseline"');
+    expect(actionSource).not.toContain("setMarginBaselineModel");
+    expect(querySource).not.toContain("isMarginBaseline");
+    expect(querySource).not.toContain("computeCostMultiplier");
+    expect(schemaSource).not.toContain("isMarginBaseline");
+    expect(migrationSource).toContain(
+      'DROP COLUMN IF EXISTS "isMarginBaseline"'
+    );
+  });
 });

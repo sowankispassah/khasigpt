@@ -155,11 +155,6 @@ const NOTICE_MESSAGES: Record<
     key: "admin.pricing.notice.model_key_deleted",
     type: "error",
   },
-  "model-margin-baseline": {
-    defaultText: "Margin baseline model updated.",
-    key: "admin.pricing.notice.model_margin_baseline",
-    type: "success",
-  },
   "model-updated": {
     defaultText: "Model configuration updated.",
     key: "admin.pricing.notice.model_updated",

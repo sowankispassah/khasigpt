@@ -93,7 +93,6 @@ import {
   setCouponStatus,
   setDefaultLiveVoiceModelConfig,
   setDefaultModelConfig,
-  setMarginBaselineModel,
   updateCharacterWithAliases,
   updateImageModelConfig,
   updateLanguageActiveState,
@@ -1503,7 +1502,6 @@ export async function createModelConfigAction(formData: FormData) {
   const supportsReasoning = parseBoolean(formData.get("supportsReasoning"));
   const isEnabled = parseBoolean(formData.get("isEnabled"));
   const isDefault = parseBoolean(formData.get("isDefault"));
-  const isMarginBaseline = parseBoolean(formData.get("isMarginBaseline"));
   const config = parseJson(formData.get("configJson"));
   const inputProviderCostPerMillion = parseNumber(
     formData.get("inputProviderCostPerMillion")
@@ -1547,7 +1545,6 @@ export async function createModelConfigAction(formData: FormData) {
       config,
       isEnabled,
       isDefault,
-      isMarginBaseline,
       inputProviderCostPerMillion,
       outputProviderCostPerMillion,
       markupMultiplier,
@@ -1758,28 +1755,6 @@ export async function setDefaultModelConfigAction(formData: FormData) {
   revalidateAdminModelSettings("model.setDefault");
 
   redirect("/admin/pricing?notice=model-defaulted");
-}
-
-export async function setMarginBaselineModelAction(formData: FormData) {
-  "use server";
-  const actor = await requireAdmin();
-  const id = formData.get("id")?.toString();
-
-  if (!id) {
-    throw new Error("Missing model configuration id");
-  }
-
-  await setMarginBaselineModel(id);
-
-  await createAuditLogEntrySafely({
-    actorId: actor.id,
-    action: "model.setMarginBaseline",
-    target: { modelId: id },
-  });
-
-  revalidateAdminModelSettings("model.setMarginBaseline");
-
-  redirect("/admin/pricing?notice=model-margin-baseline");
 }
 
 export async function createLiveVoiceModelConfigAction(formData: FormData) {

@@ -6598,7 +6598,6 @@ export async function createModelConfig({
   config = null,
   isEnabled = true,
   isDefault = false,
-  isMarginBaseline = false,
   freeMessagesPerDay = DEFAULT_FREE_MESSAGES_PER_DAY,
   inputProviderCostPerMillion = 0,
   outputProviderCostPerMillion = 0,
@@ -6616,7 +6615,6 @@ export async function createModelConfig({
   config?: Record<string, unknown> | null;
   isEnabled?: boolean;
   isDefault?: boolean;
-  isMarginBaseline?: boolean;
   freeMessagesPerDay?: number;
   inputProviderCostPerMillion?: number;
   outputProviderCostPerMillion?: number;
@@ -6641,7 +6639,6 @@ export async function createModelConfig({
           config,
           isEnabled,
           isDefault: false,
-          isMarginBaseline: false,
           freeMessagesPerDay,
           inputProviderCostPerMillion,
           outputProviderCostPerMillion,
@@ -6673,20 +6670,6 @@ export async function createModelConfig({
             )
           );
         statePatch.isDefault = true;
-      }
-
-      if (isMarginBaseline) {
-        await tx
-          .update(modelConfig)
-          .set({ isMarginBaseline: false, updatedAt: now })
-          .where(
-            and(
-              eq(modelConfig.isMarginBaseline, true),
-              isNull(modelConfig.deletedAt),
-              ne(modelConfig.id, created.id)
-            )
-          );
-        statePatch.isMarginBaseline = true;
       }
 
       if (Object.keys(statePatch).length === 0) {
@@ -6849,7 +6832,6 @@ export async function updateModelConfig({
   outputProviderCostPerMillion?: number;
   markupMultiplier?: number;
   freeMessagesPerDay?: number;
-  isMarginBaseline?: boolean;
 }): Promise<ModelConfig | null> {
   try {
     const updateData: Partial<typeof modelConfig.$inferInsert> = {};
@@ -6901,10 +6883,6 @@ export async function updateModelConfig({
     if (patch.freeMessagesPerDay !== undefined) {
       updateData.freeMessagesPerDay = patch.freeMessagesPerDay;
     }
-    if (patch.isMarginBaseline === false) {
-      updateData.isMarginBaseline = patch.isMarginBaseline;
-    }
-
     const [updated] = await db
       .update(modelConfig)
       .set({
@@ -6916,11 +6894,6 @@ export async function updateModelConfig({
 
     if (!updated) {
       return null;
-    }
-
-    if (patch.isMarginBaseline) {
-      await setMarginBaselineModel(id);
-      return { ...updated, isMarginBaseline: true };
     }
 
     return updated;
@@ -6941,7 +6914,6 @@ export async function deleteModelConfig(id: string) {
         .set({
           deletedAt: now,
           isDefault: false,
-          isMarginBaseline: false,
           isEnabled: false,
           updatedAt: now,
         })
@@ -6952,7 +6924,7 @@ export async function deleteModelConfig(id: string) {
         throw new Error("Model configuration not found");
       }
 
-      if (deleted.isDefault || deleted.isMarginBaseline) {
+      if (deleted.isDefault) {
         const [fallback] = await tx
           .select()
           .from(modelConfig)
@@ -6970,8 +6942,7 @@ export async function deleteModelConfig(id: string) {
           await tx
             .update(modelConfig)
             .set({
-              ...(deleted.isDefault ? { isDefault: true } : {}),
-              ...(deleted.isMarginBaseline ? { isMarginBaseline: true } : {}),
+              isDefault: true,
               updatedAt: now,
             })
             .where(eq(modelConfig.id, fallback.id));
@@ -7002,7 +6973,7 @@ export async function hardDeleteModelConfig(id: string) {
 
       await tx.delete(modelConfig).where(eq(modelConfig.id, id));
 
-      if (target.isDefault || target.isMarginBaseline) {
+      if (target.isDefault) {
         const [fallback] = await tx
           .select()
           .from(modelConfig)
@@ -7020,8 +6991,7 @@ export async function hardDeleteModelConfig(id: string) {
           await tx
             .update(modelConfig)
             .set({
-              ...(target.isDefault ? { isDefault: true } : {}),
-              ...(target.isMarginBaseline ? { isMarginBaseline: true } : {}),
+              isDefault: true,
               updatedAt: now,
             })
             .where(eq(modelConfig.id, fallback.id));
@@ -7071,45 +7041,6 @@ export async function setDefaultModelConfig(id: string) {
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to set default model configuration"
-    );
-  }
-}
-
-export async function setMarginBaselineModel(id: string) {
-  const now = new Date();
-
-  try {
-    await db.transaction(async (tx) => {
-      const [target] = await tx
-        .select({ id: modelConfig.id })
-        .from(modelConfig)
-        .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)))
-        .limit(1);
-
-      if (!target) {
-        throw new Error("Model configuration not found");
-      }
-
-      await tx
-        .update(modelConfig)
-        .set({ isMarginBaseline: false, updatedAt: now })
-        .where(
-          and(
-            eq(modelConfig.isMarginBaseline, true),
-            isNull(modelConfig.deletedAt),
-            ne(modelConfig.id, id)
-          )
-        );
-
-      await tx
-        .update(modelConfig)
-        .set({ isMarginBaseline: true, updatedAt: now })
-        .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)));
-    });
-  } catch (_error) {
-    throw new ChatSDKError(
-      "bad_request:database",
-      "Failed to set margin baseline model"
     );
   }
 }
@@ -8503,7 +8434,6 @@ export type AdminModelPricingSnapshotRow = {
   isActive: boolean;
   isDefault: boolean;
   isEnabled: boolean;
-  isMarginBaseline: boolean;
   key: string;
   markupMultiplier: number;
   mediaResolution: string | null;
@@ -8545,7 +8475,6 @@ export async function listAdminModelPricingSnapshot(): Promise<
             ${modelConfig.outputProviderCostPerMillion} AS "outputProviderCostPerMillion",
             NULL::double precision AS "providerCostPerOutputUsd",
             ${modelConfig.markupMultiplier} AS "markupMultiplier",
-            ${modelConfig.isMarginBaseline} AS "isMarginBaseline",
             ${modelConfig.systemPrompt} AS "systemPrompt",
             ${modelConfig.codeTemplate} AS "codeTemplate",
             ${modelConfig.supportsReasoning} AS "supportsReasoning",
@@ -8581,7 +8510,6 @@ export async function listAdminModelPricingSnapshot(): Promise<
             NULL::double precision AS "outputProviderCostPerMillion",
             ${imageModelConfig.providerCostPerOutputUsd} AS "providerCostPerOutputUsd",
             ${imageModelConfig.markupMultiplier} AS "markupMultiplier",
-            false AS "isMarginBaseline",
             NULL::text AS "systemPrompt",
             NULL::text AS "codeTemplate",
             false AS "supportsReasoning",
@@ -8617,7 +8545,6 @@ export async function listAdminModelPricingSnapshot(): Promise<
             ${liveVoiceModelConfig.outputProviderCostPerMillion} AS "outputProviderCostPerMillion",
             NULL::double precision AS "providerCostPerOutputUsd",
             ${liveVoiceModelConfig.markupMultiplier} AS "markupMultiplier",
-            false AS "isMarginBaseline",
             NULL::text AS "systemPrompt",
             NULL::text AS "codeTemplate",
             false AS "supportsReasoning",
@@ -10786,8 +10713,6 @@ export async function recordTokenUsage({
   }
 
   const now = new Date();
-  let baselineCostSnapshot: ProviderCostSnapshot | null = null;
-  let modelCostSnapshot: ProviderCostSnapshot | null = null;
   let tokenCostPlusSnapshot: TokenCostPlusSnapshot | null = null;
   let usdToInr = 0;
 
@@ -10812,13 +10737,6 @@ export async function recordTokenUsage({
       usdToInr = getFallbackUsdToInrRate();
     }
 
-    if (modelConfigId) {
-      modelCostSnapshot = await getModelProviderCostSnapshot(
-        modelConfigId,
-        usdToInr
-      );
-    }
-
     tokenCostPlusSnapshot = billTokenUsage
       ? await getTokenCostPlusSnapshot({
           liveVoiceModelConfigId,
@@ -10826,10 +10744,6 @@ export async function recordTokenUsage({
         })
       : null;
 
-    baselineCostSnapshot = await getBaselineProviderCostSnapshot(
-      usdToInr,
-      modelCostSnapshot
-    );
   }
 
   try {
@@ -10913,37 +10827,6 @@ export async function recordTokenUsage({
           );
         }
 
-        const allowance =
-          plan?.tokenAllowance && plan.tokenAllowance > 0
-            ? plan.tokenAllowance
-            : Math.max(subscription.tokenAllowance, 0);
-
-        let planPricePerTokenPaise =
-          plan && allowance && allowance > 0 && plan.priceInPaise > 0
-            ? plan.priceInPaise / allowance
-            : 0;
-
-        if (!planPricePerTokenPaise || planPricePerTokenPaise <= 0) {
-          planPricePerTokenPaise =
-            baselineCostSnapshot?.costPerTokenPaise ??
-            modelCostSnapshot?.costPerTokenPaise ??
-            0;
-        }
-
-        const baselineCostPerTokenPaise =
-          baselineCostSnapshot?.costPerTokenPaise ??
-          modelCostSnapshot?.costPerTokenPaise ??
-          planPricePerTokenPaise;
-
-        const modelCostPerTokenPaise =
-          modelCostSnapshot?.costPerTokenPaise ?? baselineCostPerTokenPaise;
-
-        const costMultiplier = computeCostMultiplier({
-          planPricePerTokenPaise,
-          baselineCostPerTokenPaise,
-          modelCostPerTokenPaise,
-        });
-
         const costPlusLineItems: UnpricedCostPlusLineItem[] = [];
         if (tokenCostPlusSnapshot) {
           const providerCostUsd = calculateTokenProviderCostUsd({
@@ -11001,7 +10884,6 @@ export async function recordTokenUsage({
           legacyTokensToDeduct = calculateTokenDeduction({
             inputTokens,
             outputTokens,
-            costMultiplier,
           });
         }
         tokensToDeduct = priced.totalCreditUnits + legacyTokensToDeduct;
@@ -11848,218 +11730,12 @@ async function getActiveSubscriptionInternal(
 function calculateTokenDeduction({
   inputTokens,
   outputTokens,
-  costMultiplier = 1,
 }: {
   inputTokens: number;
   outputTokens: number;
-  costMultiplier?: number;
 }): number {
   const totalTokens = Math.max(1, Math.round(inputTokens + outputTokens));
-  const normalizedMultiplier =
-    Number.isFinite(costMultiplier) && costMultiplier && costMultiplier > 1
-      ? costMultiplier
-      : 1;
-  const adjustedTokens = totalTokens * normalizedMultiplier;
-  return Math.max(1, Math.ceil(adjustedTokens));
-}
-
-function computeCostMultiplier({
-  planPricePerTokenPaise,
-  baselineCostPerTokenPaise,
-  modelCostPerTokenPaise,
-}: {
-  planPricePerTokenPaise: number;
-  baselineCostPerTokenPaise: number;
-  modelCostPerTokenPaise: number;
-}): number {
-  if (
-    !Number.isFinite(planPricePerTokenPaise) ||
-    planPricePerTokenPaise <= 0 ||
-    !Number.isFinite(baselineCostPerTokenPaise) ||
-    baselineCostPerTokenPaise <= 0 ||
-    !Number.isFinite(modelCostPerTokenPaise) ||
-    modelCostPerTokenPaise <= 0
-  ) {
-    return 1;
-  }
-
-  const targetRatio = planPricePerTokenPaise / baselineCostPerTokenPaise;
-
-  if (!Number.isFinite(targetRatio) || targetRatio <= 0) {
-    return 1;
-  }
-
-  const requiredPricePerToken = modelCostPerTokenPaise * targetRatio;
-  const multiplier = requiredPricePerToken / planPricePerTokenPaise;
-
-  if (!Number.isFinite(multiplier) || multiplier <= 1) {
-    return 1;
-  }
-
-  return multiplier;
-}
-
-type ProviderCostSnapshot = {
-  modelId: string;
-  isDefault: boolean;
-  isMarginBaseline: boolean;
-  costPerTokenPaise: number;
-};
-
-async function getModelProviderCostSnapshot(
-  modelId: string,
-  usdToInr: number
-): Promise<ProviderCostSnapshot | null> {
-  const [row] = await db
-    .select({
-      id: modelConfig.id,
-      isDefault: modelConfig.isDefault,
-      isMarginBaseline: modelConfig.isMarginBaseline,
-      inputCost: modelConfig.inputProviderCostPerMillion,
-      outputCost: modelConfig.outputProviderCostPerMillion,
-      deletedAt: modelConfig.deletedAt,
-    })
-    .from(modelConfig)
-    .where(eq(modelConfig.id, modelId))
-    .limit(1);
-
-  if (!row || row.deletedAt) {
-    return null;
-  }
-
-  const totalUsdPerMillion =
-    Number(row.inputCost ?? 0) + Number(row.outputCost ?? 0);
-  return {
-    modelId: row.id,
-    isDefault: row.isDefault ?? false,
-    isMarginBaseline: row.isMarginBaseline ?? false,
-    costPerTokenPaise: convertUsdPerMillionToPaisePerToken(
-      totalUsdPerMillion,
-      usdToInr
-    ),
-  };
-}
-
-async function getBaselineProviderCostSnapshot(
-  usdToInr: number,
-  existingSnapshot?: ProviderCostSnapshot | null
-): Promise<ProviderCostSnapshot | null> {
-  if (existingSnapshot?.isMarginBaseline) {
-    return existingSnapshot;
-  }
-
-  const [baselineModel] = await db
-    .select({
-      id: modelConfig.id,
-      isDefault: modelConfig.isDefault,
-      isMarginBaseline: modelConfig.isMarginBaseline,
-      inputCost: modelConfig.inputProviderCostPerMillion,
-      outputCost: modelConfig.outputProviderCostPerMillion,
-    })
-    .from(modelConfig)
-    .where(
-      and(
-        eq(modelConfig.isMarginBaseline, true),
-        eq(modelConfig.isEnabled, true),
-        isNull(modelConfig.deletedAt)
-      )
-    )
-    .limit(1);
-
-  if (baselineModel) {
-    const totalUsdPerMillion =
-      Number(baselineModel.inputCost ?? 0) +
-      Number(baselineModel.outputCost ?? 0);
-    return {
-      modelId: baselineModel.id,
-      isDefault: baselineModel.isDefault ?? false,
-      isMarginBaseline: true,
-      costPerTokenPaise: convertUsdPerMillionToPaisePerToken(
-        totalUsdPerMillion,
-        usdToInr
-      ),
-    };
-  }
-
-  const [defaultModel] = await db
-    .select({
-      id: modelConfig.id,
-      isDefault: modelConfig.isDefault,
-      isMarginBaseline: modelConfig.isMarginBaseline,
-      inputCost: modelConfig.inputProviderCostPerMillion,
-      outputCost: modelConfig.outputProviderCostPerMillion,
-    })
-    .from(modelConfig)
-    .where(
-      and(
-        eq(modelConfig.isDefault, true),
-        eq(modelConfig.isEnabled, true),
-        isNull(modelConfig.deletedAt)
-      )
-    )
-    .limit(1);
-
-  if (defaultModel) {
-    const totalUsdPerMillion =
-      Number(defaultModel.inputCost ?? 0) +
-      Number(defaultModel.outputCost ?? 0);
-    return {
-      modelId: defaultModel.id,
-      isDefault: true,
-      isMarginBaseline: defaultModel.isMarginBaseline ?? false,
-      costPerTokenPaise: convertUsdPerMillionToPaisePerToken(
-        totalUsdPerMillion,
-        usdToInr
-      ),
-    };
-  }
-
-  const [fallbackModel] = await db
-    .select({
-      id: modelConfig.id,
-      isDefault: modelConfig.isDefault,
-      isMarginBaseline: modelConfig.isMarginBaseline,
-      inputCost: modelConfig.inputProviderCostPerMillion,
-      outputCost: modelConfig.outputProviderCostPerMillion,
-    })
-    .from(modelConfig)
-    .where(and(eq(modelConfig.isEnabled, true), isNull(modelConfig.deletedAt)))
-    .orderBy(asc(modelConfig.createdAt))
-    .limit(1);
-
-  if (!fallbackModel) {
-    return null;
-  }
-
-  const fallbackUsdPerMillion =
-    Number(fallbackModel.inputCost ?? 0) +
-    Number(fallbackModel.outputCost ?? 0);
-
-  return {
-    modelId: fallbackModel.id,
-    isDefault: fallbackModel.isDefault ?? false,
-    isMarginBaseline: fallbackModel.isMarginBaseline ?? false,
-    costPerTokenPaise: convertUsdPerMillionToPaisePerToken(
-      fallbackUsdPerMillion,
-      usdToInr
-    ),
-  };
-}
-
-function convertUsdPerMillionToPaisePerToken(
-  usdPerMillion: number,
-  usdToInr: number
-): number {
-  if (!Number.isFinite(usdPerMillion) || usdPerMillion <= 0) {
-    return 0;
-  }
-  const safeRate =
-    Number.isFinite(usdToInr) && usdToInr > 0
-      ? usdToInr
-      : getFallbackUsdToInrRate();
-  const perTokenUsd = usdPerMillion / 1_000_000;
-  const perTokenInr = perTokenUsd * safeRate;
-  return perTokenInr * 100;
+  return Math.max(1, totalTokens);
 }
 
 export type TranslationTableEntry = {

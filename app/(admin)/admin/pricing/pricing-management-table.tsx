@@ -72,7 +72,7 @@ function formatUpdatedAt(value: string | null) {
 }
 
 export function PricingManagementTable({
-  baselineModelName,
+  referenceModelName,
   createForm,
   deletedForms,
   detailsLoading = false,
@@ -81,7 +81,7 @@ export function PricingManagementTable({
   plans,
   plansConfirmed,
 }: {
-  baselineModelName: string | null;
+  referenceModelName: string | null;
   createForm: ReactNode;
   deletedForms: Record<string, ReactNode>;
   detailsLoading?: boolean;
@@ -122,9 +122,9 @@ export function PricingManagementTable({
           <p className="mt-1 text-muted-foreground text-xs">
             {detailsLoading
               ? "Loading provider costs and editing details..."
-              : baselineModelName
-                ? `Margin reference: ${baselineModelName}.`
-                : "Margin reference is unavailable until an enabled model cost is configured."}
+              : referenceModelName
+                ? `Margin preview uses the default model: ${referenceModelName}.`
+                : "Margin preview is unavailable until an enabled model cost is configured."}
           </p>
         </div>
         <Button className="cursor-pointer" onClick={openCreate} type="button">+ Add Pricing</Button>

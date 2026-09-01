@@ -182,7 +182,6 @@ export const modelConfig = pgTable("ModelConfig", {
   config: jsonb("config"),
   isEnabled: boolean("isEnabled").notNull().default(true),
   isDefault: boolean("isDefault").notNull().default(false),
-  isMarginBaseline: boolean("isMarginBaseline").notNull().default(false),
   freeMessagesPerDay: integer("freeMessagesPerDay").notNull().default(3),
   inputProviderCostPerMillion: doublePrecision("inputProviderCostPerMillion")
     .notNull()

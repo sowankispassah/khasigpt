@@ -9,7 +9,7 @@ import { PlanPricingFields } from "./plan-pricing-fields";
 
 type ModelCostPreview = {
   id: string;
-  isMarginBaseline: boolean;
+  isDefault: boolean;
   name: string;
   providerCostPerMillionInr: number;
   providerCostPerMillionUsd: number;

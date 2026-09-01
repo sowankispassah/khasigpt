@@ -361,10 +361,7 @@ export function ChatModelConfigurationForm({
         translationKey="admin.pricing.model_form.supports_reasoning"
       />
       {create ? (
-        <>
-          <CheckboxField id={`${prefix}-default`} label="Set as default model" name="isDefault" translationKey="admin.pricing.model_form.default_chat" />
-          <CheckboxField id={`${prefix}-baseline`} label="Use as margin baseline" name="isMarginBaseline" translationKey="admin.pricing.model_form.margin_baseline" />
-        </>
+        <CheckboxField id={`${prefix}-default`} label="Set as default model" name="isDefault" translationKey="admin.pricing.model_form.default_chat" />
       ) : null}
       <SubmitRow create={create} />
     </form>

@@ -15,11 +15,11 @@ const currencyFormatter = (value: number, currency: "INR" | "USD"): string => {
 
 type ModelCostPreview = {
   id: string;
+  isDefault: boolean;
   name: string;
   providerLabel: string;
   providerCostPerMillionInr: number;
   providerCostPerMillionUsd: number;
-  isMarginBaseline: boolean;
 };
 
 type PlanPricingFieldsProps = {
@@ -177,9 +177,9 @@ export function PlanPricingFields({
                       <span className="rounded-full bg-muted px-2 py-0.5 font-medium text-[10px] text-muted-foreground uppercase tracking-wide">
                         {model.providerLabel}
                       </span>
-                      {model.isMarginBaseline && (
+                      {model.isDefault && (
                         <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-[10px] text-emerald-700">
-                          Margin baseline
+                          Default model
                         </span>
                       )}
                     </div>
