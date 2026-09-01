@@ -20,6 +20,7 @@ import {
 } from "@/lib/ai/character-reference-types";
 import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
 import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
+import { normalizeMarkupMultiplier } from "@/lib/billing/cost-plus";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
@@ -1821,7 +1822,9 @@ export async function createLiveVoiceModelConfigAction(formData: FormData) {
         formData.get("mediaResolution")?.toString().trim() ||
         "MEDIA_RESOLUTION_MEDIUM",
       creditMultiplier: normalizeLiveVoiceCreditMultiplier(
-        formData.get("creditMultiplier")
+        formData.has("creditMultiplier")
+          ? formData.get("creditMultiplier")
+          : 3
       ),
       inputProviderCostPerMillion: parseNumber(
         formData.get("inputProviderCostPerMillion")
@@ -2174,6 +2177,142 @@ export async function updateImageModelConfigAction(formData: FormData) {
   });
 
   revalidateAdminImageModelSettings("image_model.update");
+}
+
+export async function updateChatModelPricingAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const id = formData.get("id")?.toString();
+  if (!id) {
+    throw new Error("Missing model configuration id");
+  }
+
+  const pricing = {
+    inputProviderCostPerMillion: Math.max(
+      0,
+      parseNumber(formData.get("inputProviderCostPerMillion"))
+    ),
+    outputProviderCostPerMillion: Math.max(
+      0,
+      parseNumber(formData.get("outputProviderCostPerMillion"))
+    ),
+    markupMultiplier: normalizeMarkupMultiplier(
+      formData.get("markupMultiplier"),
+      4
+    ),
+  };
+
+  try {
+    const updated = await updateModelConfig({ id, ...pricing });
+    if (!updated) {
+      redirect("/admin/pricing?notice=model-pricing-update-error");
+    }
+  } catch (error) {
+    if (isRedirectErrorLike(error)) {
+      throw error;
+    }
+    console.error("Failed to update chat model pricing", error);
+    redirect("/admin/pricing?notice=model-pricing-update-error");
+  }
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "model.pricing.update",
+    target: { modelId: id },
+    metadata: pricing,
+  });
+  revalidateAdminModelSettings("model.pricing.update");
+  redirect("/admin/pricing?notice=model-pricing-updated");
+}
+
+export async function updateImageModelPricingAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const id = formData.get("id")?.toString();
+  if (!id) {
+    throw new Error("Missing image model configuration id");
+  }
+
+  const pricing = {
+    providerCostPerOutputUsd: Math.max(
+      0,
+      parseNumber(formData.get("providerCostPerOutputUsd"))
+    ),
+    markupMultiplier: normalizeMarkupMultiplier(
+      formData.get("markupMultiplier"),
+      2
+    ),
+  };
+
+  try {
+    const updated = await updateImageModelConfig({ id, ...pricing });
+    if (!updated) {
+      redirect("/admin/pricing?notice=model-pricing-update-error");
+    }
+  } catch (error) {
+    if (isRedirectErrorLike(error)) {
+      throw error;
+    }
+    console.error("Failed to update image model pricing", error);
+    redirect("/admin/pricing?notice=model-pricing-update-error");
+  }
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "image_model.pricing.update",
+    target: { imageModelId: id },
+    metadata: pricing,
+  });
+  revalidateAdminImageModelSettings("image_model.pricing.update");
+  redirect("/admin/pricing?notice=model-pricing-updated");
+}
+
+export async function updateLiveVoiceModelPricingAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const id = formData.get("id")?.toString();
+  if (!id) {
+    throw new Error("Missing live voice model configuration id");
+  }
+
+  const markupMultiplier = normalizeMarkupMultiplier(
+    formData.get("markupMultiplier"),
+    3
+  );
+  const pricing = {
+    creditMultiplier: markupMultiplier,
+    inputProviderCostPerMillion: Math.max(
+      0,
+      parseNumber(formData.get("inputProviderCostPerMillion"))
+    ),
+    markupMultiplier,
+    outputProviderCostPerMillion: Math.max(
+      0,
+      parseNumber(formData.get("outputProviderCostPerMillion"))
+    ),
+  };
+
+  try {
+    const updated = await updateLiveVoiceModelConfig({ id, ...pricing });
+    if (!updated) {
+      redirect("/admin/pricing?notice=model-pricing-update-error");
+    }
+  } catch (error) {
+    if (isRedirectErrorLike(error)) {
+      throw error;
+    }
+    console.error("Failed to update live voice model pricing", error);
+    redirect("/admin/pricing?notice=model-pricing-update-error");
+  }
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "live_voice_model.pricing.update",
+    target: { liveVoiceModelId: id },
+    metadata: pricing,
+  });
+  revalidateAdminLiveVoiceModelSettings("live_voice_model.pricing.update");
+  redirect("/admin/pricing?notice=model-pricing-updated");
 }
 
 export async function deleteImageModelConfigAction(formData: FormData) {

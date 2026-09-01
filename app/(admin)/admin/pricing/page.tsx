@@ -6,27 +6,49 @@ import {
   deletePricingPlanAction,
   hardDeletePricingPlanAction,
   setRecommendedPricingPlanAction,
+  updateChatModelPricingAction,
+  updateImageModelPricingAction,
+  updateLiveVoiceModelPricingAction,
   updatePlanTranslationAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
+  ADMIN_SETTINGS_IMAGE_MODELS_CACHE_TAG,
+  ADMIN_SETTINGS_LIVE_VOICE_MODELS_CACHE_TAG,
+  ADMIN_SETTINGS_MODELS_CACHE_TAG,
   ADMIN_SETTINGS_PRICING_CACHE_TAG,
 } from "@/lib/admin/cache-invalidation";
 import { resolveAdminDbReadGroup } from "@/lib/admin/db-read-concurrency";
 import { adminQueryResult, getAdminQueryTimeoutMs } from "@/lib/admin/safe-query";
+import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
+import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
+import {
+  calculateWalletUnitsPerInr,
+  normalizeMarkupMultiplier,
+  selectBaseCreditPlan,
+} from "@/lib/billing/cost-plus";
 import { PRICING_PLAN_CACHE_TAG, RECOMMENDED_PRICING_PLAN_SETTING_KEY, TOKENS_PER_CREDIT } from "@/lib/constants";
 import {
   getAppSetting,
   getTranslationValuesForKeys,
   listAdminPricingPlans,
+  listImageModelConfigs,
   listLanguagesWithSettings,
+  listLiveVoiceModelConfigs,
   listModelConfigs,
   type listPricingPlans,
 } from "@/lib/db/queries";
 import { getFallbackUsdToInrRate, getUsdToInrRate } from "@/lib/services/exchange-rate";
 import { withTimeout } from "@/lib/utils/async";
+import { LIVE_VOICE_MODEL_CONFIG_CACHE_TAG } from "@/lib/voice/live";
 import { PlanPricingFields } from "../settings/plan-pricing-fields";
 import { PricingPlanEditForm } from "../settings/pricing-plan-edit-form";
+import {
+  ModelPricingManagementTable,
+  type ModelPricingRow,
+  ModelPricingSubmitButton,
+} from "./model-pricing-management-table";
 import { PricingNotice } from "./notice";
 import { PricingManagementTable } from "./pricing-management-table";
 
@@ -41,6 +63,54 @@ const listAdminPricingPlansCached = unstable_cache(
   {
     revalidate: ADMIN_PRICING_LIST_CACHE_REVALIDATE_SECONDS,
     tags: [ADMIN_SETTINGS_PRICING_CACHE_TAG, PRICING_PLAN_CACHE_TAG],
+  }
+);
+
+const listAdminChatPricingModelsCached = unstable_cache(
+  () =>
+    listModelConfigs({
+      includeDisabled: true,
+      includeDeleted: false,
+      limit: 200,
+    }),
+  ["admin-pricing:chat-models:v1"],
+  {
+    revalidate: ADMIN_PRICING_LIST_CACHE_REVALIDATE_SECONDS,
+    tags: [ADMIN_SETTINGS_MODELS_CACHE_TAG, MODEL_REGISTRY_CACHE_TAG],
+  }
+);
+
+const listAdminImagePricingModelsCached = unstable_cache(
+  () =>
+    listImageModelConfigs({
+      includeDisabled: true,
+      includeDeleted: false,
+      limit: 200,
+    }),
+  ["admin-pricing:image-models:v1"],
+  {
+    revalidate: ADMIN_PRICING_LIST_CACHE_REVALIDATE_SECONDS,
+    tags: [
+      ADMIN_SETTINGS_IMAGE_MODELS_CACHE_TAG,
+      IMAGE_MODEL_REGISTRY_CACHE_TAG,
+    ],
+  }
+);
+
+const listAdminLiveVoicePricingModelsCached = unstable_cache(
+  () =>
+    listLiveVoiceModelConfigs({
+      includeDisabled: true,
+      includeDeleted: false,
+      limit: 200,
+    }),
+  ["admin-pricing:live-voice-models:v1"],
+  {
+    revalidate: ADMIN_PRICING_LIST_CACHE_REVALIDATE_SECONDS,
+    tags: [
+      ADMIN_SETTINGS_LIVE_VOICE_MODELS_CACHE_TAG,
+      LIVE_VOICE_MODEL_CONFIG_CACHE_TAG,
+    ],
   }
 );
 
@@ -267,6 +337,310 @@ function serializePlans({
   });
 }
 
+type ChatPricingModel = Awaited<ReturnType<typeof listModelConfigs>>[number];
+type ImagePricingModel = Awaited<
+  ReturnType<typeof listImageModelConfigs>
+>[number];
+type LiveVoicePricingModel = Awaited<
+  ReturnType<typeof listLiveVoiceModelConfigs>
+>[number];
+
+function creditsForCharge(customerChargeInr: number, walletUnitsPerInr: number) {
+  if (customerChargeInr <= 0 || walletUnitsPerInr <= 0) {
+    return null;
+  }
+  return (customerChargeInr * walletUnitsPerInr) / TOKENS_PER_CREDIT;
+}
+
+function buildModelPricingRows({
+  chatModels,
+  imageModels,
+  liveVoiceModels,
+  usdToInr,
+  walletUnitsPerInr,
+}: {
+  chatModels: ChatPricingModel[];
+  imageModels: ImagePricingModel[];
+  liveVoiceModels: LiveVoicePricingModel[];
+  usdToInr: number;
+  walletUnitsPerInr: number;
+}): ModelPricingRow[] {
+  const chatRows = chatModels
+    .filter((model) => !model.deletedAt)
+    .map<ModelPricingRow>((model) => {
+      const markup = normalizeMarkupMultiplier(model.markupMultiplier, 4);
+      const providerInputCostUsd = Math.max(
+        0,
+        Number(model.inputProviderCostPerMillion ?? 0)
+      );
+      const providerOutputCostUsd = Math.max(
+        0,
+        Number(model.outputProviderCostPerMillion ?? 0)
+      );
+      const customerInputChargeInr =
+        providerInputCostUsd * usdToInr * markup;
+      const customerOutputChargeInr =
+        providerOutputCostUsd * usdToInr * markup;
+      return {
+        creditInputCharge: creditsForCharge(
+          customerInputChargeInr,
+          walletUnitsPerInr
+        ),
+        creditOutputCharge: creditsForCharge(
+          customerOutputChargeInr,
+          walletUnitsPerInr
+        ),
+        customerInputChargeInr,
+        customerOutputChargeInr,
+        id: model.id,
+        isEnabled: model.isEnabled,
+        key: `chat:${model.id}`,
+        markupMultiplier: markup,
+        name: model.displayName,
+        providerInputCostUsd,
+        providerLabel: PROVIDER_LABELS[model.provider] ?? model.provider,
+        providerModelId: model.providerModelId,
+        providerOutputCostUsd,
+        type: "chat",
+        updatedAt: toIsoString(model.updatedAt),
+      };
+    });
+
+  const imageRows = imageModels
+    .filter((model) => !model.deletedAt)
+    .map<ModelPricingRow>((model) => {
+      const markup = normalizeMarkupMultiplier(model.markupMultiplier, 2);
+      const providerOutputCostUsd = Math.max(
+        0,
+        Number(model.providerCostPerOutputUsd ?? 0)
+      );
+      const customerOutputChargeInr =
+        providerOutputCostUsd * usdToInr * markup;
+      return {
+        creditInputCharge: null,
+        creditOutputCharge: creditsForCharge(
+          customerOutputChargeInr,
+          walletUnitsPerInr
+        ),
+        customerInputChargeInr: null,
+        customerOutputChargeInr,
+        id: model.id,
+        isEnabled: model.isEnabled,
+        key: `image:${model.id}`,
+        markupMultiplier: markup,
+        name: model.displayName,
+        providerInputCostUsd: null,
+        providerLabel: PROVIDER_LABELS[model.provider] ?? model.provider,
+        providerModelId: model.providerModelId,
+        providerOutputCostUsd,
+        type: "image",
+        updatedAt: toIsoString(model.updatedAt),
+      };
+    });
+
+  const voiceRows = liveVoiceModels
+    .filter((model) => !model.deletedAt)
+    .map<ModelPricingRow>((model) => {
+      const markup = normalizeMarkupMultiplier(model.markupMultiplier, 3);
+      const providerInputCostUsd = Math.max(
+        0,
+        Number(model.inputProviderCostPerMillion ?? 0)
+      );
+      const providerOutputCostUsd = Math.max(
+        0,
+        Number(model.outputProviderCostPerMillion ?? 0)
+      );
+      const customerInputChargeInr =
+        providerInputCostUsd * usdToInr * markup;
+      const customerOutputChargeInr =
+        providerOutputCostUsd * usdToInr * markup;
+      return {
+        creditInputCharge: creditsForCharge(
+          customerInputChargeInr,
+          walletUnitsPerInr
+        ),
+        creditOutputCharge: creditsForCharge(
+          customerOutputChargeInr,
+          walletUnitsPerInr
+        ),
+        customerInputChargeInr,
+        customerOutputChargeInr,
+        id: model.id,
+        isEnabled: model.isEnabled,
+        key: `live_voice:${model.id}`,
+        markupMultiplier: markup,
+        name: model.displayName,
+        providerInputCostUsd,
+        providerLabel: PROVIDER_LABELS[model.provider] ?? model.provider,
+        providerModelId: model.providerModelId,
+        providerOutputCostUsd,
+        type: "live_voice",
+        updatedAt: toIsoString(model.updatedAt),
+      };
+    });
+
+  return [...chatRows, ...imageRows, ...voiceRows].sort((left, right) =>
+    left.name.localeCompare(right.name)
+  );
+}
+
+function PricingNumberField({
+  defaultValue,
+  description,
+  id,
+  label,
+  name,
+  translationKey,
+}: {
+  defaultValue: number;
+  description: string;
+  id: string;
+  label: string;
+  name: string;
+  translationKey: string;
+}) {
+  return (
+    <label className="flex flex-col gap-2 text-sm" htmlFor={id}>
+      <span className="font-medium">
+        <EditableTranslation
+          defaultText={label}
+          description={description}
+          translationKey={translationKey}
+        />
+      </span>
+      <input
+        className="rounded-md border bg-background px-3 py-2 text-sm"
+        defaultValue={defaultValue}
+        id={id}
+        min={0}
+        name={name}
+        required
+        step={0.000001}
+        type="number"
+      />
+    </label>
+  );
+}
+
+function PricingMarkupField({
+  defaultValue,
+  id,
+}: {
+  defaultValue: number;
+  id: string;
+}) {
+  return (
+    <label className="flex flex-col gap-2 text-sm" htmlFor={id}>
+      <span className="font-medium">
+        <EditableTranslation
+          defaultText="Customer markup"
+          description="Markup field in the Admin Pricing model-cost editor."
+          translationKey="admin.pricing.markup"
+        />
+      </span>
+      <input
+        className="rounded-md border bg-background px-3 py-2 text-sm"
+        defaultValue={defaultValue}
+        id={id}
+        max={20}
+        min={1}
+        name="markupMultiplier"
+        required
+        step={0.01}
+        type="number"
+      />
+    </label>
+  );
+}
+
+function ChatModelPricingForm({ model }: { model: ChatPricingModel }) {
+  const prefix = `chat-model-pricing-${model.id}`;
+  return (
+    <form action={updateChatModelPricingAction} className="grid gap-4 md:grid-cols-2">
+      <input name="id" type="hidden" value={model.id} />
+      <PricingNumberField
+        defaultValue={Number(model.inputProviderCostPerMillion ?? 0)}
+        description="Provider input-token cost field for a chat model."
+        id={`${prefix}-input`}
+        label="Provider input cost (USD / 1M tokens)"
+        name="inputProviderCostPerMillion"
+        translationKey="admin.pricing.provider_input_cost"
+      />
+      <PricingNumberField
+        defaultValue={Number(model.outputProviderCostPerMillion ?? 0)}
+        description="Provider output-token cost field for a chat model."
+        id={`${prefix}-output`}
+        label="Provider output cost (USD / 1M tokens)"
+        name="outputProviderCostPerMillion"
+        translationKey="admin.pricing.provider_output_cost"
+      />
+      <PricingMarkupField
+        defaultValue={normalizeMarkupMultiplier(model.markupMultiplier, 4)}
+        id={`${prefix}-markup`}
+      />
+      <div className="flex items-end justify-end">
+        <ModelPricingSubmitButton />
+      </div>
+    </form>
+  );
+}
+
+function ImageModelPricingForm({ model }: { model: ImagePricingModel }) {
+  const prefix = `image-model-pricing-${model.id}`;
+  return (
+    <form action={updateImageModelPricingAction} className="grid gap-4 md:grid-cols-2">
+      <input name="id" type="hidden" value={model.id} />
+      <PricingNumberField
+        defaultValue={Number(model.providerCostPerOutputUsd ?? 0)}
+        description="Provider cost per completed image output."
+        id={`${prefix}-output`}
+        label="Provider cost (USD / completed image)"
+        name="providerCostPerOutputUsd"
+        translationKey="admin.pricing.provider_image_cost"
+      />
+      <PricingMarkupField
+        defaultValue={normalizeMarkupMultiplier(model.markupMultiplier, 2)}
+        id={`${prefix}-markup`}
+      />
+      <div className="flex justify-end md:col-span-2">
+        <ModelPricingSubmitButton />
+      </div>
+    </form>
+  );
+}
+
+function LiveVoiceModelPricingForm({ model }: { model: LiveVoicePricingModel }) {
+  const prefix = `voice-model-pricing-${model.id}`;
+  return (
+    <form action={updateLiveVoiceModelPricingAction} className="grid gap-4 md:grid-cols-2">
+      <input name="id" type="hidden" value={model.id} />
+      <PricingNumberField
+        defaultValue={Number(model.inputProviderCostPerMillion ?? 0)}
+        description="Provider input-token cost field for a live voice model."
+        id={`${prefix}-input`}
+        label="Provider input cost (USD / 1M tokens)"
+        name="inputProviderCostPerMillion"
+        translationKey="admin.pricing.provider_input_cost"
+      />
+      <PricingNumberField
+        defaultValue={Number(model.outputProviderCostPerMillion ?? 0)}
+        description="Provider output-token cost field for a live voice model."
+        id={`${prefix}-output`}
+        label="Provider output cost (USD / 1M tokens)"
+        name="outputProviderCostPerMillion"
+        translationKey="admin.pricing.provider_output_cost"
+      />
+      <PricingMarkupField
+        defaultValue={normalizeMarkupMultiplier(model.markupMultiplier, 3)}
+        id={`${prefix}-markup`}
+      />
+      <div className="flex items-end justify-end">
+        <ModelPricingSubmitButton />
+      </div>
+    </form>
+  );
+}
+
 function buildDeletedForms(deletedPlans: PricingPlans) {
   return Object.fromEntries(
     deletedPlans.map((plan) => [
@@ -315,11 +689,7 @@ async function PricingManagementContent({
         adminQueryResult({
           fallback: [] as Awaited<ReturnType<typeof listModelConfigs>>,
           label: "pricing.provider-costs",
-          promise: listModelConfigs({
-            includeDisabled: true,
-            includeDeleted: false,
-            limit: 200,
-          }),
+          promise: listAdminChatPricingModelsCached(),
           timeoutMs: queryTimeoutMs,
         }),
       () =>
@@ -490,6 +860,110 @@ function PricingManagementLoading({
   );
 }
 
+async function ModelPricingContent({ activePlans }: { activePlans: PricingPlans }) {
+  const queryTimeoutMs = getAdminQueryTimeoutMs(3500);
+  const exchangeRatePromise = adminQueryResult({
+    fallback: { rate: getFallbackUsdToInrRate(), fetchedAt: new Date() },
+    label: "pricing.model-pricing.exchange-rate",
+    promise: withTimeout(getUsdToInrRate(), 1200),
+    timeoutMs: queryTimeoutMs,
+  });
+  const [chatState, imageState, liveVoiceState] =
+    await resolveAdminDbReadGroup([
+      () =>
+        adminQueryResult({
+          fallback: [] as ChatPricingModel[],
+          label: "pricing.model-pricing.chat",
+          promise: listAdminChatPricingModelsCached(),
+          timeoutMs: queryTimeoutMs,
+        }),
+      () =>
+        adminQueryResult({
+          fallback: [] as ImagePricingModel[],
+          label: "pricing.model-pricing.image",
+          promise: listAdminImagePricingModelsCached(),
+          timeoutMs: queryTimeoutMs,
+        }),
+      () =>
+        adminQueryResult({
+          fallback: [] as LiveVoicePricingModel[],
+          label: "pricing.model-pricing.live-voice",
+          promise: listAdminLiveVoicePricingModelsCached(),
+          timeoutMs: queryTimeoutMs,
+        }),
+    ]);
+  const exchangeRateState = await exchangeRatePromise;
+  const usdToInr = exchangeRateState.data.rate;
+  const basePlan = selectBaseCreditPlan(
+    activePlans.filter((plan) => plan.isActive && !plan.deletedAt)
+  );
+  const walletUnitsPerInr = calculateWalletUnitsPerInr(basePlan);
+  const models = buildModelPricingRows({
+    chatModels: chatState.data,
+    imageModels: imageState.data,
+    liveVoiceModels: liveVoiceState.data,
+    usdToInr,
+    walletUnitsPerInr,
+  });
+  const editForms: Record<string, ReactNode> = {
+    ...Object.fromEntries(
+      chatState.data.map((model) => [
+        `chat:${model.id}`,
+        <ChatModelPricingForm key={model.id} model={model} />,
+      ])
+    ),
+    ...Object.fromEntries(
+      imageState.data.map((model) => [
+        `image:${model.id}`,
+        <ImageModelPricingForm key={model.id} model={model} />,
+      ])
+    ),
+    ...Object.fromEntries(
+      liveVoiceState.data.map((model) => [
+        `live_voice:${model.id}`,
+        <LiveVoiceModelPricingForm key={model.id} model={model} />,
+      ])
+    ),
+  };
+  const modelsConfirmed = chatState.ok && imageState.ok && liveVoiceState.ok;
+
+  return (
+    <ModelPricingManagementTable
+      baseCreditValueInr={
+        walletUnitsPerInr > 0
+          ? TOKENS_PER_CREDIT / walletUnitsPerInr
+          : null
+      }
+      basePlanName={basePlan?.name ?? null}
+      editForms={editForms}
+      loadWarning={!modelsConfirmed || !exchangeRateState.ok}
+      models={models}
+      modelsConfirmed={modelsConfirmed}
+    />
+  );
+}
+
+function ModelPricingLoading({ activePlans }: { activePlans: PricingPlans }) {
+  const basePlan = selectBaseCreditPlan(
+    activePlans.filter((plan) => plan.isActive && !plan.deletedAt)
+  );
+  const walletUnitsPerInr = calculateWalletUnitsPerInr(basePlan);
+  return (
+    <ModelPricingManagementTable
+      baseCreditValueInr={
+        walletUnitsPerInr > 0
+          ? TOKENS_PER_CREDIT / walletUnitsPerInr
+          : null
+      }
+      basePlanName={basePlan?.name ?? null}
+      editForms={{}}
+      loading
+      models={[]}
+      modelsConfirmed={false}
+    />
+  );
+}
+
 export default async function AdminPricingPage({
   searchParams,
 }: {
@@ -551,6 +1025,27 @@ export default async function AdminPricingPage({
           plansConfirmed={false}
         />
       )}
+      <section className="mt-4 flex flex-col gap-5 border-t pt-8">
+        <div>
+          <h2 className="font-semibold text-xl">
+            <EditableTranslation
+              defaultText="Model pricing"
+              description="Heading for the model provider-cost and markup section on Admin Pricing."
+              translationKey="admin.pricing.model_pricing_title"
+            />
+          </h2>
+          <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
+            <EditableTranslation
+              defaultText="Configure provider costs and independent customer markups for chat, image, and live voice models."
+              description="Description of the Admin Pricing model-pricing section."
+              translationKey="admin.pricing.model_pricing_description"
+            />
+          </p>
+        </div>
+        <Suspense fallback={<ModelPricingLoading activePlans={activePlans} />}>
+          <ModelPricingContent activePlans={activePlans} />
+        </Suspense>
+      </section>
     </div>
   );
 }

@@ -46,7 +46,6 @@ import {
   ADMIN_SETTINGS_LANGUAGES_CACHE_TAG,
   ADMIN_SETTINGS_LIVE_VOICE_MODELS_CACHE_TAG,
   ADMIN_SETTINGS_MODELS_CACHE_TAG,
-  ADMIN_SETTINGS_PRICING_CACHE_TAG,
   ADMIN_SETTINGS_TRANSLATION_FEATURE_LANGUAGES_CACHE_TAG,
 } from "@/lib/admin/cache-invalidation";
 import {
@@ -57,7 +56,6 @@ import { getAdminQueryTimeoutMs } from "@/lib/admin/safe-query";
 import { KHASIGPT_GENERAL_SYSTEM_PROMPT } from "@/lib/ai/identity";
 import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
 import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
-import { selectBaseCreditPlan } from "@/lib/billing/cost-plus";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
   DEFAULT_ABOUT_US,
@@ -81,8 +79,6 @@ import {
   LIVE_TRANSLATION_SYSTEM_INSTRUCTION_SETTING_KEY,
   LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
   NEWS_FEATURE_FLAG_KEY,
-  PRICING_PLAN_CACHE_TAG,
-  RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
   SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
@@ -94,7 +90,6 @@ import {
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
-  TOKENS_PER_CREDIT,
   TRANSLATE_FEATURE_FLAG_KEY,
   TRANSLATE_PROVIDER_MODE_SETTING_KEY,
   VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
@@ -117,7 +112,6 @@ import {
   listLanguagesWithSettings,
   listLiveVoiceModelConfigs,
   listModelConfigs,
-  listPricingPlans,
   listTranslationFeatureLanguages,
 } from "@/lib/db/queries";
 import { normalizeFreeMessageSettings } from "@/lib/free-messages";
@@ -132,10 +126,6 @@ import {
   resolveLiveTranslationLanguageCode,
   serializeLiveTranslationLanguagesText,
 } from "@/lib/live-translation/config";
-import {
-  getFallbackUsdToInrRate,
-  getUsdToInrRate,
-} from "@/lib/services/exchange-rate";
 import {
   DEFAULT_ADMIN_ENTRY_PATH,
   normalizeAdminEntryPathSetting,
@@ -170,10 +160,8 @@ import {
 import { resolveWebSearchConfig } from "@/lib/web-search/config";
 import { FeatureAccessModeControl } from "./feature-access-mode-control";
 import { IconPromptSettingsForm } from "./icon-prompt-settings-form";
-import { ImageModelPricingFields } from "./image-model-pricing-fields";
 import { LanguageContentForm } from "./language-content-form";
 import { LanguagePromptsForm } from "./language-prompts-form";
-import { LiveVoiceProfitabilityFields } from "./live-voice-profitability-fields";
 import { AdminSettingsNotice } from "./notice";
 import { PrelaunchInvitesPanel } from "./prelaunch-invites-panel";
 import { SiteAccessSettingsPanel } from "./site-access-settings-panel";
@@ -191,7 +179,6 @@ const PROVIDER_OPTIONS = [
 const SETTINGS_PENDING_TIMEOUT_MS = 5000;
 const ADMIN_SETTINGS_SECTION_QUERY_TIMEOUT_MS = getAdminQueryTimeoutMs(3500);
 const ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS = getAdminQueryTimeoutMs(6000);
-const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 800;
 const ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS = 300;
 const SETTINGS_SNAPSHOT_KEYS = [
   "privacyPolicy",
@@ -203,7 +190,6 @@ const SETTINGS_SNAPSHOT_KEYS = [
   "suggestedPrompts",
   "suggestedPromptsByLanguage",
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
-  RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   SITE_COMING_SOON_CONTENT_SETTING_KEY,
   SITE_COMING_SOON_TIMER_SETTING_KEY,
   SITE_PUBLIC_LAUNCHED_SETTING_KEY,
@@ -318,14 +304,6 @@ const listAdminLiveVoiceModelConfigsCached = unstable_cache(
       ADMIN_SETTINGS_LIVE_VOICE_MODELS_CACHE_TAG,
       LIVE_VOICE_MODEL_CONFIG_CACHE_TAG,
     ],
-  }
-);
-const listAdminPricingPlansCached = unstable_cache(
-  () => listPricingPlans({ includeInactive: true, includeDeleted: true }),
-  ["admin-settings:pricing-plans:v1"],
-  {
-    revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
-    tags: [ADMIN_SETTINGS_PRICING_CACHE_TAG, PRICING_PLAN_CACHE_TAG],
   }
 );
 const listAdminLanguagesCached = unstable_cache(
@@ -499,22 +477,6 @@ async function loadAdminFeatureAccessState() {
   }
 }
 
-async function loadPricingPlansForAdmin() {
-  return listAdminPricingPlansCached();
-}
-
-async function loadPricingPlansForAdminSnapshot() {
-  return withTimeout(
-    loadPricingPlansForAdmin(),
-    ADMIN_SETTINGS_SECTION_QUERY_TIMEOUT_MS,
-    () => {
-      console.error("[admin/settings] Pricing plans snapshot timed out.", {
-        timeoutMs: ADMIN_SETTINGS_SECTION_QUERY_TIMEOUT_MS,
-      });
-    }
-  );
-}
-
 function SettingsSubmitButton(
   props: ComponentProps<typeof ActionSubmitButton>
 ) {
@@ -527,19 +489,6 @@ function SettingsSubmitButton(
 }
 
 async function loadAdminSettingsData() {
-  const exchangeRatePromise = withTimeout(
-    getUsdToInrRate(),
-    EXCHANGE_RATE_QUERY_TIMEOUT_MS
-  ).catch((error) => {
-    console.error(
-      "[admin/settings] Exchange rate query timed out or failed. Using fallback rate.",
-      error
-    );
-    return {
-      rate: getFallbackUsdToInrRate(),
-      fetchedAt: new Date(),
-    };
-  });
   const serializeDbReads = shouldSerializeAdminDbReads();
   const dedicatedFeatureAccessStatePromise = loadAdminFeatureAccessState();
   const appSettingStatePromise = serializeDbReads
@@ -549,27 +498,10 @@ async function loadAdminSettingsData() {
     dedicatedFeatureAccessStatePromise,
     appSettingStatePromise,
   ]);
-  const plansStatePromise = () =>
-    loadPricingPlansForAdminSnapshot()
-      .then((plans) => ({
-        failed: false,
-        plans,
-      }))
-      .catch((error) => {
-        console.error(
-          "[admin/settings] Pricing plans query timed out or failed. Rendering settings without pricing plans.",
-          error
-        );
-        return {
-          failed: true,
-          plans: [],
-        };
-      });
   const [
     modelsState,
     imageModelConfigsState,
     liveVoiceModelConfigsState,
-    plansState,
     languagesState,
     translationFeatureLanguagesState,
   ] = await resolveAdminDbReadGroup([
@@ -591,7 +523,6 @@ async function loadAdminSettingsData() {
         () => listAdminLiveVoiceModelConfigsCached(),
         []
       ),
-    plansStatePromise,
     () =>
       settingsQueryState("languages", () => listAdminLanguagesCached(), []),
     () =>
@@ -601,7 +532,6 @@ async function loadAdminSettingsData() {
         []
       ),
   ]);
-  const exchangeRate = await exchangeRatePromise;
   const appSettingValuesByKey = appSettingState.values;
   const dbBackedAppSettingValues =
     appSettingState.source === "snapshot-db" ||
@@ -650,9 +580,6 @@ async function loadAdminSettingsData() {
   const suggestedPromptsByLanguageSetting = getStoredSetting<
     Record<string, string[]>
   >("suggestedPromptsByLanguage");
-  const recommendedPlanSetting = getStoredSetting<string | null>(
-    RECOMMENDED_PRICING_PLAN_SETTING_KEY
-  );
   const sitePublicLaunchedSetting = getStoredSetting<string | boolean>(
     SITE_PUBLIC_LAUNCHED_SETTING_KEY
   );
@@ -714,7 +641,6 @@ async function loadAdminSettingsData() {
     getStoredSetting(FREE_MESSAGE_SETTINGS_KEY)
   );
   return {
-    exchangeRate,
     appSettingReadSource: appSettingState.source,
     featureAccessState,
     modelsRaw: modelsState.value,
@@ -723,8 +649,6 @@ async function loadAdminSettingsData() {
     imageModelConfigsLoadFailed: imageModelConfigsState.failed,
     liveVoiceModelConfigs: liveVoiceModelConfigsState.value,
     liveVoiceModelConfigsLoadFailed: liveVoiceModelConfigsState.failed,
-    plansRaw: plansState.plans,
-    pricingPlansLoadFailed: plansState.failed,
     privacyPolicySetting,
     termsOfServiceSetting,
     aboutUsSetting,
@@ -733,7 +657,6 @@ async function loadAdminSettingsData() {
     termsOfServiceByLanguageSetting,
     suggestedPromptsSetting,
     suggestedPromptsByLanguageSetting,
-    recommendedPlanSetting,
     languages: languagesState.value,
     languagesLoadFailed: languagesState.failed,
     translationFeatureLanguages: translationFeatureLanguagesState.value,
@@ -779,10 +702,6 @@ async function loadAdminSettingsData() {
 
 function buildFallbackAdminSettingsData() {
   return {
-    exchangeRate: {
-      rate: getFallbackUsdToInrRate(),
-      fetchedAt: new Date(),
-    },
     appSettingReadSource: "last-known" as AppSettingReadSource,
     featureAccessState: buildFeatureAccessSnapshotFromValues({
       source: "admin.settings.fallback",
@@ -795,8 +714,6 @@ function buildFallbackAdminSettingsData() {
     imageModelConfigsLoadFailed: true,
     liveVoiceModelConfigs: [],
     liveVoiceModelConfigsLoadFailed: true,
-    plansRaw: [],
-    pricingPlansLoadFailed: true,
     privacyPolicySetting: null,
     termsOfServiceSetting: null,
     aboutUsSetting: null,
@@ -806,7 +723,6 @@ function buildFallbackAdminSettingsData() {
     suggestedPromptsSetting: null,
     suggestedPromptsByLanguageSetting: null,
     suggestedPromptsEnabledSetting: null,
-    recommendedPlanSetting: null,
     languages: [],
     languagesLoadFailed: true,
     translationFeatureLanguages: [],
@@ -1044,23 +960,10 @@ export default async function AdminSettingsPage({
       };
     } catch {}
 
-    try {
-      settingsData = {
-        ...settingsData,
-        plansRaw: await loadPricingPlansForAdminSnapshot(),
-        pricingPlansLoadFailed: false,
-      };
-    } catch (pricingReadError) {
-      console.error(
-        "[admin/settings] Pricing plans fallback query failed.",
-        pricingReadError
-      );
-    }
   }
 
   const {
     appSettingReadSource,
-    exchangeRate,
     featureAccessState,
     modelsRaw,
     modelConfigsLoadFailed,
@@ -1068,8 +971,6 @@ export default async function AdminSettingsPage({
     imageModelConfigsLoadFailed,
     liveVoiceModelConfigs,
     liveVoiceModelConfigsLoadFailed,
-    plansRaw,
-    pricingPlansLoadFailed,
     privacyPolicySetting,
     termsOfServiceSetting,
     aboutUsSetting,
@@ -1078,7 +979,6 @@ export default async function AdminSettingsPage({
     termsOfServiceByLanguageSetting,
     suggestedPromptsSetting,
     suggestedPromptsByLanguageSetting,
-    recommendedPlanSetting,
     languages,
     languagesLoadFailed,
     translationFeatureLanguages,
@@ -1136,14 +1036,12 @@ export default async function AdminSettingsPage({
     modelConfigsLoadFailed ? "model configs" : null,
     imageModelConfigsLoadFailed ? "image model configs" : null,
     liveVoiceModelConfigsLoadFailed ? "live voice model configs" : null,
-    pricingPlansLoadFailed ? "pricing plans" : null,
     languagesLoadFailed ? "languages" : null,
     translationFeatureLanguagesLoadFailed
       ? "translation feature languages"
       : null,
   ].filter((section): section is string => Boolean(section));
 
-  const usdToInr = exchangeRate.rate;
   const activeModels = modelsRaw.filter((model) => !model.deletedAt);
   const deletedModels = modelsRaw.filter((model) => model.deletedAt);
   const activeImageModels = imageModelConfigs.filter((model) => !model.deletedAt);
@@ -1194,23 +1092,6 @@ export default async function AdminSettingsPage({
     iconPromptsSetting,
     iconPromptsAccessMode
   );
-
-  const activePlans = plansRaw.filter((plan) => !plan.deletedAt);
-
-  const recommendedPlanId =
-    recommendedPlanSetting &&
-    activePlans.some((plan) => plan.id === recommendedPlanSetting)
-      ? recommendedPlanSetting
-      : null;
-  const configuredRecommendedPlan = recommendedPlanId
-    ? activePlans.find((plan) => plan.id === recommendedPlanId) ?? null
-    : null;
-  const recommendedPlan =
-    selectBaseCreditPlan(activePlans.filter((plan) => plan.isActive)) ??
-    configuredRecommendedPlan;
-  const recommendedPlanName = recommendedPlan?.name ?? null;
-  const recommendedPlanPriceInPaise = recommendedPlan?.priceInPaise ?? 0;
-  const recommendedPlanTokenAllowance = recommendedPlan?.tokenAllowance ?? 0;
 
   const privacyPolicyContent =
     privacyPolicySetting && privacyPolicySetting.trim().length > 0
@@ -1272,33 +1153,9 @@ export default async function AdminSettingsPage({
     (language) => language.isActive
   );
 
-  const providerLabelLookup = new Map(
-    PROVIDER_OPTIONS.map((option) => [option.value, option.label])
-  );
   const modelNameLookup = new Map(
     activeModels.map((model) => [model.id, model.displayName])
   );
-  const providerCostSummaries = activeModels
-    .filter((model) => model.isEnabled)
-    .map((model) => {
-      const providerCostPerMillionUsd =
-        Number(model.inputProviderCostPerMillion ?? 0) +
-        Number(model.outputProviderCostPerMillion ?? 0);
-
-      return {
-        id: model.id,
-        name: model.displayName,
-        providerLabel:
-          providerLabelLookup.get(model.provider) ?? model.provider,
-        isMarginBaseline: Boolean(model.isMarginBaseline),
-        providerCostPerMillionUsd,
-        providerCostPerMillionInr: providerCostPerMillionUsd * usdToInr,
-      };
-    });
-  const marginBaselineCostSummary =
-    providerCostSummaries.find((model) => model.isMarginBaseline) ??
-    providerCostSummaries[0] ??
-    null;
 
   const suggestedPromptsList = Array.isArray(suggestedPromptsSetting)
     ? suggestedPromptsSetting.filter(
@@ -2951,73 +2808,6 @@ export default async function AdminSettingsPage({
             <div className="flex flex-col gap-2">
               <label
                 className="font-medium text-sm"
-                htmlFor="inputProviderCostPerMillion"
-              >
-                Provider input cost (USD / 1M tokens)
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                defaultValue={0}
-                id="inputProviderCostPerMillion"
-                min={0}
-                name="inputProviderCostPerMillion"
-                step="0.000001"
-                type="number"
-              />
-              <p className="text-muted-foreground text-xs">
-                Private reference so you can compare user pricing versus your
-                provider costs.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label
-                className="font-medium text-sm"
-                htmlFor="outputProviderCostPerMillion"
-              >
-                Provider output cost (USD / 1M tokens)
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                defaultValue={0}
-                id="outputProviderCostPerMillion"
-                min={0}
-                name="outputProviderCostPerMillion"
-                step="0.000001"
-                type="number"
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label className="font-medium text-sm" htmlFor="markupMultiplier">
-                <EditableTranslation
-                  defaultText="Customer markup"
-                  description="Label for the per-chat-model provider-cost markup field."
-                  translationKey="admin.models.markup_multiplier"
-                />
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                defaultValue={4}
-                id="markupMultiplier"
-                max={20}
-                min={1}
-                name="markupMultiplier"
-                step={0.01}
-                type="number"
-              />
-              <p className="text-muted-foreground text-xs">
-                <EditableTranslation
-                  defaultText="Applied separately after calculating the model's actual input and output provider cost."
-                  description="Helper text for the per-chat-model markup field."
-                  translationKey="admin.models.markup_multiplier.description"
-                />
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label
-                className="font-medium text-sm"
                 htmlFor="freeMessagesPerDay"
               >
                 Daily free messages
@@ -3181,22 +2971,6 @@ export default async function AdminSettingsPage({
                   </p>
                 ) : (
                   activeModels.map((model) => {
-                const providerInputRate = Number(
-                  model.inputProviderCostPerMillion ?? 0
-                );
-                const providerOutputRate = Number(
-                  model.outputProviderCostPerMillion ?? 0
-                );
-                const totalProviderRate =
-                  providerInputRate + providerOutputRate;
-                const formatUsd = (value: number) =>
-                  value.toLocaleString("en-US", {
-                    style: "currency",
-                    currency: "USD",
-                    minimumFractionDigits: value >= 1 ? 2 : 4,
-                    maximumFractionDigits: 6,
-                  });
-
                 return (
                   <details
                     className="rounded-md border bg-background p-4"
@@ -3248,36 +3022,6 @@ export default async function AdminSettingsPage({
                         <div className="flex flex-col gap-2">
                           <label
                             className="font-medium text-sm"
-                            htmlFor={`model-markup-${model.id}`}
-                          >
-                            <EditableTranslation
-                              defaultText="Customer markup"
-                              description="Label for the per-chat-model provider-cost markup field."
-                              translationKey="admin.models.markup_multiplier"
-                            />
-                          </label>
-                          <input
-                            className="rounded-md border bg-background px-3 py-2 text-sm"
-                            defaultValue={model.markupMultiplier ?? 4}
-                            id={`model-markup-${model.id}`}
-                            max={20}
-                            min={1}
-                            name="markupMultiplier"
-                            step={0.01}
-                            type="number"
-                          />
-                          <p className="text-muted-foreground text-xs">
-                            <EditableTranslation
-                              defaultText="Applied to this model's calculated provider cost only."
-                              description="Helper text for an existing chat model markup field."
-                              translationKey="admin.models.markup_multiplier.existing_description"
-                            />
-                          </p>
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                          <label
-                            className="font-medium text-sm"
                             htmlFor={`model-provider-${model.id}`}
                           >
                             Provider
@@ -3314,50 +3058,6 @@ export default async function AdminSettingsPage({
                         <div className="flex flex-col gap-2">
                           <label
                             className="font-medium text-sm"
-                            htmlFor={`model-input-cost-${model.id}`}
-                          >
-                            Provider input cost (USD / 1M tokens)
-                          </label>
-                          <input
-                            className="rounded-md border bg-background px-3 py-2 text-sm"
-                            defaultValue={
-                              model.inputProviderCostPerMillion ?? 0
-                            }
-                            id={`model-input-cost-${model.id}`}
-                            min={0}
-                            name="inputProviderCostPerMillion"
-                            step="0.000001"
-                            type="number"
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                          <label
-                            className="font-medium text-sm"
-                            htmlFor={`model-output-cost-${model.id}`}
-                          >
-                            Provider output cost (USD / 1M tokens)
-                          </label>
-                          <input
-                            className="rounded-md border bg-background px-3 py-2 text-sm"
-                            defaultValue={
-                              model.outputProviderCostPerMillion ?? 0
-                            }
-                            id={`model-output-cost-${model.id}`}
-                            min={0}
-                            name="outputProviderCostPerMillion"
-                            step="0.000001"
-                            type="number"
-                          />
-                          <p className="text-muted-foreground text-xs">
-                            Only visible here — use it to track your real spend
-                            versus credits charged.
-                          </p>
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                          <label
-                            className="font-medium text-sm"
                             htmlFor={`model-free-messages-${model.id}`}
                           >
                             Daily free messages
@@ -3378,37 +3078,6 @@ export default async function AdminSettingsPage({
                           />
                           <p className="text-muted-foreground text-xs">
                             {perModelFieldDescription}
-                          </p>
-                        </div>
-
-                        <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-xs sm:text-sm md:col-span-2">
-                          <h4 className="font-semibold text-foreground text-sm">
-                            Provider cost reference (per 1M tokens)
-                          </h4>
-                          <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                            <div className="space-y-1">
-                              <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                                Input cost
-                              </p>
-                              <p>{formatUsd(providerInputRate)}</p>
-                            </div>
-                            <div className="space-y-1">
-                              <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                                Output cost
-                              </p>
-                              <p>{formatUsd(providerOutputRate)}</p>
-                            </div>
-                            <div className="space-y-1">
-                              <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                                Total
-                              </p>
-                              <p>{formatUsd(totalProviderRate)}</p>
-                            </div>
-                          </div>
-                          <p className="mt-3 text-muted-foreground text-xs">
-                            Revenue now comes from your pricing plans. Keep
-                            these costs updated to track real spend vs. credit
-                            sales.
                           </p>
                         </div>
 
@@ -3891,22 +3560,6 @@ export default async function AdminSettingsPage({
                       </select>
                     </div>
 
-                    <div className="md:col-span-2">
-                      <LiveVoiceProfitabilityFields
-                        baselineModelName={marginBaselineCostSummary?.name}
-                        baselineProviderCostPerMillionUsd={
-                          marginBaselineCostSummary?.providerCostPerMillionUsd
-                        }
-                        inputIdPrefix="live-voice-create"
-                        recommendedPlanName={recommendedPlanName}
-                        recommendedPlanPriceInPaise={recommendedPlanPriceInPaise}
-                        recommendedPlanTokenAllowance={
-                          recommendedPlanTokenAllowance
-                        }
-                        usdToInr={usdToInr}
-                      />
-                    </div>
-
                     <div className="flex flex-col gap-2 md:col-span-2">
                       <label
                         className="font-medium text-sm"
@@ -4022,25 +3675,6 @@ export default async function AdminSettingsPage({
                       </p>
                     ) : (
                       activeLiveVoiceModels.map((model) => {
-                        const tokensPerInteraction = Math.max(
-                          1,
-                          Math.round(Number(model.creditMultiplier ?? 1) * TOKENS_PER_CREDIT)
-                        );
-                        const providerInputRate = Number(
-                          model.inputProviderCostPerMillion ?? 0
-                        );
-                        const providerOutputRate = Number(
-                          model.outputProviderCostPerMillion ?? 0
-                        );
-                        const totalProviderRate =
-                          providerInputRate + providerOutputRate;
-                        const formatUsd = (value: number) =>
-                          value.toLocaleString("en-US", {
-                            style: "currency",
-                            currency: "USD",
-                            minimumFractionDigits: value >= 1 ? 2 : 4,
-                            maximumFractionDigits: 6,
-                          });
                         return (
                           <details
                             className="rounded-md border bg-background p-4"
@@ -4067,61 +3701,6 @@ export default async function AdminSettingsPage({
                             </summary>
 
                             <div className="mt-4 grid gap-4 md:grid-cols-2">
-                              <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-xs sm:text-sm md:col-span-2">
-                                <h4 className="font-semibold text-foreground text-sm">
-                                  Live voice credit behavior
-                                </h4>
-                                <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                                  <div className="space-y-1">
-                                    <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                                      Multiplier
-                                    </p>
-                                    <p>{Number(model.creditMultiplier ?? 1).toFixed(2)}x</p>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                                      Preview
-                                    </p>
-                                    <p>
-                                      1 voice interaction ≈{" "}
-                                      {Number(model.creditMultiplier ?? 1).toFixed(2)} chats
-                                    </p>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                                      Usage tokens
-                                    </p>
-                                    <p>{tokensPerInteraction.toLocaleString()}</p>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-xs sm:text-sm md:col-span-2">
-                                <h4 className="font-semibold text-foreground text-sm">
-                                  Provider cost reference (per 1M tokens)
-                                </h4>
-                                <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                                  <div className="space-y-1">
-                                    <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                                      Input cost
-                                    </p>
-                                    <p>{formatUsd(providerInputRate)}</p>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                                      Output cost
-                                    </p>
-                                    <p>{formatUsd(providerOutputRate)}</p>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                                      Total
-                                    </p>
-                                    <p>{formatUsd(totalProviderRate)}</p>
-                                  </div>
-                                </div>
-                              </div>
-
                               <form
                                 action={updateLiveVoiceModelConfigAction}
                                 className="grid gap-4 md:col-span-2 md:grid-cols-2"
@@ -4219,35 +3798,6 @@ export default async function AdminSettingsPage({
                                       </option>
                                     ))}
                                   </select>
-                                </div>
-
-                                <div className="md:col-span-2">
-                                  <LiveVoiceProfitabilityFields
-                                    baselineModelName={
-                                      marginBaselineCostSummary?.name
-                                    }
-                                    baselineProviderCostPerMillionUsd={
-                                      marginBaselineCostSummary?.providerCostPerMillionUsd
-                                    }
-                                    initialInputProviderCostPerMillion={
-                                      model.inputProviderCostPerMillion ?? 0
-                                    }
-                                    initialMultiplier={Number(
-                                      model.creditMultiplier ?? 1
-                                    )}
-                                    initialOutputProviderCostPerMillion={
-                                      model.outputProviderCostPerMillion ?? 0
-                                    }
-                                    inputIdPrefix={`live-voice-${model.id}`}
-                                    recommendedPlanName={recommendedPlanName}
-                                    recommendedPlanPriceInPaise={
-                                      recommendedPlanPriceInPaise
-                                    }
-                                    recommendedPlanTokenAllowance={
-                                      recommendedPlanTokenAllowance
-                                    }
-                                    usdToInr={usdToInr}
-                                  />
                                 </div>
 
                                 <div className="flex flex-col gap-2 md:col-span-2">
@@ -4528,7 +4078,7 @@ export default async function AdminSettingsPage({
             </CollapsibleSection>
 
             <CollapsibleSection
-              description="Add Google Nano Banana (or other image models) and define per-image pricing."
+              description="Add Google Nano Banana or another image generation model."
               title="Add image generation model"
             >
               <form
@@ -4602,18 +4152,6 @@ export default async function AdminSettingsPage({
               />
             </div>
 
-            <div className="md:col-span-2">
-              <ImageModelPricingFields
-                initialMarkupMultiplier={2}
-                initialProviderCostPerOutputUsd={0}
-                initialTokensPerImage={TOKENS_PER_CREDIT}
-                inputIdPrefix="image-model-create"
-                recommendedPlanPriceInPaise={recommendedPlanPriceInPaise}
-                recommendedPlanTokenAllowance={recommendedPlanTokenAllowance}
-                usdToInr={usdToInr}
-              />
-            </div>
-
             <div className="flex flex-col gap-2 md:col-span-2">
               <label className="font-medium text-sm" htmlFor="imageDescription">
                 Description
@@ -4671,15 +4209,6 @@ export default async function AdminSettingsPage({
                   </p>
                 ) : (
                   activeImageModels.map((model) => {
-                const tokensPerImage = Number(
-                  model.tokensPerImage ?? TOKENS_PER_CREDIT
-                );
-                const creditsPerImage = tokensPerImage / TOKENS_PER_CREDIT;
-                const priceInRupees =
-                  typeof model.priceInPaise === "number"
-                    ? model.priceInPaise / 100
-                    : 0;
-
                 return (
                   <details
                     className="rounded-md border bg-background p-4"
@@ -4698,39 +4227,6 @@ export default async function AdminSettingsPage({
                     </summary>
 
                     <div className="mt-4 grid gap-4 md:grid-cols-2">
-                      <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-xs sm:text-sm md:col-span-2">
-                        <h4 className="font-semibold text-foreground text-sm">
-                          Image pricing
-                        </h4>
-                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                          <div className="space-y-1">
-                            <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                              Price (INR)
-                            </p>
-                            <p>
-                              {priceInRupees > 0
-                                ? priceInRupees.toLocaleString("en-IN", {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                  })
-                                : "Not set"}
-                            </p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                              Credits per image
-                            </p>
-                            <p>{creditsPerImage.toFixed(2)}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                              Tokens per image
-                            </p>
-                            <p>{tokensPerImage.toLocaleString()}</p>
-                          </div>
-                        </div>
-                      </div>
-
                       <form
                         action={updateImageModelConfigAction}
                         className="grid gap-4 md:col-span-2 md:grid-cols-2"
@@ -4785,25 +4281,6 @@ export default async function AdminSettingsPage({
                             defaultValue={model.providerModelId}
                             id={`image-model-provider-id-${model.id}`}
                             name="providerModelId"
-                          />
-                        </div>
-
-                        <div className="md:col-span-2">
-                          <ImageModelPricingFields
-                            initialMarkupMultiplier={model.markupMultiplier ?? 2}
-                            initialPriceInPaise={model.priceInPaise ?? 0}
-                            initialProviderCostPerOutputUsd={
-                              model.providerCostPerOutputUsd ?? 0
-                            }
-                            initialTokensPerImage={tokensPerImage}
-                            inputIdPrefix={`image-model-${model.id}`}
-                            recommendedPlanPriceInPaise={
-                              recommendedPlanPriceInPaise
-                            }
-                            recommendedPlanTokenAllowance={
-                              recommendedPlanTokenAllowance
-                            }
-                            usdToInr={usdToInr}
                           />
                         </div>
 

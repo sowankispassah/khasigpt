@@ -55,4 +55,37 @@ test.describe("admin pricing loading isolation", () => {
     expect(source).toContain('timeZone: "Asia/Kolkata"');
     expect(source).not.toContain("date.toLocaleString()");
   });
+
+  test("keeps model pricing on the Pricing page and isolated from recharge plans", async () => {
+    const [pricingSource, modelTableSource, settingsSource] = await Promise.all([
+      readWorkspaceFile("app/(admin)/admin/pricing/page.tsx"),
+      readWorkspaceFile(
+        "app/(admin)/admin/pricing/model-pricing-management-table.tsx"
+      ),
+      readWorkspaceFile("app/(admin)/admin/settings/page.tsx"),
+    ]);
+
+    expect(pricingSource).toContain("async function ModelPricingContent");
+    expect(pricingSource).toContain("<ModelPricingManagementTable");
+    expect(pricingSource).toContain(
+      "<Suspense fallback={<ModelPricingLoading activePlans={activePlans} />}>"
+    );
+    expect(pricingSource).toContain("listAdminChatPricingModelsCached");
+    expect(pricingSource).toContain("listAdminImagePricingModelsCached");
+    expect(pricingSource).toContain("listAdminLiveVoicePricingModelsCached");
+    expect(modelTableSource).toContain("loadWarning");
+    expect(modelTableSource).toContain("modelsConfirmed");
+    expect(settingsSource).not.toContain("ImageModelPricingFields");
+    expect(settingsSource).not.toContain("LiveVoiceProfitabilityFields");
+    expect(settingsSource).not.toContain(
+      'name="inputProviderCostPerMillion"'
+    );
+    expect(settingsSource).not.toContain(
+      'name="outputProviderCostPerMillion"'
+    );
+    expect(settingsSource).not.toContain('name="providerCostPerOutputUsd"');
+    expect(settingsSource).not.toContain('name="markupMultiplier"');
+    expect(settingsSource).not.toContain("listPricingPlans");
+    expect(settingsSource).not.toContain("getUsdToInrRate");
+  });
 });

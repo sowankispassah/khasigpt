@@ -4887,6 +4887,221 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Warning shown when an image model still uses legacy fixed-credit pricing.",
   },
   {
+    key: "admin.pricing.model_pricing_title",
+    defaultText: "Model pricing",
+    description: "Heading for the model cost and markup section in Admin Pricing.",
+  },
+  {
+    key: "admin.pricing.model_pricing_description",
+    defaultText:
+      "Configure provider costs and independent customer markups for chat, image, and live voice models.",
+    description: "Description for the model pricing section in Admin Pricing.",
+  },
+  {
+    key: "admin.pricing.model_count",
+    defaultText: "{count} model pricing configurations",
+    description: "Count of configured model pricing rows.",
+  },
+  {
+    key: "admin.pricing.models_unavailable",
+    defaultText: "Model pricing is unavailable",
+    description: "Heading shown when model pricing cannot be loaded.",
+  },
+  {
+    key: "admin.pricing.models_loading",
+    defaultText: "Loading model costs and markups...",
+    description: "Loading label for model pricing.",
+  },
+  {
+    key: "admin.pricing.credit_conversion",
+    defaultText:
+      "Base conversion: ₹{value} per credit{plan}. Larger recharge packs remain bonus-credit packs.",
+    description: "Base rupee-to-credit conversion shown above model pricing.",
+  },
+  {
+    key: "admin.pricing.credit_conversion_unavailable",
+    defaultText: "Add an active recharge plan to preview model charges in credits.",
+    description: "Explanation when model credit previews cannot be calculated.",
+  },
+  {
+    key: "admin.pricing.models_partial",
+    defaultText:
+      "Some model types could not be loaded. Available rows remain editable; retry before assuming the list is complete.",
+    description: "Warning when only part of model pricing loads.",
+  },
+  {
+    key: "admin.pricing.models_retry",
+    defaultText:
+      "Model pricing could not be loaded. Recharge plans remain available; retry this page before changing model costs.",
+    description: "Retry guidance after model pricing fails to load.",
+  },
+  {
+    key: "admin.pricing.models_empty",
+    defaultText: "No configured models are available for pricing.",
+    description: "Empty state for the model pricing table.",
+  },
+  {
+    key: "admin.pricing.model",
+    defaultText: "Model",
+    description: "Model pricing table model column.",
+  },
+  {
+    key: "admin.pricing.type",
+    defaultText: "Type",
+    description: "Model pricing table type column.",
+  },
+  {
+    key: "admin.pricing.provider",
+    defaultText: "Provider",
+    description: "Model pricing table provider column.",
+  },
+  {
+    key: "admin.pricing.provider_cost",
+    defaultText: "Provider cost",
+    description: "Model pricing table provider-cost column.",
+  },
+  {
+    key: "admin.pricing.markup",
+    defaultText: "Markup",
+    description: "Model pricing table markup column.",
+  },
+  {
+    key: "admin.pricing.customer_charge",
+    defaultText: "Customer charge",
+    description: "Model pricing table customer-charge column.",
+  },
+  {
+    key: "admin.pricing.credit_charge",
+    defaultText: "Credit charge",
+    description: "Model pricing table credit-charge column.",
+  },
+  {
+    key: "admin.pricing.status",
+    defaultText: "Status",
+    description: "Model pricing table status column.",
+  },
+  {
+    key: "admin.pricing.last_updated",
+    defaultText: "Last updated",
+    description: "Model pricing table last-updated column.",
+  },
+  {
+    key: "admin.pricing.actions",
+    defaultText: "Actions",
+    description: "Model pricing table actions column.",
+  },
+  {
+    key: "admin.pricing.model_type.chat",
+    defaultText: "Chat",
+    description: "Chat model type label in Admin Pricing.",
+  },
+  {
+    key: "admin.pricing.model_type.image",
+    defaultText: "Image",
+    description: "Image model type label in Admin Pricing.",
+  },
+  {
+    key: "admin.pricing.model_type.live_voice",
+    defaultText: "Live voice",
+    description: "Live voice model type label in Admin Pricing.",
+  },
+  {
+    key: "admin.pricing.per_output",
+    defaultText: "per output",
+    description: "Per-output pricing unit label.",
+  },
+  {
+    key: "admin.pricing.per_million",
+    defaultText: "per 1M tokens",
+    description: "Per-million-token pricing unit label.",
+  },
+  {
+    key: "admin.pricing.input",
+    defaultText: "Input",
+    description: "Input token charge label.",
+  },
+  {
+    key: "admin.pricing.output",
+    defaultText: "Output",
+    description: "Output token charge label.",
+  },
+  {
+    key: "admin.pricing.active",
+    defaultText: "Active",
+    description: "Active model status label.",
+  },
+  {
+    key: "admin.pricing.inactive",
+    defaultText: "Inactive",
+    description: "Inactive model status label.",
+  },
+  {
+    key: "admin.pricing.edit_model",
+    defaultText: "Edit model pricing",
+    description: "Heading for the model pricing edit dialog.",
+  },
+  {
+    key: "admin.pricing.edit_model_description",
+    defaultText:
+      "Set the provider cost and customer markup for this model. Recharge-plan credits are converted automatically.",
+    description: "Description in the model pricing edit dialog.",
+  },
+  {
+    key: "admin.pricing.save_model_pricing",
+    defaultText: "Save model pricing",
+    description: "Submit button for a model pricing edit.",
+  },
+  {
+    key: "admin.pricing.provider_input_cost",
+    defaultText: "Provider input cost (USD / 1M tokens)",
+    description: "Input provider cost field in Admin Pricing.",
+  },
+  {
+    key: "admin.pricing.provider_output_cost",
+    defaultText: "Provider output cost (USD / 1M tokens)",
+    description: "Output provider cost field in Admin Pricing.",
+  },
+  {
+    key: "admin.pricing.provider_image_cost",
+    defaultText: "Provider cost (USD / completed image)",
+    description: "Image provider cost field in Admin Pricing.",
+  },
+  {
+    key: "admin.pricing.notice.model_pricing_updated",
+    defaultText: "Model pricing updated.",
+    description: "Success notice after model pricing is saved.",
+  },
+  {
+    key: "admin.pricing.notice.model_pricing_error",
+    defaultText: "That model pricing could not be updated.",
+    description: "Error notice after model pricing fails to save.",
+  },
+  {
+    key: "admin.pricing.notice.plan_created",
+    defaultText: "Pricing plan created.",
+    description: "Success notice after a recharge pricing plan is created.",
+  },
+  {
+    key: "admin.pricing.notice.plan_deleted",
+    defaultText: "Pricing plan deleted.",
+    description: "Success notice after a recharge pricing plan is deleted.",
+  },
+  {
+    key: "admin.pricing.notice.plan_hard_deleted",
+    defaultText: "Pricing plan permanently deleted.",
+    description: "Success notice after a recharge pricing plan is permanently deleted.",
+  },
+  {
+    key: "admin.pricing.notice.plan_recommendation_updated",
+    defaultText: "Recommended plan updated.",
+    description: "Success notice after the recommended recharge plan changes.",
+  },
+  {
+    key: "admin.pricing.notice.plan_update_error",
+    defaultText: "That pricing plan could not be updated.",
+    description: "Error notice after a recharge pricing plan fails to update.",
+  },
+  {
     key: "admin.web_search.section_description",
     defaultText: "Configure grounding, platform availability, and credit pricing.",
     description: "Description for the Web Search settings section in Admin Settings.",
