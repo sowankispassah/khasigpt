@@ -8489,18 +8489,37 @@ type PricingPlanListOptions = {
 };
 
 export type AdminModelPricingSnapshotRow = {
+  codeTemplate: string | null;
+  config: Record<string, unknown> | null;
+  creditMultiplier: number | null;
+  deletedAt: Date | null;
+  description: string;
   displayName: string;
+  enabledOnNative: boolean;
+  enabledOnWeb: boolean;
+  freeMessagesPerDay: number | null;
   id: string;
   inputProviderCostPerMillion: number | null;
+  isActive: boolean;
+  isDefault: boolean;
   isEnabled: boolean;
   isMarginBaseline: boolean;
+  key: string;
   markupMultiplier: number;
+  mediaResolution: string | null;
   outputProviderCostPerMillion: number | null;
+  priceInPaise: number | null;
   provider: string;
   providerCostPerOutputUsd: number | null;
   providerModelId: string;
+  reasoningTag: string | null;
+  supportsReasoning: boolean;
+  systemInstruction: string | null;
+  systemPrompt: string | null;
+  tokensPerImage: number | null;
   type: "chat" | "image" | "live_voice";
   updatedAt: Date;
+  voiceName: string | null;
 };
 
 export async function listAdminModelPricingSnapshot(): Promise<
@@ -8514,56 +8533,110 @@ export async function listAdminModelPricingSnapshot(): Promise<
           SELECT
             'chat'::text AS "type",
             ${modelConfig.id} AS "id",
+            ${modelConfig.key} AS "key",
             ${modelConfig.displayName} AS "displayName",
+            ${modelConfig.description} AS "description",
             ${modelConfig.providerModelId} AS "providerModelId",
             ${modelConfig.provider}::text AS "provider",
             ${modelConfig.isEnabled} AS "isEnabled",
+            ${modelConfig.isDefault} AS "isDefault",
+            false AS "isActive",
             ${modelConfig.inputProviderCostPerMillion} AS "inputProviderCostPerMillion",
             ${modelConfig.outputProviderCostPerMillion} AS "outputProviderCostPerMillion",
             NULL::double precision AS "providerCostPerOutputUsd",
             ${modelConfig.markupMultiplier} AS "markupMultiplier",
             ${modelConfig.isMarginBaseline} AS "isMarginBaseline",
+            ${modelConfig.systemPrompt} AS "systemPrompt",
+            ${modelConfig.codeTemplate} AS "codeTemplate",
+            ${modelConfig.supportsReasoning} AS "supportsReasoning",
+            ${modelConfig.reasoningTag} AS "reasoningTag",
+            ${modelConfig.config} AS "config",
+            ${modelConfig.freeMessagesPerDay} AS "freeMessagesPerDay",
+            NULL::integer AS "priceInPaise",
+            NULL::integer AS "tokensPerImage",
+            NULL::text AS "systemInstruction",
+            NULL::text AS "voiceName",
+            NULL::text AS "mediaResolution",
+            NULL::double precision AS "creditMultiplier",
+            false AS "enabledOnWeb",
+            false AS "enabledOnNative",
+            ${modelConfig.deletedAt} AS "deletedAt",
             ${modelConfig.updatedAt} AS "updatedAt"
           FROM ${modelConfig}
-          WHERE ${modelConfig.deletedAt} IS NULL
 
           UNION ALL
 
           SELECT
             'image'::text AS "type",
             ${imageModelConfig.id} AS "id",
+            ${imageModelConfig.key} AS "key",
             ${imageModelConfig.displayName} AS "displayName",
+            ${imageModelConfig.description} AS "description",
             ${imageModelConfig.providerModelId} AS "providerModelId",
             ${imageModelConfig.provider}::text AS "provider",
             ${imageModelConfig.isEnabled} AS "isEnabled",
+            false AS "isDefault",
+            ${imageModelConfig.isActive} AS "isActive",
             NULL::double precision AS "inputProviderCostPerMillion",
             NULL::double precision AS "outputProviderCostPerMillion",
             ${imageModelConfig.providerCostPerOutputUsd} AS "providerCostPerOutputUsd",
             ${imageModelConfig.markupMultiplier} AS "markupMultiplier",
             false AS "isMarginBaseline",
+            NULL::text AS "systemPrompt",
+            NULL::text AS "codeTemplate",
+            false AS "supportsReasoning",
+            NULL::text AS "reasoningTag",
+            ${imageModelConfig.config} AS "config",
+            NULL::integer AS "freeMessagesPerDay",
+            ${imageModelConfig.priceInPaise} AS "priceInPaise",
+            ${imageModelConfig.tokensPerImage} AS "tokensPerImage",
+            NULL::text AS "systemInstruction",
+            NULL::text AS "voiceName",
+            NULL::text AS "mediaResolution",
+            NULL::double precision AS "creditMultiplier",
+            false AS "enabledOnWeb",
+            false AS "enabledOnNative",
+            ${imageModelConfig.deletedAt} AS "deletedAt",
             ${imageModelConfig.updatedAt} AS "updatedAt"
           FROM ${imageModelConfig}
-          WHERE ${imageModelConfig.deletedAt} IS NULL
 
           UNION ALL
 
           SELECT
             'live_voice'::text AS "type",
             ${liveVoiceModelConfig.id} AS "id",
+            ${liveVoiceModelConfig.key} AS "key",
             ${liveVoiceModelConfig.displayName} AS "displayName",
+            ${liveVoiceModelConfig.description} AS "description",
             ${liveVoiceModelConfig.providerModelId} AS "providerModelId",
             ${liveVoiceModelConfig.provider}::text AS "provider",
             ${liveVoiceModelConfig.isEnabled} AS "isEnabled",
+            ${liveVoiceModelConfig.isDefault} AS "isDefault",
+            false AS "isActive",
             ${liveVoiceModelConfig.inputProviderCostPerMillion} AS "inputProviderCostPerMillion",
             ${liveVoiceModelConfig.outputProviderCostPerMillion} AS "outputProviderCostPerMillion",
             NULL::double precision AS "providerCostPerOutputUsd",
             ${liveVoiceModelConfig.markupMultiplier} AS "markupMultiplier",
             false AS "isMarginBaseline",
+            NULL::text AS "systemPrompt",
+            NULL::text AS "codeTemplate",
+            false AS "supportsReasoning",
+            NULL::text AS "reasoningTag",
+            ${liveVoiceModelConfig.config} AS "config",
+            NULL::integer AS "freeMessagesPerDay",
+            NULL::integer AS "priceInPaise",
+            NULL::integer AS "tokensPerImage",
+            ${liveVoiceModelConfig.systemInstruction} AS "systemInstruction",
+            ${liveVoiceModelConfig.voiceName} AS "voiceName",
+            ${liveVoiceModelConfig.mediaResolution} AS "mediaResolution",
+            ${liveVoiceModelConfig.creditMultiplier} AS "creditMultiplier",
+            ${liveVoiceModelConfig.enabledOnWeb} AS "enabledOnWeb",
+            ${liveVoiceModelConfig.enabledOnNative} AS "enabledOnNative",
+            ${liveVoiceModelConfig.deletedAt} AS "deletedAt",
             ${liveVoiceModelConfig.updatedAt} AS "updatedAt"
           FROM ${liveVoiceModelConfig}
-          WHERE ${liveVoiceModelConfig.deletedAt} IS NULL
 
-          ORDER BY "displayName"
+          ORDER BY "deletedAt" NULLS FIRST, "isEnabled" DESC, "displayName"
           LIMIT 600
         `);
 

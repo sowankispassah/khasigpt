@@ -30,8 +30,8 @@ test.describe("admin model config database resilience", () => {
     expect(clearOldActive).toBeGreaterThanOrEqual(0);
     expect(setNewActive).toBeGreaterThanOrEqual(0);
     expect(clearOldActive).toBeLessThan(setNewActive);
-    expect(setActiveSource).toContain(
-      'withAdminDatabase(\n      "image-models.set-active"'
+    expect(setActiveSource).toMatch(
+      /withAdminDatabase\(\s*["']image-models\.set-active["']/
     );
     expect(setActiveSource).toContain("{ retry: true }");
     expect(setActiveSource).toContain(".returning({ id: imageModelConfig.id })");
@@ -97,7 +97,7 @@ test.describe("admin model config database resilience", () => {
     );
 
     expect(createActionSource).toContain(
-      'redirect("/admin/settings?notice=image-model-created")'
+      'redirect("/admin/pricing?notice=image-model-created")'
     );
   });
 });

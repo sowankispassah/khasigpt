@@ -1,8 +1,12 @@
 "use client";
 
+import { MoreVertical } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 
+import { deletePricingPlanAction } from "@/app/(admin)/actions";
+import { ActionSubmitButton } from "@/components/action-submit-button";
+import { useTranslation } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,6 +17,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 type PricingPlanRow = {
@@ -80,7 +90,8 @@ export function PricingManagementTable({
   plans: PricingPlanRow[];
   plansConfirmed: boolean;
 }) {
-  const [dialogMode, setDialogMode] = useState<"create" | "edit" | null>(null);
+  const { translate } = useTranslation();
+  const [dialogMode, setDialogMode] = useState<"create" | "delete" | "edit" | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) ?? null;
 
@@ -92,6 +103,11 @@ export function PricingManagementTable({
   function openEdit(planId: string) {
     setSelectedPlanId(planId);
     setDialogMode("edit");
+  }
+
+  function openDelete(planId: string) {
+    setSelectedPlanId(planId);
+    setDialogMode("delete");
   }
 
   return (
@@ -157,7 +173,19 @@ export function PricingManagementTable({
                 <td className={cn("px-4 py-3 text-right font-medium", plan.marginPercent === null ? "text-muted-foreground" : plan.marginPercent >= 0 ? "text-emerald-600" : "text-destructive")}>{plan.marginPercent === null ? "—" : `${plan.marginPercent.toFixed(2)}%`}</td>
                 <td className="px-4 py-3"><div className="flex flex-wrap gap-1"><span className={cn("rounded-full px-2 py-0.5 text-xs", plan.isActive ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>{plan.isActive ? "Active" : "Inactive"}</span>{plan.isRecommended ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary text-xs">Recommended</span> : null}</div></td>
                 <td className="whitespace-nowrap px-4 py-3 text-muted-foreground text-xs">{formatUpdatedAt(plan.updatedAt)}</td>
-                <td className="px-4 py-3 text-right"><Button className="cursor-pointer" disabled={detailsLoading} onClick={() => openEdit(plan.id)} size="sm" type="button" variant="outline">{detailsLoading ? "Loading..." : "Edit"}</Button></td>
+                <td className="px-4 py-3 text-right">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button aria-label={translate("admin.pricing.plan_actions", "Pricing plan actions")} className="cursor-pointer" disabled={detailsLoading} size="icon" type="button" variant="ghost">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem className="cursor-pointer" onSelect={() => openEdit(plan.id)}>{translate("admin.pricing.edit_plan", "Edit pricing")}</DropdownMenuItem>
+                      <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive" onSelect={() => openDelete(plan.id)}>{translate("admin.pricing.delete_plan", "Delete pricing")}</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -166,7 +194,7 @@ export function PricingManagementTable({
 
       {Object.keys(deletedForms).length > 0 ? <section className="rounded-xl border bg-card/80 p-4 shadow-sm"><h2 className="font-semibold text-sm">Deleted pricing configurations</h2><div className="mt-3 grid gap-2">{Object.entries(deletedForms).map(([planId, form]) => <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background p-3 text-sm" key={planId}><span className="text-muted-foreground">Soft-deleted plan</span>{form}</div>)}</div></section> : null}
 
-      <Dialog onOpenChange={(open) => { if (!open) { setDialogMode(null); setSelectedPlanId(null); } }} open={dialogMode !== null}>
+      <Dialog onOpenChange={(open) => { if (!open) { setDialogMode(null); setSelectedPlanId(null); } }} open={dialogMode === "create" || dialogMode === "edit"}>
         <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{dialogMode === "create" ? "Add pricing" : `Edit ${selectedPlan?.name ?? "pricing"}`}</DialogTitle>
@@ -174,6 +202,28 @@ export function PricingManagementTable({
           </DialogHeader>
           {dialogMode === "create" ? createForm : selectedPlanId ? editForms[selectedPlanId] : null}
           <DialogFooter><DialogClose className="cursor-pointer" type="button">Close</DialogClose></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog onOpenChange={(open) => { if (!open) { setDialogMode(null); setSelectedPlanId(null); } }} open={dialogMode === "delete"}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{translate("admin.pricing.delete_plan_title", "Delete pricing plan?")}</DialogTitle>
+            <DialogDescription>
+              {selectedPlan
+                ? translate("admin.pricing.delete_plan_named_description", "Delete {name} from the available recharge plans? The record can still be permanently removed from the deleted pricing configurations section.").replace("{name}", selectedPlan.name)
+                : translate("admin.pricing.delete_plan_description", "Delete this recharge plan? The record can still be permanently removed from the deleted pricing configurations section.")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose className="cursor-pointer" type="button">{translate("common.cancel", "Cancel")}</DialogClose>
+            {selectedPlan ? (
+              <form action={deletePricingPlanAction}>
+                <input name="id" type="hidden" value={selectedPlan.id} />
+                <ActionSubmitButton pendingLabel={translate("common.deleting", "Deleting...")} type="submit" variant="destructive">{translate("admin.pricing.delete_plan", "Delete pricing")}</ActionSubmitButton>
+              </form>
+            ) : null}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -3,12 +3,9 @@ import { type ReactNode, Suspense } from "react";
 
 import {
   createPricingPlanAction,
-  deletePricingPlanAction,
   hardDeletePricingPlanAction,
+  setImagePromptTranslationModelAction,
   setRecommendedPricingPlanAction,
-  updateChatModelPricingAction,
-  updateImageModelPricingAction,
-  updateLiveVoiceModelPricingAction,
   updatePlanTranslationAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
@@ -32,7 +29,12 @@ import {
   normalizeMarkupMultiplier,
   selectBaseCreditPlan,
 } from "@/lib/billing/cost-plus";
-import { PRICING_PLAN_CACHE_TAG, RECOMMENDED_PRICING_PLAN_SETTING_KEY, TOKENS_PER_CREDIT } from "@/lib/constants";
+import {
+  IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
+  PRICING_PLAN_CACHE_TAG,
+  RECOMMENDED_PRICING_PLAN_SETTING_KEY,
+  TOKENS_PER_CREDIT,
+} from "@/lib/constants";
 import {
   type AdminModelPricingSnapshotRow,
   getAppSetting,
@@ -48,9 +50,15 @@ import { LIVE_VOICE_MODEL_CONFIG_CACHE_TAG } from "@/lib/voice/live";
 import { PlanPricingFields } from "../settings/plan-pricing-fields";
 import { PricingPlanEditForm } from "../settings/pricing-plan-edit-form";
 import {
+  ChatModelConfigurationForm,
+  ImageModelConfigurationForm,
+  LiveVoiceModelConfigurationForm,
+} from "./model-configuration-forms";
+import {
+  type DeletedModelRow,
   ModelPricingManagementTable,
   type ModelPricingRow,
-  ModelPricingSubmitButton,
+  type ModelType,
 } from "./model-pricing-management-table";
 import { PricingNotice } from "./notice";
 import { PricingManagementTable } from "./pricing-management-table";
@@ -71,7 +79,7 @@ const listAdminPricingPlansCached = unstable_cache(
 
 const listAdminModelPricingSnapshotCached = unstable_cache(
   () => listAdminModelPricingSnapshot(),
-  ["admin-pricing:model-snapshot:v1"],
+  ["admin-pricing:model-snapshot:v2"],
   {
     revalidate: ADMIN_PRICING_LIST_CACHE_REVALIDATE_SECONDS,
     tags: [
@@ -116,7 +124,10 @@ function buildModelCostPreviews(
   usdToInr: number
 ) {
   return models
-    .filter((model) => model.type === "chat" && model.isEnabled)
+    .filter(
+      (model) =>
+        model.type === "chat" && model.isEnabled && !model.deletedAt
+    )
     .map<ModelCostPreview>((model) => {
       const providerCostPerMillionUsd =
         Number(model.inputProviderCostPerMillion ?? 0) +
@@ -330,7 +341,7 @@ function buildModelPricingRows({
   walletUnitsPerInr: number;
 }): ModelPricingRow[] {
   const chatRows = modelSnapshot
-    .filter((model) => model.type === "chat")
+    .filter((model) => model.type === "chat" && !model.deletedAt)
     .map<ModelPricingRow>((model) => {
       const markup = normalizeMarkupMultiplier(model.markupMultiplier, 4);
       const providerInputCostUsd = Math.max(
@@ -357,7 +368,10 @@ function buildModelPricingRows({
         customerInputChargeInr,
         customerOutputChargeInr,
         id: model.id,
+        isActive: model.isActive,
+        isDefault: model.isDefault,
         isEnabled: model.isEnabled,
+        isMarginBaseline: model.isMarginBaseline,
         key: `chat:${model.id}`,
         markupMultiplier: markup,
         name: model.displayName,
@@ -371,7 +385,7 @@ function buildModelPricingRows({
     });
 
   const imageRows = modelSnapshot
-    .filter((model) => model.type === "image")
+    .filter((model) => model.type === "image" && !model.deletedAt)
     .map<ModelPricingRow>((model) => {
       const markup = normalizeMarkupMultiplier(model.markupMultiplier, 2);
       const providerOutputCostUsd = Math.max(
@@ -389,7 +403,10 @@ function buildModelPricingRows({
         customerInputChargeInr: null,
         customerOutputChargeInr,
         id: model.id,
+        isActive: model.isActive,
+        isDefault: model.isDefault,
         isEnabled: model.isEnabled,
+        isMarginBaseline: model.isMarginBaseline,
         key: `image:${model.id}`,
         markupMultiplier: markup,
         name: model.displayName,
@@ -403,7 +420,7 @@ function buildModelPricingRows({
     });
 
   const voiceRows = modelSnapshot
-    .filter((model) => model.type === "live_voice")
+    .filter((model) => model.type === "live_voice" && !model.deletedAt)
     .map<ModelPricingRow>((model) => {
       const markup = normalizeMarkupMultiplier(model.markupMultiplier, 3);
       const providerInputCostUsd = Math.max(
@@ -430,7 +447,10 @@ function buildModelPricingRows({
         customerInputChargeInr,
         customerOutputChargeInr,
         id: model.id,
+        isActive: model.isActive,
+        isDefault: model.isDefault,
         isEnabled: model.isEnabled,
+        isMarginBaseline: model.isMarginBaseline,
         key: `live_voice:${model.id}`,
         markupMultiplier: markup,
         name: model.displayName,
@@ -443,177 +463,10 @@ function buildModelPricingRows({
       };
     });
 
-  return [...chatRows, ...imageRows, ...voiceRows].sort((left, right) =>
-    left.name.localeCompare(right.name)
-  );
-}
-
-function PricingNumberField({
-  defaultValue,
-  description,
-  id,
-  label,
-  name,
-  translationKey,
-}: {
-  defaultValue: number;
-  description: string;
-  id: string;
-  label: string;
-  name: string;
-  translationKey: string;
-}) {
-  return (
-    <label className="flex flex-col gap-2 text-sm" htmlFor={id}>
-      <span className="font-medium">
-        <EditableTranslation
-          defaultText={label}
-          description={description}
-          translationKey={translationKey}
-        />
-      </span>
-      <input
-        className="rounded-md border bg-background px-3 py-2 text-sm"
-        defaultValue={defaultValue}
-        id={id}
-        min={0}
-        name={name}
-        required
-        step={0.000001}
-        type="number"
-      />
-    </label>
-  );
-}
-
-function PricingMarkupField({
-  defaultValue,
-  id,
-}: {
-  defaultValue: number;
-  id: string;
-}) {
-  return (
-    <label className="flex flex-col gap-2 text-sm" htmlFor={id}>
-      <span className="font-medium">
-        <EditableTranslation
-          defaultText="Customer markup"
-          description="Markup field in the Admin Pricing model-cost editor."
-          translationKey="admin.pricing.markup"
-        />
-      </span>
-      <input
-        className="rounded-md border bg-background px-3 py-2 text-sm"
-        defaultValue={defaultValue}
-        id={id}
-        max={20}
-        min={1}
-        name="markupMultiplier"
-        required
-        step={0.01}
-        type="number"
-      />
-    </label>
-  );
-}
-
-function ChatModelPricingForm({
-  model,
-}: {
-  model: AdminModelPricingSnapshotRow;
-}) {
-  const prefix = `chat-model-pricing-${model.id}`;
-  return (
-    <form action={updateChatModelPricingAction} className="grid gap-4 md:grid-cols-2">
-      <input name="id" type="hidden" value={model.id} />
-      <PricingNumberField
-        defaultValue={Number(model.inputProviderCostPerMillion ?? 0)}
-        description="Provider input-token cost field for a chat model."
-        id={`${prefix}-input`}
-        label="Provider input cost (USD / 1M tokens)"
-        name="inputProviderCostPerMillion"
-        translationKey="admin.pricing.provider_input_cost"
-      />
-      <PricingNumberField
-        defaultValue={Number(model.outputProviderCostPerMillion ?? 0)}
-        description="Provider output-token cost field for a chat model."
-        id={`${prefix}-output`}
-        label="Provider output cost (USD / 1M tokens)"
-        name="outputProviderCostPerMillion"
-        translationKey="admin.pricing.provider_output_cost"
-      />
-      <PricingMarkupField
-        defaultValue={normalizeMarkupMultiplier(model.markupMultiplier, 4)}
-        id={`${prefix}-markup`}
-      />
-      <div className="flex items-end justify-end">
-        <ModelPricingSubmitButton />
-      </div>
-    </form>
-  );
-}
-
-function ImageModelPricingForm({
-  model,
-}: {
-  model: AdminModelPricingSnapshotRow;
-}) {
-  const prefix = `image-model-pricing-${model.id}`;
-  return (
-    <form action={updateImageModelPricingAction} className="grid gap-4 md:grid-cols-2">
-      <input name="id" type="hidden" value={model.id} />
-      <PricingNumberField
-        defaultValue={Number(model.providerCostPerOutputUsd ?? 0)}
-        description="Provider cost per completed image output."
-        id={`${prefix}-output`}
-        label="Provider cost (USD / completed image)"
-        name="providerCostPerOutputUsd"
-        translationKey="admin.pricing.provider_image_cost"
-      />
-      <PricingMarkupField
-        defaultValue={normalizeMarkupMultiplier(model.markupMultiplier, 2)}
-        id={`${prefix}-markup`}
-      />
-      <div className="flex justify-end md:col-span-2">
-        <ModelPricingSubmitButton />
-      </div>
-    </form>
-  );
-}
-
-function LiveVoiceModelPricingForm({
-  model,
-}: {
-  model: AdminModelPricingSnapshotRow;
-}) {
-  const prefix = `voice-model-pricing-${model.id}`;
-  return (
-    <form action={updateLiveVoiceModelPricingAction} className="grid gap-4 md:grid-cols-2">
-      <input name="id" type="hidden" value={model.id} />
-      <PricingNumberField
-        defaultValue={Number(model.inputProviderCostPerMillion ?? 0)}
-        description="Provider input-token cost field for a live voice model."
-        id={`${prefix}-input`}
-        label="Provider input cost (USD / 1M tokens)"
-        name="inputProviderCostPerMillion"
-        translationKey="admin.pricing.provider_input_cost"
-      />
-      <PricingNumberField
-        defaultValue={Number(model.outputProviderCostPerMillion ?? 0)}
-        description="Provider output-token cost field for a live voice model."
-        id={`${prefix}-output`}
-        label="Provider output cost (USD / 1M tokens)"
-        name="outputProviderCostPerMillion"
-        translationKey="admin.pricing.provider_output_cost"
-      />
-      <PricingMarkupField
-        defaultValue={normalizeMarkupMultiplier(model.markupMultiplier, 3)}
-        id={`${prefix}-markup`}
-      />
-      <div className="flex items-end justify-end">
-        <ModelPricingSubmitButton />
-      </div>
-    </form>
+  return [...chatRows, ...imageRows, ...voiceRows].sort(
+    (left, right) =>
+      Number(right.isEnabled) - Number(left.isEnabled) ||
+      left.name.localeCompare(right.name)
   );
 }
 
@@ -633,6 +486,46 @@ function buildDeletedForms(deletedPlans: PricingPlans) {
         </ActionSubmitButton>
       </form>,
     ])
+  );
+}
+
+function ImagePromptTranslationModelForm({
+  models,
+  selectedModelId,
+}: {
+  models: AdminModelPricingSnapshotRow[];
+  selectedModelId: string | null;
+}) {
+  const enabledChatModels = models.filter(
+    (model) => model.type === "chat" && model.isEnabled && !model.deletedAt
+  );
+  return (
+    <section className="rounded-xl border bg-card/80 p-4 shadow-sm">
+      <h3 className="font-semibold text-sm">
+        <EditableTranslation
+          defaultText="Image prompt translation model"
+          description="Heading for the image prompt translation model selector in Admin Pricing."
+          translationKey="admin.pricing.image_translation_model"
+        />
+      </h3>
+      <p className="mt-1 text-muted-foreground text-xs">
+        <EditableTranslation
+          defaultText="Choose which enabled text model translates Khasi prompts to English during image generation."
+          description="Description for the image prompt translation model selector in Admin Pricing."
+          translationKey="admin.pricing.image_translation_model_description"
+        />
+      </p>
+      <form action={setImagePromptTranslationModelAction} className="mt-4 flex flex-wrap items-end gap-3">
+        <label className="flex min-w-64 flex-1 flex-col gap-2 text-sm" htmlFor="pricing-image-translation-model">
+          <span className="font-medium">Translation model</span>
+          <select className="rounded-md border bg-background px-3 py-2 text-sm" defaultValue={selectedModelId ?? ""} id="pricing-image-translation-model" name="modelId">
+            <option value="">Use server default translation model</option>
+            {enabledChatModels.map((model) => <option key={model.id} value={model.id}>{model.displayName} ({model.provider})</option>)}
+          </select>
+        </label>
+        <ActionSubmitButton pendingLabel="Saving..." type="submit">Save translation model</ActionSubmitButton>
+      </form>
+    </section>
   );
 }
 
@@ -771,17 +664,6 @@ async function PricingManagementContent({
             </form>
           )}
         </div>
-        <form action={deletePricingPlanAction} className="border-t pt-5">
-          <input name="id" type="hidden" value={plan.id} />
-          <ActionSubmitButton
-            className="border border-destructive text-destructive hover:bg-destructive/10"
-            pendingLabel="Soft deleting..."
-            type="submit"
-            variant="outline"
-          >
-            Soft delete
-          </ActionSubmitButton>
-        </form>
       </div>,
     ])
   );
@@ -847,8 +729,17 @@ async function ModelPricingContent({
     promise: withTimeout(getUsdToInrRate(), 1200),
     timeoutMs: queryTimeoutMs,
   });
-  const [exchangeRateState, modelsState] = await Promise.all([
+  const imageTranslationModelStatePromise = adminQueryResult({
+    fallback: null as string | null,
+    label: "pricing.image-translation-model",
+    promise: getAppSetting<string | null>(
+      IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY
+    ),
+    timeoutMs: queryTimeoutMs,
+  });
+  const [exchangeRateState, imageTranslationModelState, modelsState] = await Promise.all([
     exchangeRatePromise,
+    imageTranslationModelStatePromise,
     modelPricingSnapshotPromise,
   ]);
   const usdToInr = exchangeRateState.data.rate;
@@ -861,32 +752,51 @@ async function ModelPricingContent({
     usdToInr,
     walletUnitsPerInr,
   });
-  const chatModels = modelsState.data.filter((model) => model.type === "chat");
+  const activeModelSnapshot = modelsState.data.filter(
+    (model) => !model.deletedAt
+  );
+  const chatModels = activeModelSnapshot.filter(
+    (model) => model.type === "chat"
+  );
   const imageModels = modelsState.data.filter(
-    (model) => model.type === "image"
+    (model) => model.type === "image" && !model.deletedAt
   );
   const liveVoiceModels = modelsState.data.filter(
-    (model) => model.type === "live_voice"
+    (model) => model.type === "live_voice" && !model.deletedAt
   );
+  const deletedModels: DeletedModelRow[] = modelsState.data
+    .filter((model) => Boolean(model.deletedAt))
+    .map((model) => ({
+      deletedAt: toIsoString(model.deletedAt),
+      id: model.id,
+      key: `${model.type}:${model.id}`,
+      name: model.displayName,
+      type: model.type,
+    }));
   const editForms: Record<string, ReactNode> = {
     ...Object.fromEntries(
       chatModels.map((model) => [
         `chat:${model.id}`,
-        <ChatModelPricingForm key={model.id} model={model} />,
+        <ChatModelConfigurationForm key={model.id} model={model} />,
       ])
     ),
     ...Object.fromEntries(
       imageModels.map((model) => [
         `image:${model.id}`,
-        <ImageModelPricingForm key={model.id} model={model} />,
+        <ImageModelConfigurationForm key={model.id} model={model} />,
       ])
     ),
     ...Object.fromEntries(
       liveVoiceModels.map((model) => [
         `live_voice:${model.id}`,
-        <LiveVoiceModelPricingForm key={model.id} model={model} />,
+        <LiveVoiceModelConfigurationForm key={model.id} model={model} />,
       ])
     ),
+  };
+  const createForms: Record<ModelType, ReactNode> = {
+    chat: <ChatModelConfigurationForm />,
+    image: <ImageModelConfigurationForm />,
+    live_voice: <LiveVoiceModelConfigurationForm />,
   };
   const modelsConfirmed = modelsState.ok;
 
@@ -898,8 +808,16 @@ async function ModelPricingContent({
           : null
       }
       basePlanName={basePlan?.name ?? null}
+      createForms={createForms}
+      deletedModels={deletedModels}
       editForms={editForms}
       loadWarning={!modelsConfirmed || !exchangeRateState.ok}
+      modelSettings={
+        <ImagePromptTranslationModelForm
+          models={activeModelSnapshot}
+          selectedModelId={imageTranslationModelState.data}
+        />
+      }
       models={models}
       modelsConfirmed={modelsConfirmed}
     />
@@ -919,8 +837,15 @@ function ModelPricingLoading({ activePlans }: { activePlans: PricingPlans }) {
           : null
       }
       basePlanName={basePlan?.name ?? null}
+      createForms={{
+        chat: null,
+        image: null,
+        live_voice: null,
+      }}
+      deletedModels={[]}
       editForms={{}}
       loading
+      modelSettings={null}
       models={[]}
       modelsConfirmed={false}
     />
@@ -940,7 +865,13 @@ export default async function AdminPricingPage({
     promise: listAdminPricingPlansCached(),
     timeoutMs: queryTimeoutMs,
   });
-  const activePlans = plansState.data.filter((plan) => !plan.deletedAt);
+  const activePlans = plansState.data
+    .filter((plan) => !plan.deletedAt)
+    .sort(
+      (left, right) =>
+        Number(right.isActive) - Number(left.isActive) ||
+        left.name.localeCompare(right.name)
+    );
   const deletedPlans = plansState.data.filter((plan) => Boolean(plan.deletedAt));
   const modelPricingSnapshotPromise = adminQueryResult({
     fallback: [] as ModelPricingSnapshot,
@@ -1006,7 +937,7 @@ export default async function AdminPricingPage({
           </h2>
           <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
             <EditableTranslation
-              defaultText="Configure provider costs and independent customer markups for chat, image, and live voice models."
+              defaultText="Add and manage chat, image, and live voice models, including provider costs and independent customer markups."
               description="Description of the Admin Pricing model-pricing section."
               translationKey="admin.pricing.model_pricing_description"
             />

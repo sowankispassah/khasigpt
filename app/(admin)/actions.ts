@@ -1526,9 +1526,9 @@ export async function createModelConfigAction(formData: FormData) {
 
   if (existingConfig) {
     if (existingConfig.deletedAt) {
-      redirect("/admin/settings?notice=model-key-soft-deleted");
+      redirect("/admin/pricing?notice=model-key-soft-deleted");
     } else {
-      redirect("/admin/settings?notice=model-key-conflict");
+      redirect("/admin/pricing?notice=model-key-conflict");
     }
   }
 
@@ -1555,7 +1555,7 @@ export async function createModelConfigAction(formData: FormData) {
     });
   } catch (error) {
     console.error("Failed to create model configuration", error);
-    redirect("/admin/settings?notice=model-create-error");
+    redirect("/admin/pricing?notice=model-create-error");
   }
 
   await createAuditLogEntrySafely({
@@ -1567,7 +1567,7 @@ export async function createModelConfigAction(formData: FormData) {
 
   revalidateAdminModelSettings("model.create");
 
-  redirect("/admin/settings?notice=model-created");
+  redirect("/admin/pricing?notice=model-created");
 }
 
 export async function updateModelConfigAction(formData: FormData) {
@@ -1676,7 +1676,7 @@ export async function updateModelConfigAction(formData: FormData) {
   });
 
   if (!updated) {
-    redirect("/admin/settings?notice=model-update-missing");
+    redirect("/admin/pricing?notice=model-update-missing");
   }
 
   if (shouldSetDefault) {
@@ -1691,6 +1691,7 @@ export async function updateModelConfigAction(formData: FormData) {
   });
 
   revalidateAdminModelSettings("model.update");
+  redirect("/admin/pricing?notice=model-updated");
 }
 
 export async function deleteModelConfigAction(formData: FormData) {
@@ -1712,7 +1713,7 @@ export async function deleteModelConfigAction(formData: FormData) {
 
   revalidateAdminModelSettings("model.delete");
 
-  redirect("/admin/settings?notice=model-deleted");
+  redirect("/admin/pricing?notice=model-deleted");
 }
 
 export async function hardDeleteModelConfigAction(formData: FormData) {
@@ -1734,7 +1735,7 @@ export async function hardDeleteModelConfigAction(formData: FormData) {
 
   revalidateAdminModelSettings("model.hard_delete");
 
-  redirect("/admin/settings?notice=model-hard-deleted");
+  redirect("/admin/pricing?notice=model-hard-deleted");
 }
 
 export async function setDefaultModelConfigAction(formData: FormData) {
@@ -1756,7 +1757,7 @@ export async function setDefaultModelConfigAction(formData: FormData) {
 
   revalidateAdminModelSettings("model.setDefault");
 
-  redirect("/admin/settings?notice=model-defaulted");
+  redirect("/admin/pricing?notice=model-defaulted");
 }
 
 export async function setMarginBaselineModelAction(formData: FormData) {
@@ -1778,7 +1779,7 @@ export async function setMarginBaselineModelAction(formData: FormData) {
 
   revalidateAdminModelSettings("model.setMarginBaseline");
 
-  redirect("/admin/settings?notice=model-margin-baseline");
+  redirect("/admin/pricing?notice=model-margin-baseline");
 }
 
 export async function createLiveVoiceModelConfigAction(formData: FormData) {
@@ -1801,9 +1802,9 @@ export async function createLiveVoiceModelConfigAction(formData: FormData) {
 
   if (existingConfig) {
     if (existingConfig.deletedAt) {
-      redirect("/admin/settings?notice=live-voice-model-key-soft-deleted");
+      redirect("/admin/pricing?notice=live-voice-model-key-soft-deleted");
     } else {
-      redirect("/admin/settings?notice=live-voice-model-key-conflict");
+      redirect("/admin/pricing?notice=live-voice-model-key-conflict");
     }
   }
 
@@ -1826,6 +1827,10 @@ export async function createLiveVoiceModelConfigAction(formData: FormData) {
           ? formData.get("creditMultiplier")
           : 3
       ),
+      markupMultiplier: normalizeMarkupMultiplier(
+        formData.get("markupMultiplier"),
+        3
+      ),
       inputProviderCostPerMillion: parseNumber(
         formData.get("inputProviderCostPerMillion")
       ),
@@ -1840,7 +1845,7 @@ export async function createLiveVoiceModelConfigAction(formData: FormData) {
     });
   } catch (error) {
     console.error("Failed to create live voice model configuration", error);
-    redirect("/admin/settings?notice=live-voice-model-create-error");
+    redirect("/admin/pricing?notice=live-voice-model-create-error");
   }
 
   await createAuditLogEntrySafely({
@@ -1852,7 +1857,7 @@ export async function createLiveVoiceModelConfigAction(formData: FormData) {
 
   revalidateAdminLiveVoiceModelSettings("live_voice_model.create");
 
-  redirect("/admin/settings?notice=live-voice-model-created");
+  redirect("/admin/pricing?notice=live-voice-model-created");
 }
 
 export async function updateLiveVoiceModelConfigAction(formData: FormData) {
@@ -1935,7 +1940,7 @@ export async function updateLiveVoiceModelConfigAction(formData: FormData) {
   try {
     updated = await updateLiveVoiceModelConfig(patch);
     if (!updated) {
-      redirect("/admin/settings?notice=live-voice-model-update-missing");
+      redirect("/admin/pricing?notice=live-voice-model-update-missing");
     }
 
     if (shouldSetDefault) {
@@ -1946,7 +1951,7 @@ export async function updateLiveVoiceModelConfigAction(formData: FormData) {
       throw error;
     }
     console.error("Failed to update live voice model configuration", error);
-    redirect("/admin/settings?notice=live-voice-model-update-error");
+    redirect("/admin/pricing?notice=live-voice-model-update-error");
   }
 
   await createAuditLogEntrySafely({
@@ -1957,6 +1962,7 @@ export async function updateLiveVoiceModelConfigAction(formData: FormData) {
   });
 
   revalidateAdminLiveVoiceModelSettings("live_voice_model.update");
+  redirect("/admin/pricing?notice=live-voice-model-updated");
 }
 
 export async function deleteLiveVoiceModelConfigAction(formData: FormData) {
@@ -1978,7 +1984,7 @@ export async function deleteLiveVoiceModelConfigAction(formData: FormData) {
 
   revalidateAdminLiveVoiceModelSettings("live_voice_model.delete");
 
-  redirect("/admin/settings?notice=live-voice-model-deleted");
+  redirect("/admin/pricing?notice=live-voice-model-deleted");
 }
 
 export async function hardDeleteLiveVoiceModelConfigAction(formData: FormData) {
@@ -2000,7 +2006,7 @@ export async function hardDeleteLiveVoiceModelConfigAction(formData: FormData) {
 
   revalidateAdminLiveVoiceModelSettings("live_voice_model.hard_delete");
 
-  redirect("/admin/settings?notice=live-voice-model-hard-deleted");
+  redirect("/admin/pricing?notice=live-voice-model-hard-deleted");
 }
 
 export async function setDefaultLiveVoiceModelConfigAction(formData: FormData) {
@@ -2022,7 +2028,7 @@ export async function setDefaultLiveVoiceModelConfigAction(formData: FormData) {
 
   revalidateAdminLiveVoiceModelSettings("live_voice_model.setDefault");
 
-  redirect("/admin/settings?notice=live-voice-model-defaulted");
+  redirect("/admin/pricing?notice=live-voice-model-defaulted");
 }
 
 export async function createImageModelConfigAction(formData: FormData) {
@@ -2055,9 +2061,9 @@ export async function createImageModelConfigAction(formData: FormData) {
 
   if (existingConfig) {
     if (existingConfig.deletedAt) {
-      redirect("/admin/settings?notice=image-model-key-soft-deleted");
+      redirect("/admin/pricing?notice=image-model-key-soft-deleted");
     } else {
-      redirect("/admin/settings?notice=image-model-key-conflict");
+      redirect("/admin/pricing?notice=image-model-key-conflict");
     }
   }
 
@@ -2079,7 +2085,7 @@ export async function createImageModelConfigAction(formData: FormData) {
     });
   } catch (error) {
     console.error("Failed to create image model configuration", error);
-    redirect("/admin/settings?notice=image-model-create-error");
+    redirect("/admin/pricing?notice=image-model-create-error");
   }
 
   await createAuditLogEntrySafely({
@@ -2091,7 +2097,7 @@ export async function createImageModelConfigAction(formData: FormData) {
 
   revalidateAdminImageModelSettings("image_model.create");
 
-  redirect("/admin/settings?notice=image-model-created");
+  redirect("/admin/pricing?notice=image-model-created");
 }
 
 export async function updateImageModelConfigAction(formData: FormData) {
@@ -2166,7 +2172,7 @@ export async function updateImageModelConfigAction(formData: FormData) {
   });
 
   if (!updated) {
-    redirect("/admin/settings?notice=image-model-update-missing");
+    redirect("/admin/pricing?notice=image-model-update-missing");
   }
 
   await createAuditLogEntrySafely({
@@ -2177,6 +2183,7 @@ export async function updateImageModelConfigAction(formData: FormData) {
   });
 
   revalidateAdminImageModelSettings("image_model.update");
+  redirect("/admin/pricing?notice=image-model-updated");
 }
 
 export async function updateChatModelPricingAction(formData: FormData) {
@@ -2334,7 +2341,7 @@ export async function deleteImageModelConfigAction(formData: FormData) {
 
   revalidateAdminImageModelSettings("image_model.delete");
 
-  redirect("/admin/settings?notice=image-model-deleted");
+  redirect("/admin/pricing?notice=image-model-deleted");
 }
 
 export async function hardDeleteImageModelConfigAction(formData: FormData) {
@@ -2356,7 +2363,7 @@ export async function hardDeleteImageModelConfigAction(formData: FormData) {
 
   revalidateAdminImageModelSettings("image_model.hard_delete");
 
-  redirect("/admin/settings?notice=image-model-hard-deleted");
+  redirect("/admin/pricing?notice=image-model-hard-deleted");
 }
 
 export async function setActiveImageModelConfigAction(formData: FormData) {
@@ -2378,7 +2385,7 @@ export async function setActiveImageModelConfigAction(formData: FormData) {
       error: error instanceof Error ? error.message : String(error),
       imageModelId: id,
     });
-    redirect("/admin/settings?notice=image-model-activate-error");
+    redirect("/admin/pricing?notice=image-model-activate-error");
   }
 
   console.info("[admin/image-models.set-active] completed", {
@@ -2394,7 +2401,7 @@ export async function setActiveImageModelConfigAction(formData: FormData) {
 
   revalidateAdminImageModelSettings("image_model.setActive");
 
-  redirect("/admin/settings?notice=image-model-activated");
+  redirect("/admin/pricing?notice=image-model-activated");
 }
 
 export async function setImagePromptTranslationModelAction(
@@ -2411,7 +2418,7 @@ export async function setImagePromptTranslationModelAction(
   if (normalizedModelId) {
     const model = await getModelConfigById({ id: normalizedModelId });
     if (!model || !model.isEnabled) {
-      redirect("/admin/settings?notice=image-translation-model-invalid");
+      redirect("/admin/pricing?notice=image-translation-model-invalid");
     }
   }
 
@@ -2433,7 +2440,7 @@ export async function setImagePromptTranslationModelAction(
 
   revalidateAdminSettingsSection("image_prompt_translation_model.update");
 
-  redirect("/admin/settings?notice=image-translation-model-updated");
+  redirect("/admin/pricing?notice=image-translation-model-updated");
 }
 
 export async function createTranslationFeatureLanguageAction(
@@ -3674,6 +3681,7 @@ export async function updatePricingPlanAction(formData: FormData) {
   });
 
   revalidateAdminPricingSettings("billing.plan.update");
+  redirect("/admin/pricing?notice=plan-updated");
 }
 
 export async function setRecommendedPricingPlanAction(formData: FormData) {

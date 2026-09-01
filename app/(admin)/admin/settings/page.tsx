@@ -1,37 +1,19 @@
-import { formatDistanceToNow } from "date-fns";
 import { unstable_cache } from "next/cache";
 import type { ComponentProps, ReactNode } from "react";
 import {
-  createImageModelConfigAction,
   createLanguageAction,
-  createLiveVoiceModelConfigAction,
-  createModelConfigAction,
   createTranslationFeatureLanguageAction,
-  deleteImageModelConfigAction,
   deleteLanguageAction,
-  deleteLiveVoiceModelConfigAction,
-  deleteModelConfigAction,
   deleteTranslationFeatureLanguageAction,
-  hardDeleteImageModelConfigAction,
-  hardDeleteLiveVoiceModelConfigAction,
-  hardDeleteModelConfigAction,
-  setActiveImageModelConfigAction,
-  setDefaultLiveVoiceModelConfigAction,
-  setDefaultModelConfigAction,
-  setImagePromptTranslationModelAction,
-  setMarginBaselineModelAction,
   updateAboutContentAction,
   updateComingSoonContentAction,
   updateComingSoonTimerAction,
   updateFreeMessageSettingsAction,
   updateIconPromptsAction,
   updateImageFilenamePrefixAction,
-  updateImageModelConfigAction,
   updateLanguageSettingsAction,
   updateLanguageStatusAction,
   updateLiveTranslationSettingsAction,
-  updateLiveVoiceModelConfigAction,
-  updateModelConfigAction,
   updatePrivacyPolicyByLanguageAction,
   updateSuggestedPromptsAction,
   updateTermsOfServiceByLanguageAction,
@@ -42,9 +24,7 @@ import {
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
-  ADMIN_SETTINGS_IMAGE_MODELS_CACHE_TAG,
   ADMIN_SETTINGS_LANGUAGES_CACHE_TAG,
-  ADMIN_SETTINGS_LIVE_VOICE_MODELS_CACHE_TAG,
   ADMIN_SETTINGS_MODELS_CACHE_TAG,
   ADMIN_SETTINGS_TRANSLATION_FEATURE_LANGUAGES_CACHE_TAG,
 } from "@/lib/admin/cache-invalidation";
@@ -53,13 +33,10 @@ import {
   shouldSerializeAdminDbReads,
 } from "@/lib/admin/db-read-concurrency";
 import { getAdminQueryTimeoutMs } from "@/lib/admin/safe-query";
-import { KHASIGPT_GENERAL_SYSTEM_PROMPT } from "@/lib/ai/identity";
-import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
 import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
   DEFAULT_ABOUT_US,
-  DEFAULT_FREE_MESSAGES_PER_DAY,
   DEFAULT_PRIVACY_POLICY,
   DEFAULT_SUGGESTED_PROMPTS,
   DEFAULT_TERMS_OF_SERVICE,
@@ -70,7 +47,6 @@ import {
   ICON_PROMPTS_SETTING_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
-  IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
   JOBS_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_DEFAULT_LANGUAGE_A_SETTING_KEY,
@@ -108,9 +84,7 @@ import {
 import {
   getAppSettingsByKeys,
   getLastKnownAppSettingsByKeys,
-  listImageModelConfigs,
   listLanguagesWithSettings,
-  listLiveVoiceModelConfigs,
   listModelConfigs,
   listTranslationFeatureLanguages,
 } from "@/lib/db/queries";
@@ -150,13 +124,7 @@ import {
   parseTranslateProviderModeSetting,
 } from "@/lib/translate/config";
 import { isGoogleLiveTranslationModel } from "@/lib/translate/live";
-import { cn } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
-import {
-  GOOGLE_LIVE_VOICE_OPTIONS,
-  LIVE_VOICE_MEDIA_RESOLUTION_OPTIONS,
-  LIVE_VOICE_MODEL_CONFIG_CACHE_TAG,
-} from "@/lib/voice/live";
 import { resolveWebSearchConfig } from "@/lib/web-search/config";
 import { FeatureAccessModeControl } from "./feature-access-mode-control";
 import { IconPromptSettingsForm } from "./icon-prompt-settings-form";
@@ -168,13 +136,6 @@ import { SiteAccessSettingsPanel } from "./site-access-settings-panel";
 import { WebSearchSettingsForm } from "./web-search-settings-form";
 
 export const dynamic = "force-dynamic";
-
-const PROVIDER_OPTIONS = [
-  { value: "openai", label: "OpenAI" },
-  { value: "anthropic", label: "Anthropic" },
-  { value: "google", label: "Google Gemini" },
-  { value: "custom", label: "Custom (configure in code)" },
-];
 
 const SETTINGS_PENDING_TIMEOUT_MS = 5000;
 const ADMIN_SETTINGS_SECTION_QUERY_TIMEOUT_MS = getAdminQueryTimeoutMs(3500);
@@ -212,7 +173,6 @@ const SETTINGS_SNAPSHOT_KEYS = [
   JOBS_FEATURE_FLAG_KEY,
   NEWS_FEATURE_FLAG_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
-  IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
   IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
   ICON_PROMPTS_SETTING_KEY,
   ICON_PROMPTS_ENABLED_SETTING_KEY,
@@ -272,38 +232,6 @@ const listAdminModelConfigsCached = unstable_cache(
   {
     revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
     tags: [ADMIN_SETTINGS_MODELS_CACHE_TAG, MODEL_REGISTRY_CACHE_TAG],
-  }
-);
-const listAdminImageModelConfigsCached = unstable_cache(
-  () =>
-    listImageModelConfigs({
-      includeDisabled: true,
-      includeDeleted: true,
-      limit: 200,
-    }),
-  ["admin-settings:image-model-configs:v1"],
-  {
-    revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
-    tags: [
-      ADMIN_SETTINGS_IMAGE_MODELS_CACHE_TAG,
-      IMAGE_MODEL_REGISTRY_CACHE_TAG,
-    ],
-  }
-);
-const listAdminLiveVoiceModelConfigsCached = unstable_cache(
-  () =>
-    listLiveVoiceModelConfigs({
-      includeDisabled: true,
-      includeDeleted: true,
-      limit: 200,
-    }),
-  ["admin-settings:live-voice-model-configs:v1"],
-  {
-    revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
-    tags: [
-      ADMIN_SETTINGS_LIVE_VOICE_MODELS_CACHE_TAG,
-      LIVE_VOICE_MODEL_CONFIG_CACHE_TAG,
-    ],
   }
 );
 const listAdminLanguagesCached = unstable_cache(
@@ -500,8 +428,6 @@ async function loadAdminSettingsData() {
   ]);
   const [
     modelsState,
-    imageModelConfigsState,
-    liveVoiceModelConfigsState,
     languagesState,
     translationFeatureLanguagesState,
   ] = await resolveAdminDbReadGroup([
@@ -509,18 +435,6 @@ async function loadAdminSettingsData() {
       settingsQueryState(
         "model configs",
         () => listAdminModelConfigsCached(),
-        []
-      ),
-    () =>
-      settingsQueryState(
-        "image model configs",
-        () => listAdminImageModelConfigsCached(),
-        []
-      ),
-    () =>
-      settingsQueryState(
-        "live voice model configs",
-        () => listAdminLiveVoiceModelConfigsCached(),
         []
       ),
     () =>
@@ -607,9 +521,6 @@ async function loadAdminSettingsData() {
   const comingSoonTimerSetting = getStoredSetting<unknown>(
     SITE_COMING_SOON_TIMER_SETTING_KEY
   );
-  const imagePromptTranslationModelSetting = getStoredSetting<string | null>(
-    IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY
-  );
   const imageFilenamePrefixSetting = getStoredSetting<string>(
     IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY
   );
@@ -645,10 +556,6 @@ async function loadAdminSettingsData() {
     featureAccessState,
     modelsRaw: modelsState.value,
     modelConfigsLoadFailed: modelsState.failed,
-    imageModelConfigs: imageModelConfigsState.value,
-    imageModelConfigsLoadFailed: imageModelConfigsState.failed,
-    liveVoiceModelConfigs: liveVoiceModelConfigsState.value,
-    liveVoiceModelConfigsLoadFailed: liveVoiceModelConfigsState.failed,
     privacyPolicySetting,
     termsOfServiceSetting,
     aboutUsSetting,
@@ -671,7 +578,6 @@ async function loadAdminSettingsData() {
     siteLegacyLaunchModeSetting,
     comingSoonContentSetting,
     comingSoonTimerSetting,
-    imagePromptTranslationModelSetting,
     imageFilenamePrefixSetting,
     iconPromptsSetting,
     translateProviderModeSetting,
@@ -710,10 +616,6 @@ function buildFallbackAdminSettingsData() {
     }),
     modelsRaw: [],
     modelConfigsLoadFailed: true,
-    imageModelConfigs: [],
-    imageModelConfigsLoadFailed: true,
-    liveVoiceModelConfigs: [],
-    liveVoiceModelConfigsLoadFailed: true,
     privacyPolicySetting: null,
     termsOfServiceSetting: null,
     aboutUsSetting: null,
@@ -738,7 +640,6 @@ function buildFallbackAdminSettingsData() {
     siteLegacyLaunchModeSetting: null,
     comingSoonContentSetting: null,
     comingSoonTimerSetting: null,
-    imagePromptTranslationModelSetting: null,
     imageFilenamePrefixSetting: null,
     iconPromptsSetting: null,
     translateProviderModeSetting: null,
@@ -754,14 +655,7 @@ function buildFallbackAdminSettingsData() {
   } as Awaited<ReturnType<typeof loadAdminSettingsData>>;
 }
 
-function _formatCurrency(value: number, currency: "USD" | "INR") {
-  return value.toLocaleString(currency === "USD" ? "en-US" : "en-IN", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
+type AdminSettingsSearchParams = { notice?: string };
 
 function toDateTimeLocalInputValue(iso: string) {
   const date = new Date(iso);
@@ -774,84 +668,6 @@ function toDateTimeLocalInputValue(iso: string) {
     .toISOString()
     .slice(0, 16);
 }
-
-function _toIsoDateString(value: Date | string | null | undefined): string {
-  if (!value) {
-    return new Date(0).toISOString();
-  }
-
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime())
-      ? new Date(0).toISOString()
-      : value.toISOString();
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return new Date(0).toISOString();
-  }
-
-  return parsed.toISOString();
-}
-
-function ProviderBadge({ value }: { value: string }) {
-  const option = PROVIDER_OPTIONS.find((item) => item.value === value);
-  return (
-    <span className="rounded-full bg-muted px-2 py-0.5 font-medium text-xs capitalize">
-      {option?.label ?? value}
-    </span>
-  );
-}
-
-function EnabledBadge({ enabled }: { enabled: boolean }) {
-  if (enabled) {
-    return (
-      <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 text-xs">
-        Enabled
-      </span>
-    );
-  }
-  return (
-    <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700 text-xs">
-      Disabled
-    </span>
-  );
-}
-
-function ActiveBadge({ active }: { active: boolean }) {
-  if (!active) {
-    return null;
-  }
-  return (
-    <span className="rounded-full bg-blue-100 px-2 py-0.5 font-medium text-blue-700 text-xs">
-      Active
-    </span>
-  );
-}
-
-function PlatformBadge({
-  enabledOnNative,
-  enabledOnWeb,
-}: {
-  enabledOnNative: boolean;
-  enabledOnWeb: boolean;
-}) {
-  const label =
-    enabledOnWeb && enabledOnNative
-      ? "Web + Native"
-      : enabledOnWeb
-        ? "Web only"
-        : enabledOnNative
-          ? "Native only"
-          : "No platform";
-  return (
-    <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700 text-xs">
-      {label}
-    </span>
-  );
-}
-
-type AdminSettingsSearchParams = { notice?: string };
 
 function CollapsibleSection({
   title,
@@ -967,10 +783,6 @@ export default async function AdminSettingsPage({
     featureAccessState,
     modelsRaw,
     modelConfigsLoadFailed,
-    imageModelConfigs,
-    imageModelConfigsLoadFailed,
-    liveVoiceModelConfigs,
-    liveVoiceModelConfigsLoadFailed,
     privacyPolicySetting,
     termsOfServiceSetting,
     aboutUsSetting,
@@ -993,7 +805,6 @@ export default async function AdminSettingsPage({
     siteLegacyLaunchModeSetting,
     comingSoonContentSetting,
     comingSoonTimerSetting,
-    imagePromptTranslationModelSetting,
     imageFilenamePrefixSetting,
     iconPromptsSetting,
     translateProviderModeSetting,
@@ -1034,8 +845,6 @@ export default async function AdminSettingsPage({
   const featureSettingsReadConfirmed = featureAccessState.status === "confirmed";
   const degradedSettingsSections = [
     modelConfigsLoadFailed ? "model configs" : null,
-    imageModelConfigsLoadFailed ? "image model configs" : null,
-    liveVoiceModelConfigsLoadFailed ? "live voice model configs" : null,
     languagesLoadFailed ? "languages" : null,
     translationFeatureLanguagesLoadFailed
       ? "translation feature languages"
@@ -1043,15 +852,6 @@ export default async function AdminSettingsPage({
   ].filter((section): section is string => Boolean(section));
 
   const activeModels = modelsRaw.filter((model) => !model.deletedAt);
-  const deletedModels = modelsRaw.filter((model) => model.deletedAt);
-  const activeImageModels = imageModelConfigs.filter((model) => !model.deletedAt);
-  const deletedImageModels = imageModelConfigs.filter((model) => model.deletedAt);
-  const activeLiveVoiceModels = liveVoiceModelConfigs.filter(
-    (model) => !model.deletedAt
-  );
-  const deletedLiveVoiceModels = liveVoiceModelConfigs.filter(
-    (model) => model.deletedAt
-  );
   const enabledModels = activeModels.filter((model) => model.isEnabled);
   const enabledLiveSpeechModels = enabledModels.filter((model) =>
     isGoogleLiveTranslationModel(model)
@@ -1065,15 +865,6 @@ export default async function AdminSettingsPage({
     typeof imageFilenamePrefixSetting === "string"
       ? imageFilenamePrefixSetting
       : "";
-  const imagePromptTranslationModelId =
-    typeof imagePromptTranslationModelSetting === "string" &&
-    imagePromptTranslationModelSetting.trim().length > 0
-      ? imagePromptTranslationModelSetting
-      : null;
-  const imagePromptTranslationModel = imagePromptTranslationModelId
-    ? activeModels.find((model) => model.id === imagePromptTranslationModelId) ??
-      null
-    : null;
   const suggestedPromptsAccessState =
     featureAccessControlStateByField.get("suggestedPromptsAccessMode") ??
     resolveFeatureAccessControlState({
@@ -1368,14 +1159,6 @@ export default async function AdminSettingsPage({
   });
 
   const isGlobalFreeMessageMode = freeMessageSettings.mode === "global";
-  const perModelInputClassName = cn(
-    "rounded-md border bg-background px-3 py-2 text-sm",
-    isGlobalFreeMessageMode &&
-      "cursor-not-allowed bg-muted text-muted-foreground opacity-60"
-  );
-  const perModelFieldDescription = isGlobalFreeMessageMode
-    ? "Managed by the global allowance above."
-    : "Complimentary messages per day for this model when a user has no active credits.";
   const languageTermsConfigs = activeLanguagesList.map((language) => {
     const stored = normalizedTermsOfServiceByLanguage[language.code];
     const contentForLanguage =
@@ -2703,638 +2486,6 @@ export default async function AdminSettingsPage({
         </CollapsibleSection>
 
         <CollapsibleSection
-          description="Manage text and image model configurations in one place."
-          title="Models"
-        >
-          <div className="space-y-6">
-            <div className="rounded-lg border border-amber-300/60 bg-amber-50/40 p-4 dark:bg-amber-950/10">
-              <div className="flex flex-col gap-2">
-                <label
-                  className="font-medium text-sm"
-                  htmlFor="general-system-prompt"
-                >
-                  <EditableTranslation
-                    defaultText="General system prompt (read-only)"
-                    description="Label for the hardcoded KhasiGPT system prompt shown for admin review."
-                    translationKey="admin.models.general_prompt.title"
-                  />
-                </label>
-                <textarea
-                  aria-readonly="true"
-                  className="min-h-[220px] rounded-md border bg-muted/30 px-3 py-2 font-mono text-xs leading-relaxed"
-                  defaultValue={KHASIGPT_GENERAL_SYSTEM_PROMPT}
-                  id="general-system-prompt"
-                  readOnly
-                  spellCheck={false}
-                />
-                <p className="text-muted-foreground text-xs">
-                  <EditableTranslation
-                    defaultText="This prompt is hardcoded and applied to every text and voice model. It is shown here for review only and cannot be edited from the admin panel."
-                    description="Helper text explaining that the shared KhasiGPT system prompt is hardcoded and read-only."
-                    translationKey="admin.models.general_prompt.description"
-                  />
-                </p>
-              </div>
-            </div>
-            <CollapsibleSection
-              description="Configure additional providers. Ensure the relevant API key is available in the environment."
-              title="Add new model"
-            >
-              <form
-                action={createModelConfigAction}
-                className="grid gap-4 md:grid-cols-2"
-              >
-            <div className="flex flex-col gap-2">
-              <label className="font-medium text-sm" htmlFor="key">
-                Model key
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                id="key"
-                name="key"
-                placeholder="openai-gpt-4o-mini"
-                required
-              />
-              <p className="text-muted-foreground text-xs">
-                Internal identifier that must be unique.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label className="font-medium text-sm" htmlFor="provider">
-                Provider
-              </label>
-              <select
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                defaultValue="openai"
-                id="provider"
-                name="provider"
-                required
-              >
-                {PROVIDER_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label className="font-medium text-sm" htmlFor="providerModelId">
-                Provider model ID
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                id="providerModelId"
-                name="providerModelId"
-                placeholder="gpt-4o-mini"
-                required
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label className="font-medium text-sm" htmlFor="displayName">
-                Display name
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                id="displayName"
-                name="displayName"
-                placeholder="GPT-4o mini"
-                required
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label
-                className="font-medium text-sm"
-                htmlFor="freeMessagesPerDay"
-              >
-                Daily free messages
-              </label>
-              <input
-                aria-disabled={isGlobalFreeMessageMode || undefined}
-                className={perModelInputClassName}
-                defaultValue={DEFAULT_FREE_MESSAGES_PER_DAY}
-                id="freeMessagesPerDay"
-                min={0}
-                name="freeMessagesPerDay"
-                readOnly={isGlobalFreeMessageMode}
-                step={1}
-                type="number"
-              />
-              <p className="text-muted-foreground text-xs">
-                {perModelFieldDescription}
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2 md:col-span-2">
-              <label className="font-medium text-sm" htmlFor="description">
-                Description
-              </label>
-              <textarea
-                className="min-h-[60px] rounded-md border bg-background px-3 py-2 text-sm"
-                id="description"
-                name="description"
-                placeholder="Explain what this model is best suited for."
-              />
-            </div>
-
-            <div className="grid gap-4 md:col-span-2 md:grid-cols-2">
-              <div className="flex flex-col gap-2">
-                <label className="font-medium text-sm" htmlFor="systemPrompt">
-                  <EditableTranslation
-                    defaultText="Model-specific prompt (optional)"
-                    description="Label for optional provider/model-specific instructions stored with a model configuration."
-                    translationKey="admin.models.model_prompt.title"
-                  />
-                </label>
-                <textarea
-                  className="min-h-[100px] rounded-md border bg-background px-3 py-2 text-sm"
-                  id="systemPrompt"
-                  name="systemPrompt"
-                  placeholder="Custom system instructions"
-                />
-                <p className="text-muted-foreground text-xs">
-                  <EditableTranslation
-                    defaultText="Optional provider/model-specific instructions. The hardcoded KhasiGPT general prompt above is always applied as well."
-                    description="Helper text explaining the difference between the optional model-specific prompt and the shared hardcoded KhasiGPT prompt."
-                    translationKey="admin.models.model_prompt.description"
-                  />
-                </p>
-              </div>
-              <div className="flex flex-col gap-2">
-                <label className="font-medium text-sm" htmlFor="codeTemplate">
-                  Provider code snippet (optional)
-                </label>
-                <textarea
-                  className="min-h-[100px] rounded-md border bg-background px-3 py-2 font-mono text-xs"
-                  id="codeTemplate"
-                  name="codeTemplate"
-                  placeholder="Store reference code for this model (not executed)."
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label className="font-medium text-sm" htmlFor="reasoningTag">
-                Reasoning tag
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                id="reasoningTag"
-                name="reasoningTag"
-                placeholder="think"
-              />
-              <p className="text-muted-foreground text-xs">
-                Required when enabling reasoning output to wrap &lt;tag&gt;
-                sequences.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label className="font-medium text-sm" htmlFor="configJson">
-                Provider config (JSON, optional)
-              </label>
-              <textarea
-                className="min-h-[100px] rounded-md border bg-background px-3 py-2 font-mono text-xs"
-                id="configJson"
-                name="configJson"
-                placeholder='{"baseURL":"https://..."}'
-              />
-            </div>
-
-            <div className="flex items-center gap-3">
-              <input
-                className="h-4 w-4"
-                defaultChecked
-                id="isEnabled"
-                name="isEnabled"
-                type="checkbox"
-              />
-              <label className="font-medium text-sm" htmlFor="isEnabled">
-                Enable immediately
-              </label>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <input
-                className="h-4 w-4"
-                id="supportsReasoning"
-                name="supportsReasoning"
-                type="checkbox"
-              />
-              <label
-                className="font-medium text-sm"
-                htmlFor="supportsReasoning"
-              >
-                Supports reasoning traces
-              </label>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <input
-                className="h-4 w-4"
-                id="isDefault"
-                name="isDefault"
-                type="checkbox"
-              />
-              <label className="font-medium text-sm" htmlFor="isDefault">
-                Set as default model
-              </label>
-            </div>
-            <div className="flex items-center gap-3">
-              <input
-                className="h-4 w-4"
-                id="isMarginBaseline"
-                name="isMarginBaseline"
-                type="checkbox"
-              />
-              <label className="font-medium text-sm" htmlFor="isMarginBaseline">
-                Use as margin baseline
-              </label>
-            </div>
-
-            <div className="flex justify-end md:col-span-2">
-              <SettingsSubmitButton pendingLabel="Creating...">
-                Create model
-              </SettingsSubmitButton>
-            </div>
-              </form>
-            </CollapsibleSection>
-
-            <CollapsibleSection title="Configured models">
-              <div className="space-y-6">
-                {activeModels.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">
-                    No models configured yet.
-                  </p>
-                ) : (
-                  activeModels.map((model) => {
-                return (
-                  <details
-                    className="rounded-md border bg-background p-4"
-                    key={model.id}
-                  >
-                    <summary className="flex cursor-pointer flex-col gap-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{model.displayName}</span>
-                        <ProviderBadge value={model.provider} />
-                        <EnabledBadge enabled={model.isEnabled} />
-                        {model.isDefault && (
-                          <span className="rounded-full bg-blue-100 px-2 py-0.5 font-medium text-blue-700 text-xs">
-                            Default
-                          </span>
-                        )}
-                        {model.isMarginBaseline && (
-                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 text-xs">
-                            Margin baseline
-                          </span>
-                        )}
-                      </div>
-                      <span className="font-mono text-muted-foreground text-xs">
-                        {model.providerModelId}
-                      </span>
-                    </summary>
-
-                    <div className="mt-4 grid gap-4 md:grid-cols-2">
-                      <form
-                        action={updateModelConfigAction}
-                        className="grid gap-4 md:col-span-2 md:grid-cols-2"
-                      >
-                        <input name="id" type="hidden" value={model.id} />
-
-                        <div className="flex flex-col gap-2">
-                          <label
-                            className="font-medium text-sm"
-                            htmlFor={`model-display-name-${model.id}`}
-                          >
-                            Display name
-                          </label>
-                          <input
-                            className="rounded-md border bg-background px-3 py-2 text-sm"
-                            defaultValue={model.displayName}
-                            id={`model-display-name-${model.id}`}
-                            name="displayName"
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                          <label
-                            className="font-medium text-sm"
-                            htmlFor={`model-provider-${model.id}`}
-                          >
-                            Provider
-                          </label>
-                          <select
-                            className="rounded-md border bg-background px-3 py-2 text-sm"
-                            defaultValue={model.provider}
-                            id={`model-provider-${model.id}`}
-                            name="provider"
-                          >
-                            {PROVIDER_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                          <label
-                            className="font-medium text-sm"
-                            htmlFor={`model-provider-id-${model.id}`}
-                          >
-                            Provider model ID
-                          </label>
-                          <input
-                            className="rounded-md border bg-background px-3 py-2 text-sm"
-                            defaultValue={model.providerModelId}
-                            id={`model-provider-id-${model.id}`}
-                            name="providerModelId"
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                          <label
-                            className="font-medium text-sm"
-                            htmlFor={`model-free-messages-${model.id}`}
-                          >
-                            Daily free messages
-                          </label>
-                          <input
-                            aria-disabled={isGlobalFreeMessageMode || undefined}
-                            className={perModelInputClassName}
-                            defaultValue={
-                              model.freeMessagesPerDay ??
-                              DEFAULT_FREE_MESSAGES_PER_DAY
-                            }
-                            id={`model-free-messages-${model.id}`}
-                            min={0}
-                            name="freeMessagesPerDay"
-                            readOnly={isGlobalFreeMessageMode}
-                            step={1}
-                            type="number"
-                          />
-                          <p className="text-muted-foreground text-xs">
-                            {perModelFieldDescription}
-                          </p>
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                          <label
-                            className="font-medium text-sm"
-                            htmlFor={`model-reasoning-tag-${model.id}`}
-                          >
-                            Reasoning tag
-                          </label>
-                          <input
-                            className="rounded-md border bg-background px-3 py-2 text-sm"
-                            defaultValue={model.reasoningTag ?? ""}
-                            id={`model-reasoning-tag-${model.id}`}
-                            name="reasoningTag"
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-2 md:col-span-2">
-                          <label
-                            className="font-medium text-sm"
-                            htmlFor={`model-description-${model.id}`}
-                          >
-                            Description
-                          </label>
-                          <textarea
-                            className="min-h-[60px] rounded-md border bg-background px-3 py-2 text-sm"
-                            defaultValue={model.description}
-                            id={`model-description-${model.id}`}
-                            name="description"
-                          />
-                        </div>
-
-                        <div className="grid gap-4 md:col-span-2 md:grid-cols-2">
-                          <div className="flex flex-col gap-2">
-                            <label
-                              className="font-medium text-sm"
-                              htmlFor={`model-system-prompt-${model.id}`}
-                            >
-                              <EditableTranslation
-                                defaultText="Model-specific prompt"
-                                description="Label for the optional provider/model-specific prompt stored with an existing model configuration."
-                                translationKey="admin.models.model_prompt.title_existing"
-                              />
-                            </label>
-                            <textarea
-                              className="min-h-[100px] rounded-md border bg-background px-3 py-2 text-sm"
-                              defaultValue={model.systemPrompt ?? ""}
-                              id={`model-system-prompt-${model.id}`}
-                              name="systemPrompt"
-                            />
-                            <p className="text-muted-foreground text-xs">
-                              <EditableTranslation
-                                defaultText="Optional provider/model-specific instructions. The hardcoded KhasiGPT general prompt is always applied as well."
-                                description="Helper text explaining the difference between the optional model-specific prompt and the shared hardcoded KhasiGPT prompt."
-                                translationKey="admin.models.model_prompt.description_existing"
-                              />
-                            </p>
-                          </div>
-                          <div className="flex flex-col gap-2">
-                            <label
-                              className="font-medium text-sm"
-                              htmlFor={`model-code-template-${model.id}`}
-                            >
-                              Provider code snippet
-                            </label>
-                            <textarea
-                              className="min-h-[100px] rounded-md border bg-background px-3 py-2 font-mono text-xs"
-                              defaultValue={model.codeTemplate ?? ""}
-                              id={`model-code-template-${model.id}`}
-                              name="codeTemplate"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-2 md:col-span-2">
-                          <label
-                            className="font-medium text-sm"
-                            htmlFor={`model-config-json-${model.id}`}
-                          >
-                            Provider config (JSON)
-                          </label>
-                          <textarea
-                            className="min-h-[100px] rounded-md border bg-background px-3 py-2 font-mono text-xs"
-                            defaultValue={
-                              model.config
-                                ? JSON.stringify(model.config, null, 2)
-                                : ""
-                            }
-                            id={`model-config-json-${model.id}`}
-                            name="configJson"
-                          />
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          <input
-                            name="supportsReasoning"
-                            type="hidden"
-                            value="false"
-                          />
-                          <input
-                            className="h-4 w-4"
-                            defaultChecked={model.supportsReasoning}
-                            id={`supportsReasoning-${model.id}`}
-                            name="supportsReasoning"
-                            type="checkbox"
-                            value="true"
-                          />
-                          <label
-                            className="font-medium text-sm"
-                            htmlFor={`supportsReasoning-${model.id}`}
-                          >
-                            Supports reasoning traces
-                          </label>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          <input
-                            name="isEnabled"
-                            type="hidden"
-                            value="false"
-                          />
-                          <input
-                            className="h-4 w-4"
-                            defaultChecked={model.isEnabled}
-                            id={`isEnabled-${model.id}`}
-                            name="isEnabled"
-                            type="checkbox"
-                            value="true"
-                          />
-                          <label
-                            className="font-medium text-sm"
-                            htmlFor={`isEnabled-${model.id}`}
-                          >
-                            Enabled
-                          </label>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          <input
-                            name="isDefault"
-                            type="hidden"
-                            value="false"
-                          />
-                          <input
-                            className="h-4 w-4"
-                            defaultChecked={model.isDefault}
-                            id={`isDefault-${model.id}`}
-                            name="isDefault"
-                            type="checkbox"
-                            value="true"
-                          />
-                          <label
-                            className="font-medium text-sm"
-                            htmlFor={`isDefault-${model.id}`}
-                          >
-                            Default model
-                          </label>
-                        </div>
-
-                        <div className="flex justify-end md:col-span-2">
-                          <SettingsSubmitButton
-                            pendingLabel="Saving..."
-                            successMessage="Model updated."
-                          >
-                            Save changes
-                          </SettingsSubmitButton>
-                        </div>
-                      </form>
-
-                      <div className="flex flex-wrap gap-3 md:col-span-2">
-                        {!model.isDefault && (
-                          <form action={setDefaultModelConfigAction}>
-                            <input name="id" type="hidden" value={model.id} />
-                            <SettingsSubmitButton
-                              pendingLabel="Updating..."
-                              size="sm"
-                              variant="outline"
-                            >
-                              Set as default
-                            </SettingsSubmitButton>
-                          </form>
-                        )}
-                        {!model.isMarginBaseline && (
-                          <form action={setMarginBaselineModelAction}>
-                            <input name="id" type="hidden" value={model.id} />
-                            <SettingsSubmitButton
-                              pendingLabel="Updating..."
-                              size="sm"
-                              variant="outline"
-                            >
-                              Set as margin baseline
-                            </SettingsSubmitButton>
-                          </form>
-                        )}
-
-                        <form action={deleteModelConfigAction}>
-                          <input name="id" type="hidden" value={model.id} />
-                          <SettingsSubmitButton
-                            className="border border-destructive text-destructive hover:bg-destructive/10"
-                            pendingLabel="Soft deleting..."
-                            size="sm"
-                            variant="outline"
-                          >
-                            Soft delete
-                          </SettingsSubmitButton>
-                        </form>
-                      </div>
-                    </div>
-                  </details>
-                );
-              })
-            )}
-              </div>
-
-              {deletedModels.length > 0 && (
-                <div className="mt-8 space-y-3">
-                  <h3 className="font-semibold text-muted-foreground text-sm">
-                    Deleted models
-                  </h3>
-                  <div className="grid gap-2">
-                    {deletedModels.map((model) => (
-                      <div
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-3 text-sm shadow-sm"
-                        key={model.id}
-                      >
-                        <div className="flex flex-col">
-                          <span className="font-medium">
-                            {model.displayName}
-                          </span>
-                          <span className="text-muted-foreground text-xs">
-                            Deleted{" "}
-                            {model.deletedAt
-                              ? formatDistanceToNow(new Date(model.deletedAt), {
-                                  addSuffix: true,
-                                })
-                              : "recently"}
-                          </span>
-                        </div>
-                        <form action={hardDeleteModelConfigAction}>
-                          <input name="id" type="hidden" value={model.id} />
-                          <SettingsSubmitButton
-                            pendingLabel="Hard deleting..."
-                            size="sm"
-                            variant="destructive"
-                          >
-                            Hard delete
-                          </SettingsSubmitButton>
-                        </form>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </CollapsibleSection>
-
-            <CollapsibleSection
               description="Configure the language pair and interpreter behavior used by the Live Translation page."
               title="Live Translation defaults"
             >
@@ -3437,975 +2588,6 @@ export default async function AdminSettingsPage({
                 </div>
               </form>
             </CollapsibleSection>
-
-            <CollapsibleSection
-              description="Configure realtime audio models separately from normal text chat models."
-              title="Live voice models"
-            >
-              <div className="space-y-6">
-                <CollapsibleSection
-                  description="Add a Gemini Live or future realtime audio model with platform visibility and credit behavior."
-                  title="Add live voice model"
-                >
-                  <form
-                    action={createLiveVoiceModelConfigAction}
-                    className="grid gap-4 md:grid-cols-2"
-                  >
-                    <div className="flex flex-col gap-2">
-                      <label className="font-medium text-sm" htmlFor="liveVoiceKey">
-                        Model key
-                      </label>
-                      <input
-                        className="rounded-md border bg-background px-3 py-2 text-sm"
-                        id="liveVoiceKey"
-                        name="key"
-                        placeholder="gemini-3-1-flash-live-preview"
-                        required
-                      />
-                      <p className="text-muted-foreground text-xs">
-                        Internal identifier that must be unique.
-                      </p>
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      <label className="font-medium text-sm" htmlFor="liveVoiceProvider">
-                        Provider
-                      </label>
-                      <select
-                        className="rounded-md border bg-background px-3 py-2 text-sm"
-                        defaultValue="google"
-                        id="liveVoiceProvider"
-                        name="provider"
-                        required
-                      >
-                        {PROVIDER_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      <label
-                        className="font-medium text-sm"
-                        htmlFor="liveVoiceProviderModelId"
-                      >
-                        Provider model ID
-                      </label>
-                      <input
-                        className="rounded-md border bg-background px-3 py-2 text-sm"
-                        defaultValue="gemini-3.1-flash-live-preview"
-                        id="liveVoiceProviderModelId"
-                        name="providerModelId"
-                        required
-                      />
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      <label
-                        className="font-medium text-sm"
-                        htmlFor="liveVoiceDisplayName"
-                      >
-                        Display name
-                      </label>
-                      <input
-                        className="rounded-md border bg-background px-3 py-2 text-sm"
-                        defaultValue="Gemini 3.1 Flash Live Preview"
-                        id="liveVoiceDisplayName"
-                        name="displayName"
-                        required
-                      />
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      <label className="font-medium text-sm" htmlFor="liveVoiceName">
-                        Voice
-                      </label>
-                      <select
-                        className="rounded-md border bg-background px-3 py-2 text-sm"
-                        defaultValue="Zephyr"
-                        id="liveVoiceName"
-                        name="voiceName"
-                      >
-                        {GOOGLE_LIVE_VOICE_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label} - {option.description}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-muted-foreground text-xs">
-                        Provider-driven list based on Google Live voice support.
-                      </p>
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      <label
-                        className="font-medium text-sm"
-                        htmlFor="liveVoiceMediaResolution"
-                      >
-                        Media resolution
-                      </label>
-                      <select
-                        className="rounded-md border bg-background px-3 py-2 text-sm"
-                        defaultValue="MEDIA_RESOLUTION_MEDIUM"
-                        id="liveVoiceMediaResolution"
-                        name="mediaResolution"
-                      >
-                        {LIVE_VOICE_MEDIA_RESOLUTION_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label} - {option.description}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="flex flex-col gap-2 md:col-span-2">
-                      <label
-                        className="font-medium text-sm"
-                        htmlFor="liveVoiceDescription"
-                      >
-                        Description
-                      </label>
-                      <textarea
-                        className="min-h-[60px] rounded-md border bg-background px-3 py-2 text-sm"
-                        id="liveVoiceDescription"
-                        name="description"
-                        placeholder="Explain when this realtime voice model should be used."
-                      />
-                    </div>
-
-                    <div className="flex flex-col gap-2 md:col-span-2">
-                      <label
-                        className="font-medium text-sm"
-                        htmlFor="liveVoiceSystemInstruction"
-                      >
-                        System instructions
-                      </label>
-                      <textarea
-                        className="min-h-[120px] rounded-md border bg-background px-3 py-2 text-sm"
-                        id="liveVoiceSystemInstruction"
-                        name="systemInstruction"
-                        placeholder="Optional tone, style, or behavior instructions for the voice session."
-                      />
-                    </div>
-
-                    <div className="flex flex-col gap-2 md:col-span-2">
-                      <label
-                        className="font-medium text-sm"
-                        htmlFor="liveVoiceConfigJson"
-                      >
-                        Provider config (JSON, optional)
-                      </label>
-                      <textarea
-                        className="min-h-[90px] rounded-md border bg-background px-3 py-2 font-mono text-xs"
-                        id="liveVoiceConfigJson"
-                        name="configJson"
-                        placeholder='{"thinkingLevel":"minimal"}'
-                      />
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <input
-                        className="h-4 w-4"
-                        defaultChecked
-                        id="liveVoiceIsEnabled"
-                        name="isEnabled"
-                        type="checkbox"
-                      />
-                      <label className="font-medium text-sm" htmlFor="liveVoiceIsEnabled">
-                        Enabled
-                      </label>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <input
-                        className="h-4 w-4"
-                        defaultChecked
-                        id="liveVoiceEnabledOnWeb"
-                        name="enabledOnWeb"
-                        type="checkbox"
-                      />
-                      <label className="font-medium text-sm" htmlFor="liveVoiceEnabledOnWeb">
-                        Web app
-                      </label>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <input
-                        className="h-4 w-4"
-                        defaultChecked
-                        id="liveVoiceEnabledOnNative"
-                        name="enabledOnNative"
-                        type="checkbox"
-                      />
-                      <label
-                        className="font-medium text-sm"
-                        htmlFor="liveVoiceEnabledOnNative"
-                      >
-                        Native app
-                      </label>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <input
-                        className="h-4 w-4"
-                        id="liveVoiceIsDefault"
-                        name="isDefault"
-                        type="checkbox"
-                      />
-                      <label className="font-medium text-sm" htmlFor="liveVoiceIsDefault">
-                        Set as default live voice model
-                      </label>
-                    </div>
-
-                    <div className="flex justify-end md:col-span-2">
-                      <SettingsSubmitButton pendingLabel="Creating...">
-                        Create live voice model
-                      </SettingsSubmitButton>
-                    </div>
-                  </form>
-                </CollapsibleSection>
-
-                <CollapsibleSection title="Configured live voice models">
-                  <div className="space-y-6">
-                    {activeLiveVoiceModels.length === 0 ? (
-                      <p className="text-muted-foreground text-sm">
-                        No live voice models configured yet.
-                      </p>
-                    ) : (
-                      activeLiveVoiceModels.map((model) => {
-                        return (
-                          <details
-                            className="rounded-md border bg-background p-4"
-                            key={model.id}
-                          >
-                            <summary className="flex cursor-pointer flex-col gap-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-medium">{model.displayName}</span>
-                                <ProviderBadge value={model.provider} />
-                                <EnabledBadge enabled={model.isEnabled} />
-                                <PlatformBadge
-                                  enabledOnNative={model.enabledOnNative}
-                                  enabledOnWeb={model.enabledOnWeb}
-                                />
-                                {model.isDefault && (
-                                  <span className="rounded-full bg-blue-100 px-2 py-0.5 font-medium text-blue-700 text-xs">
-                                    Default
-                                  </span>
-                                )}
-                              </div>
-                              <span className="font-mono text-muted-foreground text-xs">
-                                {model.providerModelId}
-                              </span>
-                            </summary>
-
-                            <div className="mt-4 grid gap-4 md:grid-cols-2">
-                              <form
-                                action={updateLiveVoiceModelConfigAction}
-                                className="grid gap-4 md:col-span-2 md:grid-cols-2"
-                              >
-                                <input name="id" type="hidden" value={model.id} />
-
-                                <div className="flex flex-col gap-2">
-                                  <label
-                                    className="font-medium text-sm"
-                                    htmlFor={`live-voice-display-name-${model.id}`}
-                                  >
-                                    Display name
-                                  </label>
-                                  <input
-                                    className="rounded-md border bg-background px-3 py-2 text-sm"
-                                    defaultValue={model.displayName}
-                                    id={`live-voice-display-name-${model.id}`}
-                                    name="displayName"
-                                  />
-                                </div>
-
-                                <div className="flex flex-col gap-2">
-                                  <label
-                                    className="font-medium text-sm"
-                                    htmlFor={`live-voice-provider-${model.id}`}
-                                  >
-                                    Provider
-                                  </label>
-                                  <select
-                                    className="rounded-md border bg-background px-3 py-2 text-sm"
-                                    defaultValue={model.provider}
-                                    id={`live-voice-provider-${model.id}`}
-                                    name="provider"
-                                  >
-                                    {PROVIDER_OPTIONS.map((option) => (
-                                      <option key={option.value} value={option.value}>
-                                        {option.label}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-
-                                <div className="flex flex-col gap-2">
-                                  <label
-                                    className="font-medium text-sm"
-                                    htmlFor={`live-voice-provider-id-${model.id}`}
-                                  >
-                                    Provider model ID
-                                  </label>
-                                  <input
-                                    className="rounded-md border bg-background px-3 py-2 text-sm"
-                                    defaultValue={model.providerModelId}
-                                    id={`live-voice-provider-id-${model.id}`}
-                                    name="providerModelId"
-                                  />
-                                </div>
-
-                                <div className="flex flex-col gap-2">
-                                  <label
-                                    className="font-medium text-sm"
-                                    htmlFor={`live-voice-name-${model.id}`}
-                                  >
-                                    Voice
-                                  </label>
-                                  <select
-                                    className="rounded-md border bg-background px-3 py-2 text-sm"
-                                    defaultValue={model.voiceName}
-                                    id={`live-voice-name-${model.id}`}
-                                    name="voiceName"
-                                  >
-                                    {GOOGLE_LIVE_VOICE_OPTIONS.map((option) => (
-                                      <option key={option.value} value={option.value}>
-                                        {option.label} - {option.description}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-
-                                <div className="flex flex-col gap-2">
-                                  <label
-                                    className="font-medium text-sm"
-                                    htmlFor={`live-voice-media-resolution-${model.id}`}
-                                  >
-                                    Media resolution
-                                  </label>
-                                  <select
-                                    className="rounded-md border bg-background px-3 py-2 text-sm"
-                                    defaultValue={model.mediaResolution}
-                                    id={`live-voice-media-resolution-${model.id}`}
-                                    name="mediaResolution"
-                                  >
-                                    {LIVE_VOICE_MEDIA_RESOLUTION_OPTIONS.map((option) => (
-                                      <option key={option.value} value={option.value}>
-                                        {option.label} - {option.description}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-
-                                <div className="flex flex-col gap-2 md:col-span-2">
-                                  <label
-                                    className="font-medium text-sm"
-                                    htmlFor={`live-voice-description-${model.id}`}
-                                  >
-                                    Description
-                                  </label>
-                                  <textarea
-                                    className="min-h-[70px] rounded-md border bg-background px-3 py-2 text-sm"
-                                    defaultValue={model.description ?? ""}
-                                    id={`live-voice-description-${model.id}`}
-                                    name="description"
-                                  />
-                                </div>
-
-                                <div className="flex flex-col gap-2 md:col-span-2">
-                                  <label
-                                    className="font-medium text-sm"
-                                    htmlFor={`live-voice-system-instruction-${model.id}`}
-                                  >
-                                    System instructions
-                                  </label>
-                                  <textarea
-                                    className="min-h-[120px] rounded-md border bg-background px-3 py-2 text-sm"
-                                    defaultValue={model.systemInstruction ?? ""}
-                                    id={`live-voice-system-instruction-${model.id}`}
-                                    name="systemInstruction"
-                                  />
-                                </div>
-
-                                <div className="flex flex-col gap-2 md:col-span-2">
-                                  <label
-                                    className="font-medium text-sm"
-                                    htmlFor={`live-voice-config-json-${model.id}`}
-                                  >
-                                    Provider config (JSON, optional)
-                                  </label>
-                                  <textarea
-                                    className="min-h-[90px] rounded-md border bg-background px-3 py-2 font-mono text-xs"
-                                    defaultValue={
-                                      model.config
-                                        ? JSON.stringify(model.config, null, 2)
-                                        : ""
-                                    }
-                                    id={`live-voice-config-json-${model.id}`}
-                                    name="configJson"
-                                  />
-                                </div>
-
-                                <div className="flex items-center gap-3">
-                                  <input name="isEnabled" type="hidden" value="false" />
-                                  <input
-                                    className="h-4 w-4"
-                                    defaultChecked={model.isEnabled}
-                                    id={`live-voice-enabled-${model.id}`}
-                                    name="isEnabled"
-                                    type="checkbox"
-                                    value="true"
-                                  />
-                                  <label
-                                    className="font-medium text-sm"
-                                    htmlFor={`live-voice-enabled-${model.id}`}
-                                  >
-                                    Enabled
-                                  </label>
-                                </div>
-
-                                <div className="flex items-center gap-3">
-                                  <input name="enabledOnWeb" type="hidden" value="false" />
-                                  <input
-                                    className="h-4 w-4"
-                                    defaultChecked={model.enabledOnWeb}
-                                    id={`live-voice-web-${model.id}`}
-                                    name="enabledOnWeb"
-                                    type="checkbox"
-                                    value="true"
-                                  />
-                                  <label
-                                    className="font-medium text-sm"
-                                    htmlFor={`live-voice-web-${model.id}`}
-                                  >
-                                    Web app
-                                  </label>
-                                </div>
-
-                                <div className="flex items-center gap-3">
-                                  <input
-                                    name="enabledOnNative"
-                                    type="hidden"
-                                    value="false"
-                                  />
-                                  <input
-                                    className="h-4 w-4"
-                                    defaultChecked={model.enabledOnNative}
-                                    id={`live-voice-native-${model.id}`}
-                                    name="enabledOnNative"
-                                    type="checkbox"
-                                    value="true"
-                                  />
-                                  <label
-                                    className="font-medium text-sm"
-                                    htmlFor={`live-voice-native-${model.id}`}
-                                  >
-                                    Native app
-                                  </label>
-                                </div>
-
-                                <div className="flex items-center gap-3">
-                                  <input name="isDefault" type="hidden" value="false" />
-                                  <input
-                                    className="h-4 w-4"
-                                    defaultChecked={model.isDefault}
-                                    id={`live-voice-default-${model.id}`}
-                                    name="isDefault"
-                                    type="checkbox"
-                                    value="true"
-                                  />
-                                  <label
-                                    className="font-medium text-sm"
-                                    htmlFor={`live-voice-default-${model.id}`}
-                                  >
-                                    Default live voice model
-                                  </label>
-                                </div>
-
-                                <div className="flex justify-end md:col-span-2">
-                                  <SettingsSubmitButton
-                                    pendingLabel="Saving..."
-                                    successMessage="Live voice model updated."
-                                  >
-                                    Save changes
-                                  </SettingsSubmitButton>
-                                </div>
-                              </form>
-
-                              <div className="flex flex-wrap gap-3 md:col-span-2">
-                                {!model.isDefault && (
-                                  <form action={setDefaultLiveVoiceModelConfigAction}>
-                                    <input name="id" type="hidden" value={model.id} />
-                                    <SettingsSubmitButton
-                                      pendingLabel="Updating..."
-                                      size="sm"
-                                      variant="outline"
-                                    >
-                                      Set as default
-                                    </SettingsSubmitButton>
-                                  </form>
-                                )}
-
-                                <form action={deleteLiveVoiceModelConfigAction}>
-                                  <input name="id" type="hidden" value={model.id} />
-                                  <SettingsSubmitButton
-                                    className="border border-destructive text-destructive hover:bg-destructive/10"
-                                    pendingLabel="Soft deleting..."
-                                    size="sm"
-                                    variant="outline"
-                                  >
-                                    Soft delete
-                                  </SettingsSubmitButton>
-                                </form>
-                              </div>
-                            </div>
-                          </details>
-                        );
-                      })
-                    )}
-                  </div>
-
-                  {deletedLiveVoiceModels.length > 0 && (
-                    <div className="mt-8 space-y-3">
-                      <h3 className="font-semibold text-muted-foreground text-sm">
-                        Deleted live voice models
-                      </h3>
-                      <div className="grid gap-2">
-                        {deletedLiveVoiceModels.map((model) => (
-                          <div
-                            className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-3 text-sm shadow-sm"
-                            key={model.id}
-                          >
-                            <div className="flex flex-col">
-                              <span className="font-medium">{model.displayName}</span>
-                              <span className="text-muted-foreground text-xs">
-                                Deleted{" "}
-                                {model.deletedAt
-                                  ? formatDistanceToNow(new Date(model.deletedAt), {
-                                      addSuffix: true,
-                                    })
-                                  : "recently"}
-                              </span>
-                            </div>
-                            <form action={hardDeleteLiveVoiceModelConfigAction}>
-                              <input name="id" type="hidden" value={model.id} />
-                              <SettingsSubmitButton
-                                pendingLabel="Hard deleting..."
-                                size="sm"
-                                variant="destructive"
-                              >
-                                Hard delete
-                              </SettingsSubmitButton>
-                            </form>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </CollapsibleSection>
-              </div>
-            </CollapsibleSection>
-
-            <CollapsibleSection
-              description="Choose which text model translates Khasi prompts to English during image generation."
-              title="Image prompt translation model"
-            >
-              <form
-                action={setImagePromptTranslationModelAction}
-                className="grid gap-4 md:grid-cols-2"
-              >
-                <div className="flex flex-col gap-2 md:col-span-2">
-                  <label
-                    className="font-medium text-sm"
-                    htmlFor="imagePromptTranslationModel"
-                  >
-                    Translation model
-                  </label>
-                  <select
-                    className="rounded-md border bg-background px-3 py-2 text-sm"
-                    defaultValue={imagePromptTranslationModel?.id ?? ""}
-                    id="imagePromptTranslationModel"
-                    name="modelId"
-                  >
-                    <option value="">
-                      Use server default translation model
-                    </option>
-                    {enabledModels.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.displayName} ({model.provider})
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-muted-foreground text-xs">
-                    Only enabled models are available. Selecting a model here
-                    overrides the default translation model.
-                  </p>
-                </div>
-
-                <div className="flex justify-end md:col-span-2">
-                  <SettingsSubmitButton pendingLabel="Saving...">
-                    Save translation model
-                  </SettingsSubmitButton>
-                </div>
-              </form>
-
-              <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-xs sm:text-sm">
-                <h4 className="font-semibold text-foreground text-sm">
-                  Current selection
-                </h4>
-                {imagePromptTranslationModel ? (
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <span className="font-medium">
-                      {imagePromptTranslationModel.displayName}
-                    </span>
-                    <ProviderBadge value={imagePromptTranslationModel.provider} />
-                    <EnabledBadge
-                      enabled={imagePromptTranslationModel.isEnabled}
-                    />
-                    <span className="font-mono text-muted-foreground text-xs">
-                      {imagePromptTranslationModel.providerModelId}
-                    </span>
-                  </div>
-                ) : (
-                  <p className="mt-2 text-muted-foreground">
-                    Using the server default translation model.
-                  </p>
-                )}
-              </div>
-            </CollapsibleSection>
-
-            <CollapsibleSection
-              description="Add Google Nano Banana or another image generation model."
-              title="Add image generation model"
-            >
-              <form
-                action={createImageModelConfigAction}
-                className="grid gap-4 md:grid-cols-2"
-              >
-            <div className="flex flex-col gap-2">
-              <label className="font-medium text-sm" htmlFor="imageModelKey">
-                Model key
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                id="imageModelKey"
-                name="key"
-                placeholder="google-nano-banana"
-                required
-              />
-              <p className="text-muted-foreground text-xs">
-                Internal identifier that must be unique.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label className="font-medium text-sm" htmlFor="imageProvider">
-                Provider
-              </label>
-              <select
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                defaultValue="google"
-                id="imageProvider"
-                name="provider"
-                required
-              >
-                {PROVIDER_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label
-                className="font-medium text-sm"
-                htmlFor="imageProviderModelId"
-              >
-                Provider model ID
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                id="imageProviderModelId"
-                name="providerModelId"
-                placeholder="gemini-2.5-flash-image-preview"
-                required
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label
-                className="font-medium text-sm"
-                htmlFor="imageDisplayName"
-              >
-                Display name
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                id="imageDisplayName"
-                name="displayName"
-                placeholder="Nano Banana (Image)"
-                required
-              />
-            </div>
-
-            <div className="flex flex-col gap-2 md:col-span-2">
-              <label className="font-medium text-sm" htmlFor="imageDescription">
-                Description
-              </label>
-              <textarea
-                className="min-h-[60px] rounded-md border bg-background px-3 py-2 text-sm"
-                id="imageDescription"
-                name="description"
-                placeholder="Explain what this image model is best suited for."
-              />
-            </div>
-
-            <div className="flex items-center gap-3">
-              <input
-                className="h-4 w-4"
-                defaultChecked
-                id="imageIsEnabled"
-                name="isEnabled"
-                type="checkbox"
-              />
-              <label className="font-medium text-sm" htmlFor="imageIsEnabled">
-                Enable immediately
-              </label>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <input
-                className="h-4 w-4"
-                id="imageIsActive"
-                name="isActive"
-                type="checkbox"
-              />
-              <label className="font-medium text-sm" htmlFor="imageIsActive">
-                Set as active image model
-              </label>
-            </div>
-
-            <div className="flex justify-end md:col-span-2">
-              <SettingsSubmitButton
-                pendingLabel="Creating..."
-                refreshOnSuccess={true}
-                successMessage="Image model configuration created."
-              >
-                Create image model
-              </SettingsSubmitButton>
-            </div>
-              </form>
-            </CollapsibleSection>
-
-            <CollapsibleSection title="Configured image models">
-              <div className="space-y-6">
-                {activeImageModels.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">
-                    No image models configured yet.
-                  </p>
-                ) : (
-                  activeImageModels.map((model) => {
-                return (
-                  <details
-                    className="rounded-md border bg-background p-4"
-                    key={model.id}
-                  >
-                    <summary className="flex cursor-pointer flex-col gap-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{model.displayName}</span>
-                        <ProviderBadge value={model.provider} />
-                        <EnabledBadge enabled={model.isEnabled} />
-                        <ActiveBadge active={model.isActive} />
-                      </div>
-                      <span className="font-mono text-muted-foreground text-xs">
-                        {model.providerModelId}
-                      </span>
-                    </summary>
-
-                    <div className="mt-4 grid gap-4 md:grid-cols-2">
-                      <form
-                        action={updateImageModelConfigAction}
-                        className="grid gap-4 md:col-span-2 md:grid-cols-2"
-                      >
-                        <input name="id" type="hidden" value={model.id} />
-
-                        <div className="flex flex-col gap-2">
-                          <label
-                            className="font-medium text-sm"
-                            htmlFor={`image-model-display-name-${model.id}`}
-                          >
-                            Display name
-                          </label>
-                          <input
-                            className="rounded-md border bg-background px-3 py-2 text-sm"
-                            defaultValue={model.displayName}
-                            id={`image-model-display-name-${model.id}`}
-                            name="displayName"
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                          <label
-                            className="font-medium text-sm"
-                            htmlFor={`image-model-provider-${model.id}`}
-                          >
-                            Provider
-                          </label>
-                          <select
-                            className="rounded-md border bg-background px-3 py-2 text-sm"
-                            defaultValue={model.provider}
-                            id={`image-model-provider-${model.id}`}
-                            name="provider"
-                          >
-                            {PROVIDER_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                          <label
-                            className="font-medium text-sm"
-                            htmlFor={`image-model-provider-id-${model.id}`}
-                          >
-                            Provider model ID
-                          </label>
-                          <input
-                            className="rounded-md border bg-background px-3 py-2 text-sm"
-                            defaultValue={model.providerModelId}
-                            id={`image-model-provider-id-${model.id}`}
-                            name="providerModelId"
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-2 md:col-span-2">
-                          <label
-                            className="font-medium text-sm"
-                            htmlFor={`image-model-description-${model.id}`}
-                          >
-                            Description
-                          </label>
-                          <textarea
-                            className="min-h-[60px] rounded-md border bg-background px-3 py-2 text-sm"
-                            defaultValue={model.description}
-                            id={`image-model-description-${model.id}`}
-                            name="description"
-                          />
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          <input
-                            name="isEnabled"
-                            type="hidden"
-                            value="false"
-                          />
-                          <input
-                            className="h-4 w-4"
-                            defaultChecked={model.isEnabled}
-                            id={`image-model-enabled-${model.id}`}
-                            name="isEnabled"
-                            type="checkbox"
-                            value="true"
-                          />
-                          <label
-                            className="font-medium text-sm"
-                            htmlFor={`image-model-enabled-${model.id}`}
-                          >
-                            Enabled
-                          </label>
-                        </div>
-
-                        <div className="flex justify-end md:col-span-2">
-                          <SettingsSubmitButton
-                            pendingLabel="Saving..."
-                            successMessage="Image model updated."
-                          >
-                            Save changes
-                          </SettingsSubmitButton>
-                        </div>
-                      </form>
-
-                      <div className="flex flex-wrap gap-3 md:col-span-2">
-                        {!model.isActive && (
-                          <form action={setActiveImageModelConfigAction}>
-                            <input name="id" type="hidden" value={model.id} />
-                            <SettingsSubmitButton
-                              pendingLabel="Updating..."
-                              size="sm"
-                              variant="outline"
-                            >
-                              Set as active
-                            </SettingsSubmitButton>
-                          </form>
-                        )}
-
-                        <form action={deleteImageModelConfigAction}>
-                          <input name="id" type="hidden" value={model.id} />
-                          <SettingsSubmitButton
-                            className="border border-destructive text-destructive hover:bg-destructive/10"
-                            pendingLabel="Soft deleting..."
-                            size="sm"
-                            variant="outline"
-                          >
-                            Soft delete
-                          </SettingsSubmitButton>
-                        </form>
-                      </div>
-                    </div>
-                  </details>
-                );
-              })
-            )}
-              </div>
-
-              {deletedImageModels.length > 0 && (
-                <div className="mt-8 space-y-3">
-                  <h3 className="font-semibold text-muted-foreground text-sm">
-                    Deleted image models
-                  </h3>
-                  <div className="grid gap-2">
-                    {deletedImageModels.map((model) => (
-                      <div
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-3 text-sm shadow-sm"
-                        key={model.id}
-                      >
-                        <div className="flex flex-col">
-                          <span className="font-medium">
-                            {model.displayName}
-                          </span>
-                          <span className="text-muted-foreground text-xs">
-                            Deleted{" "}
-                            {model.deletedAt
-                              ? formatDistanceToNow(new Date(model.deletedAt), {
-                                  addSuffix: true,
-                                })
-                              : "recently"}
-                          </span>
-                        </div>
-                        <form action={hardDeleteImageModelConfigAction}>
-                          <input name="id" type="hidden" value={model.id} />
-                          <SettingsSubmitButton
-                            pendingLabel="Hard deleting..."
-                            size="sm"
-                            variant="destructive"
-                          >
-                            Hard delete
-                          </SettingsSubmitButton>
-                        </form>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </CollapsibleSection>
-          </div>
-        </CollapsibleSection>
       </div>
     </>
   );

@@ -86,6 +86,14 @@ test.describe("admin pricing loading isolation", () => {
     );
     expect(modelTableSource).toContain("loadWarning");
     expect(modelTableSource).toContain("modelsConfirmed");
+    expect(modelTableSource).toContain('translate("admin.pricing.add_model"');
+    expect(modelTableSource).toContain("<DropdownMenuTrigger asChild>");
+    expect(modelTableSource).toContain("deleteModelConfigAction");
+    expect(modelTableSource).toContain("setActiveImageModelConfigAction");
+    expect(modelTableSource).toContain("setDefaultLiveVoiceModelConfigAction");
+    expect(pricingSource).toContain("<ChatModelConfigurationForm");
+    expect(pricingSource).toContain("<ImageModelConfigurationForm");
+    expect(pricingSource).toContain("<LiveVoiceModelConfigurationForm");
     expect(settingsSource).not.toContain("ImageModelPricingFields");
     expect(settingsSource).not.toContain("LiveVoiceProfitabilityFields");
     expect(settingsSource).not.toContain(
@@ -98,5 +106,29 @@ test.describe("admin pricing loading isolation", () => {
     expect(settingsSource).not.toContain('name="markupMultiplier"');
     expect(settingsSource).not.toContain("listPricingPlans");
     expect(settingsSource).not.toContain("getUsdToInrRate");
+    expect(settingsSource).not.toContain('title="Models"');
+    expect(settingsSource).not.toContain("createModelConfigAction");
+    expect(settingsSource).not.toContain("createImageModelConfigAction");
+    expect(settingsSource).not.toContain("createLiveVoiceModelConfigAction");
+  });
+
+  test("uses active-first sorting and confirmation menus for pricing plans", async () => {
+    const [pageSource, tableSource] = await Promise.all([
+      readWorkspaceFile("app/(admin)/admin/pricing/page.tsx"),
+      readWorkspaceFile(
+        "app/(admin)/admin/pricing/pricing-management-table.tsx"
+      ),
+    ]);
+
+    expect(pageSource).toContain(
+      "Number(right.isActive) - Number(left.isActive)"
+    );
+    expect(pageSource).toContain(
+      "Number(right.isEnabled) - Number(left.isEnabled)"
+    );
+    expect(tableSource).toContain("<MoreVertical");
+    expect(tableSource).toContain('setDialogMode("delete")');
+    expect(tableSource).toContain("deletePricingPlanAction");
+    expect(tableSource).toContain("Delete pricing plan?");
   });
 });
