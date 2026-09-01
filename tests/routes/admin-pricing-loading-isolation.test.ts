@@ -91,6 +91,7 @@ test.describe("admin pricing loading isolation", () => {
     expect(modelTableSource).toContain("deleteModelConfigAction");
     expect(modelTableSource).toContain("setActiveImageModelConfigAction");
     expect(modelTableSource).toContain("setDefaultLiveVoiceModelConfigAction");
+    expect(modelTableSource).toContain("<div key={createType}>");
     expect(pricingSource).toContain("<ChatModelConfigurationForm");
     expect(pricingSource).toContain("<ImageModelConfigurationForm");
     expect(pricingSource).toContain("<LiveVoiceModelConfigurationForm");
