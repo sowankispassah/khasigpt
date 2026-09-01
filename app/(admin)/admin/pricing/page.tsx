@@ -20,7 +20,11 @@ import {
   ADMIN_SETTINGS_PRICING_CACHE_TAG,
 } from "@/lib/admin/cache-invalidation";
 import { resolveAdminDbReadGroup } from "@/lib/admin/db-read-concurrency";
-import { adminQueryResult, getAdminQueryTimeoutMs } from "@/lib/admin/safe-query";
+import {
+  type AdminQueryResult,
+  adminQueryResult,
+  getAdminQueryTimeoutMs,
+} from "@/lib/admin/safe-query";
 import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
 import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import {
@@ -30,13 +34,12 @@ import {
 } from "@/lib/billing/cost-plus";
 import { PRICING_PLAN_CACHE_TAG, RECOMMENDED_PRICING_PLAN_SETTING_KEY, TOKENS_PER_CREDIT } from "@/lib/constants";
 import {
+  type AdminModelPricingSnapshotRow,
   getAppSetting,
   getTranslationValuesForKeys,
+  listAdminModelPricingSnapshot,
   listAdminPricingPlans,
-  listImageModelConfigs,
   listLanguagesWithSettings,
-  listLiveVoiceModelConfigs,
-  listModelConfigs,
   type listPricingPlans,
 } from "@/lib/db/queries";
 import { getFallbackUsdToInrRate, getUsdToInrRate } from "@/lib/services/exchange-rate";
@@ -66,49 +69,17 @@ const listAdminPricingPlansCached = unstable_cache(
   }
 );
 
-const listAdminChatPricingModelsCached = unstable_cache(
-  () =>
-    listModelConfigs({
-      includeDisabled: true,
-      includeDeleted: false,
-      limit: 200,
-    }),
-  ["admin-pricing:chat-models:v1"],
-  {
-    revalidate: ADMIN_PRICING_LIST_CACHE_REVALIDATE_SECONDS,
-    tags: [ADMIN_SETTINGS_MODELS_CACHE_TAG, MODEL_REGISTRY_CACHE_TAG],
-  }
-);
-
-const listAdminImagePricingModelsCached = unstable_cache(
-  () =>
-    listImageModelConfigs({
-      includeDisabled: true,
-      includeDeleted: false,
-      limit: 200,
-    }),
-  ["admin-pricing:image-models:v1"],
+const listAdminModelPricingSnapshotCached = unstable_cache(
+  () => listAdminModelPricingSnapshot(),
+  ["admin-pricing:model-snapshot:v1"],
   {
     revalidate: ADMIN_PRICING_LIST_CACHE_REVALIDATE_SECONDS,
     tags: [
+      ADMIN_SETTINGS_MODELS_CACHE_TAG,
       ADMIN_SETTINGS_IMAGE_MODELS_CACHE_TAG,
-      IMAGE_MODEL_REGISTRY_CACHE_TAG,
-    ],
-  }
-);
-
-const listAdminLiveVoicePricingModelsCached = unstable_cache(
-  () =>
-    listLiveVoiceModelConfigs({
-      includeDisabled: true,
-      includeDeleted: false,
-      limit: 200,
-    }),
-  ["admin-pricing:live-voice-models:v1"],
-  {
-    revalidate: ADMIN_PRICING_LIST_CACHE_REVALIDATE_SECONDS,
-    tags: [
       ADMIN_SETTINGS_LIVE_VOICE_MODELS_CACHE_TAG,
+      MODEL_REGISTRY_CACHE_TAG,
+      IMAGE_MODEL_REGISTRY_CACHE_TAG,
       LIVE_VOICE_MODEL_CONFIG_CACHE_TAG,
     ],
   }
@@ -141,11 +112,11 @@ function toIsoString(value: Date | string | null | undefined) {
 }
 
 function buildModelCostPreviews(
-  models: Awaited<ReturnType<typeof listModelConfigs>>,
+  models: AdminModelPricingSnapshotRow[],
   usdToInr: number
 ) {
   return models
-    .filter((model) => !model.deletedAt && model.isEnabled)
+    .filter((model) => model.type === "chat" && model.isEnabled)
     .map<ModelCostPreview>((model) => {
       const providerCostPerMillionUsd =
         Number(model.inputProviderCostPerMillion ?? 0) +
@@ -282,7 +253,7 @@ function serializePlans({
 }: {
   activePlans: PricingPlans;
   baselineModel: ModelCostPreview | null;
-  models: Awaited<ReturnType<typeof listModelConfigs>>;
+  models: AdminModelPricingSnapshotRow[];
   recommendedPlanId: string | null;
   usdToInr: number;
 }) {
@@ -337,13 +308,10 @@ function serializePlans({
   });
 }
 
-type ChatPricingModel = Awaited<ReturnType<typeof listModelConfigs>>[number];
-type ImagePricingModel = Awaited<
-  ReturnType<typeof listImageModelConfigs>
->[number];
-type LiveVoicePricingModel = Awaited<
-  ReturnType<typeof listLiveVoiceModelConfigs>
->[number];
+type ModelPricingSnapshot = AdminModelPricingSnapshotRow[];
+type ModelPricingSnapshotPromise = Promise<
+  AdminQueryResult<ModelPricingSnapshot>
+>;
 
 function creditsForCharge(customerChargeInr: number, walletUnitsPerInr: number) {
   if (customerChargeInr <= 0 || walletUnitsPerInr <= 0) {
@@ -353,20 +321,16 @@ function creditsForCharge(customerChargeInr: number, walletUnitsPerInr: number) 
 }
 
 function buildModelPricingRows({
-  chatModels,
-  imageModels,
-  liveVoiceModels,
+  modelSnapshot,
   usdToInr,
   walletUnitsPerInr,
 }: {
-  chatModels: ChatPricingModel[];
-  imageModels: ImagePricingModel[];
-  liveVoiceModels: LiveVoicePricingModel[];
+  modelSnapshot: ModelPricingSnapshot;
   usdToInr: number;
   walletUnitsPerInr: number;
 }): ModelPricingRow[] {
-  const chatRows = chatModels
-    .filter((model) => !model.deletedAt)
+  const chatRows = modelSnapshot
+    .filter((model) => model.type === "chat")
     .map<ModelPricingRow>((model) => {
       const markup = normalizeMarkupMultiplier(model.markupMultiplier, 4);
       const providerInputCostUsd = Math.max(
@@ -406,8 +370,8 @@ function buildModelPricingRows({
       };
     });
 
-  const imageRows = imageModels
-    .filter((model) => !model.deletedAt)
+  const imageRows = modelSnapshot
+    .filter((model) => model.type === "image")
     .map<ModelPricingRow>((model) => {
       const markup = normalizeMarkupMultiplier(model.markupMultiplier, 2);
       const providerOutputCostUsd = Math.max(
@@ -438,8 +402,8 @@ function buildModelPricingRows({
       };
     });
 
-  const voiceRows = liveVoiceModels
-    .filter((model) => !model.deletedAt)
+  const voiceRows = modelSnapshot
+    .filter((model) => model.type === "live_voice")
     .map<ModelPricingRow>((model) => {
       const markup = normalizeMarkupMultiplier(model.markupMultiplier, 3);
       const providerInputCostUsd = Math.max(
@@ -553,7 +517,11 @@ function PricingMarkupField({
   );
 }
 
-function ChatModelPricingForm({ model }: { model: ChatPricingModel }) {
+function ChatModelPricingForm({
+  model,
+}: {
+  model: AdminModelPricingSnapshotRow;
+}) {
   const prefix = `chat-model-pricing-${model.id}`;
   return (
     <form action={updateChatModelPricingAction} className="grid gap-4 md:grid-cols-2">
@@ -585,7 +553,11 @@ function ChatModelPricingForm({ model }: { model: ChatPricingModel }) {
   );
 }
 
-function ImageModelPricingForm({ model }: { model: ImagePricingModel }) {
+function ImageModelPricingForm({
+  model,
+}: {
+  model: AdminModelPricingSnapshotRow;
+}) {
   const prefix = `image-model-pricing-${model.id}`;
   return (
     <form action={updateImageModelPricingAction} className="grid gap-4 md:grid-cols-2">
@@ -609,7 +581,11 @@ function ImageModelPricingForm({ model }: { model: ImagePricingModel }) {
   );
 }
 
-function LiveVoiceModelPricingForm({ model }: { model: LiveVoicePricingModel }) {
+function LiveVoiceModelPricingForm({
+  model,
+}: {
+  model: AdminModelPricingSnapshotRow;
+}) {
   const prefix = `voice-model-pricing-${model.id}`;
   return (
     <form action={updateLiveVoiceModelPricingAction} className="grid gap-4 md:grid-cols-2">
@@ -663,9 +639,11 @@ function buildDeletedForms(deletedPlans: PricingPlans) {
 async function PricingManagementContent({
   activePlans,
   deletedPlans,
+  modelPricingSnapshotPromise,
 }: {
   activePlans: PricingPlans;
   deletedPlans: PricingPlans;
+  modelPricingSnapshotPromise: ModelPricingSnapshotPromise;
 }) {
   const queryTimeoutMs = getAdminQueryTimeoutMs(3500);
   const exchangeRateStatePromise = adminQueryResult({
@@ -674,8 +652,7 @@ async function PricingManagementContent({
     promise: withTimeout(getUsdToInrRate(), 1200),
     timeoutMs: queryTimeoutMs,
   });
-  const [recommendedState, modelsState, languagesState] =
-    await resolveAdminDbReadGroup([
+  const [recommendedState, languagesState] = await resolveAdminDbReadGroup([
       () =>
         adminQueryResult({
           fallback: null as string | null,
@@ -683,13 +660,6 @@ async function PricingManagementContent({
           promise: getAppSetting<string | null>(
             RECOMMENDED_PRICING_PLAN_SETTING_KEY
           ),
-          timeoutMs: queryTimeoutMs,
-        }),
-      () =>
-        adminQueryResult({
-          fallback: [] as Awaited<ReturnType<typeof listModelConfigs>>,
-          label: "pricing.provider-costs",
-          promise: listAdminChatPricingModelsCached(),
           timeoutMs: queryTimeoutMs,
         }),
       () =>
@@ -702,7 +672,10 @@ async function PricingManagementContent({
           timeoutMs: queryTimeoutMs,
         }),
     ]);
-  const exchangeRateState = await exchangeRateStatePromise;
+  const [exchangeRateState, modelsState] = await Promise.all([
+    exchangeRateStatePromise,
+    modelPricingSnapshotPromise,
+  ]);
   const recommendedPlanId = activePlans.some(
     (plan) => plan.id === recommendedState.data
   )
@@ -860,7 +833,13 @@ function PricingManagementLoading({
   );
 }
 
-async function ModelPricingContent({ activePlans }: { activePlans: PricingPlans }) {
+async function ModelPricingContent({
+  activePlans,
+  modelPricingSnapshotPromise,
+}: {
+  activePlans: PricingPlans;
+  modelPricingSnapshotPromise: ModelPricingSnapshotPromise;
+}) {
   const queryTimeoutMs = getAdminQueryTimeoutMs(3500);
   const exchangeRatePromise = adminQueryResult({
     fallback: { rate: getFallbackUsdToInrRate(), fetchedAt: new Date() },
@@ -868,64 +847,48 @@ async function ModelPricingContent({ activePlans }: { activePlans: PricingPlans 
     promise: withTimeout(getUsdToInrRate(), 1200),
     timeoutMs: queryTimeoutMs,
   });
-  const [chatState, imageState, liveVoiceState] =
-    await resolveAdminDbReadGroup([
-      () =>
-        adminQueryResult({
-          fallback: [] as ChatPricingModel[],
-          label: "pricing.model-pricing.chat",
-          promise: listAdminChatPricingModelsCached(),
-          timeoutMs: queryTimeoutMs,
-        }),
-      () =>
-        adminQueryResult({
-          fallback: [] as ImagePricingModel[],
-          label: "pricing.model-pricing.image",
-          promise: listAdminImagePricingModelsCached(),
-          timeoutMs: queryTimeoutMs,
-        }),
-      () =>
-        adminQueryResult({
-          fallback: [] as LiveVoicePricingModel[],
-          label: "pricing.model-pricing.live-voice",
-          promise: listAdminLiveVoicePricingModelsCached(),
-          timeoutMs: queryTimeoutMs,
-        }),
-    ]);
-  const exchangeRateState = await exchangeRatePromise;
+  const [exchangeRateState, modelsState] = await Promise.all([
+    exchangeRatePromise,
+    modelPricingSnapshotPromise,
+  ]);
   const usdToInr = exchangeRateState.data.rate;
   const basePlan = selectBaseCreditPlan(
     activePlans.filter((plan) => plan.isActive && !plan.deletedAt)
   );
   const walletUnitsPerInr = calculateWalletUnitsPerInr(basePlan);
   const models = buildModelPricingRows({
-    chatModels: chatState.data,
-    imageModels: imageState.data,
-    liveVoiceModels: liveVoiceState.data,
+    modelSnapshot: modelsState.data,
     usdToInr,
     walletUnitsPerInr,
   });
+  const chatModels = modelsState.data.filter((model) => model.type === "chat");
+  const imageModels = modelsState.data.filter(
+    (model) => model.type === "image"
+  );
+  const liveVoiceModels = modelsState.data.filter(
+    (model) => model.type === "live_voice"
+  );
   const editForms: Record<string, ReactNode> = {
     ...Object.fromEntries(
-      chatState.data.map((model) => [
+      chatModels.map((model) => [
         `chat:${model.id}`,
         <ChatModelPricingForm key={model.id} model={model} />,
       ])
     ),
     ...Object.fromEntries(
-      imageState.data.map((model) => [
+      imageModels.map((model) => [
         `image:${model.id}`,
         <ImageModelPricingForm key={model.id} model={model} />,
       ])
     ),
     ...Object.fromEntries(
-      liveVoiceState.data.map((model) => [
+      liveVoiceModels.map((model) => [
         `live_voice:${model.id}`,
         <LiveVoiceModelPricingForm key={model.id} model={model} />,
       ])
     ),
   };
-  const modelsConfirmed = chatState.ok && imageState.ok && liveVoiceState.ok;
+  const modelsConfirmed = modelsState.ok;
 
   return (
     <ModelPricingManagementTable
@@ -979,6 +942,12 @@ export default async function AdminPricingPage({
   });
   const activePlans = plansState.data.filter((plan) => !plan.deletedAt);
   const deletedPlans = plansState.data.filter((plan) => Boolean(plan.deletedAt));
+  const modelPricingSnapshotPromise = adminQueryResult({
+    fallback: [] as ModelPricingSnapshot,
+    label: "pricing.model-snapshot",
+    promise: listAdminModelPricingSnapshotCached(),
+    timeoutMs: queryTimeoutMs,
+  });
 
   return (
     <div className="flex flex-col gap-6">
@@ -1007,6 +976,7 @@ export default async function AdminPricingPage({
           <PricingManagementContent
             activePlans={activePlans}
             deletedPlans={deletedPlans}
+            modelPricingSnapshotPromise={modelPricingSnapshotPromise}
           />
         </Suspense>
       ) : (
@@ -1043,7 +1013,10 @@ export default async function AdminPricingPage({
           </p>
         </div>
         <Suspense fallback={<ModelPricingLoading activePlans={activePlans} />}>
-          <ModelPricingContent activePlans={activePlans} />
+          <ModelPricingContent
+            activePlans={activePlans}
+            modelPricingSnapshotPromise={modelPricingSnapshotPromise}
+          />
         </Suspense>
       </section>
     </div>

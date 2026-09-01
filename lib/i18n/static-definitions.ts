@@ -4926,8 +4926,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
     key: "admin.pricing.models_partial",
     defaultText:
-      "Some model types could not be loaded. Available rows remain editable; retry before assuming the list is complete.",
-    description: "Warning when only part of model pricing loads.",
+      "Model pricing or exchange-rate details could not be confirmed. Available rows remain editable; retry before changing model costs.",
+    description: "Warning when model pricing or its exchange-rate preview is degraded.",
   },
   {
     key: "admin.pricing.models_retry",

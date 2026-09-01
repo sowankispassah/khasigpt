@@ -152,7 +152,7 @@ export function ModelPricingManagementTable({
         <p className="rounded-lg border border-amber-300/60 bg-amber-50/50 p-3 text-amber-900 text-sm dark:bg-amber-950/20 dark:text-amber-100">
           {translate(
             "admin.pricing.models_partial",
-            "Some model types could not be loaded. Available rows remain editable; retry before assuming the list is complete."
+            "Model pricing or exchange-rate details could not be confirmed. Available rows remain editable; retry before changing model costs."
           )}
         </p>
       ) : null}

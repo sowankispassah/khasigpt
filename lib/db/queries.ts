@@ -8488,6 +8488,97 @@ type PricingPlanListOptions = {
   limit?: number;
 };
 
+export type AdminModelPricingSnapshotRow = {
+  displayName: string;
+  id: string;
+  inputProviderCostPerMillion: number | null;
+  isEnabled: boolean;
+  isMarginBaseline: boolean;
+  markupMultiplier: number;
+  outputProviderCostPerMillion: number | null;
+  provider: string;
+  providerCostPerOutputUsd: number | null;
+  providerModelId: string;
+  type: "chat" | "image" | "live_voice";
+  updatedAt: Date;
+};
+
+export async function listAdminModelPricingSnapshot(): Promise<
+  AdminModelPricingSnapshotRow[]
+> {
+  try {
+    return await withAdminDatabase(
+      "pricing.model-snapshot",
+      async (adminDb) => {
+        const rows = await adminDb.execute<AdminModelPricingSnapshotRow>(sql`
+          SELECT
+            'chat'::text AS "type",
+            ${modelConfig.id} AS "id",
+            ${modelConfig.displayName} AS "displayName",
+            ${modelConfig.providerModelId} AS "providerModelId",
+            ${modelConfig.provider}::text AS "provider",
+            ${modelConfig.isEnabled} AS "isEnabled",
+            ${modelConfig.inputProviderCostPerMillion} AS "inputProviderCostPerMillion",
+            ${modelConfig.outputProviderCostPerMillion} AS "outputProviderCostPerMillion",
+            NULL::double precision AS "providerCostPerOutputUsd",
+            ${modelConfig.markupMultiplier} AS "markupMultiplier",
+            ${modelConfig.isMarginBaseline} AS "isMarginBaseline",
+            ${modelConfig.updatedAt} AS "updatedAt"
+          FROM ${modelConfig}
+          WHERE ${modelConfig.deletedAt} IS NULL
+
+          UNION ALL
+
+          SELECT
+            'image'::text AS "type",
+            ${imageModelConfig.id} AS "id",
+            ${imageModelConfig.displayName} AS "displayName",
+            ${imageModelConfig.providerModelId} AS "providerModelId",
+            ${imageModelConfig.provider}::text AS "provider",
+            ${imageModelConfig.isEnabled} AS "isEnabled",
+            NULL::double precision AS "inputProviderCostPerMillion",
+            NULL::double precision AS "outputProviderCostPerMillion",
+            ${imageModelConfig.providerCostPerOutputUsd} AS "providerCostPerOutputUsd",
+            ${imageModelConfig.markupMultiplier} AS "markupMultiplier",
+            false AS "isMarginBaseline",
+            ${imageModelConfig.updatedAt} AS "updatedAt"
+          FROM ${imageModelConfig}
+          WHERE ${imageModelConfig.deletedAt} IS NULL
+
+          UNION ALL
+
+          SELECT
+            'live_voice'::text AS "type",
+            ${liveVoiceModelConfig.id} AS "id",
+            ${liveVoiceModelConfig.displayName} AS "displayName",
+            ${liveVoiceModelConfig.providerModelId} AS "providerModelId",
+            ${liveVoiceModelConfig.provider}::text AS "provider",
+            ${liveVoiceModelConfig.isEnabled} AS "isEnabled",
+            ${liveVoiceModelConfig.inputProviderCostPerMillion} AS "inputProviderCostPerMillion",
+            ${liveVoiceModelConfig.outputProviderCostPerMillion} AS "outputProviderCostPerMillion",
+            NULL::double precision AS "providerCostPerOutputUsd",
+            ${liveVoiceModelConfig.markupMultiplier} AS "markupMultiplier",
+            false AS "isMarginBaseline",
+            ${liveVoiceModelConfig.updatedAt} AS "updatedAt"
+          FROM ${liveVoiceModelConfig}
+          WHERE ${liveVoiceModelConfig.deletedAt} IS NULL
+
+          ORDER BY "displayName"
+          LIMIT 600
+        `);
+
+        return Array.from(rows);
+      }
+    );
+  } catch (error) {
+    console.error("listAdminModelPricingSnapshot failed", error);
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to list the admin model pricing snapshot"
+    );
+  }
+}
+
 export async function listAdminPricingPlans({
   includeInactive = false,
   includeDeleted = false,

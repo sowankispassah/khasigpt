@@ -27,7 +27,7 @@ test.describe("admin pricing loading isolation", () => {
     );
   });
 
-  test("uses the recoverable admin database for the critical plan list", async () => {
+  test("uses the recoverable admin database for pricing reads", async () => {
     const [pageSource, querySource] = await Promise.all([
       readWorkspaceFile("app/(admin)/admin/pricing/page.tsx"),
       readWorkspaceFile("lib/db/queries.ts"),
@@ -40,6 +40,8 @@ test.describe("admin pricing loading isolation", () => {
     expect(querySource).toContain(
       'withAdminDatabase("pricing.plans", async (adminDb) => {'
     );
+    expect(querySource).toContain('"pricing.model-snapshot"');
+    expect(querySource).toContain("UNION ALL");
   });
 
   test("does not present a failed plan read as a confirmed zero", async () => {
@@ -70,9 +72,18 @@ test.describe("admin pricing loading isolation", () => {
     expect(pricingSource).toContain(
       "<Suspense fallback={<ModelPricingLoading activePlans={activePlans} />}>"
     );
-    expect(pricingSource).toContain("listAdminChatPricingModelsCached");
-    expect(pricingSource).toContain("listAdminImagePricingModelsCached");
-    expect(pricingSource).toContain("listAdminLiveVoicePricingModelsCached");
+    expect(pricingSource).toContain("listAdminModelPricingSnapshotCached");
+    expect(
+      pricingSource.match(/listAdminModelPricingSnapshotCached\(\)/g)
+    ).toHaveLength(1);
+    expect(pricingSource).toContain(
+      "modelPricingSnapshotPromise={modelPricingSnapshotPromise}"
+    );
+    expect(pricingSource).not.toContain("listAdminChatPricingModelsCached");
+    expect(pricingSource).not.toContain("listAdminImagePricingModelsCached");
+    expect(pricingSource).not.toContain(
+      "listAdminLiveVoicePricingModelsCached"
+    );
     expect(modelTableSource).toContain("loadWarning");
     expect(modelTableSource).toContain("modelsConfirmed");
     expect(settingsSource).not.toContain("ImageModelPricingFields");
