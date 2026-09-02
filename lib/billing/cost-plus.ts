@@ -9,8 +9,7 @@ export type CostPlusCategory =
   | "chat"
   | "image"
   | "web_search"
-  | "live_voice"
-  | "legacy";
+  | "live_voice";
 
 export type UnpricedCostPlusLineItem = {
   category: CostPlusCategory;
@@ -49,6 +48,23 @@ export type CostPlusPreview = {
 function finiteNonNegative(value: unknown) {
   const numeric = typeof value === "number" ? value : Number(value);
   return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+}
+
+export function hasCompleteTokenProviderPricing({
+  inputCostPerMillionUsd,
+  outputCostPerMillionUsd,
+}: {
+  inputCostPerMillionUsd: unknown;
+  outputCostPerMillionUsd: unknown;
+}) {
+  return (
+    finiteNonNegative(inputCostPerMillionUsd) > 0 &&
+    finiteNonNegative(outputCostPerMillionUsd) > 0
+  );
+}
+
+export function hasCompleteUnitProviderPricing(providerCostPerUnitUsd: unknown) {
+  return finiteNonNegative(providerCostPerUnitUsd) > 0;
 }
 
 export function normalizeMarkupMultiplier(

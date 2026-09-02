@@ -74,6 +74,10 @@ function parsePositiveNumber(value: unknown, fallback: number, max: number) {
   return Math.min(parsed, max);
 }
 
+function parseConfiguredPositiveNumber(value: unknown, max: number) {
+  return parsePositiveNumber(value, 0, max);
+}
+
 function parseProvider(value: unknown, fallback: WebSearchProvider) {
   return value === "gemini_grounding" ||
     value === "openai_web_search" ||
@@ -124,19 +128,28 @@ export function resolveWebSearchConfig(
       20
     ),
     providerCostPerCallUsd: {
-      gemini_grounding: parsePositiveNumber(
+      gemini_grounding: parseConfiguredPositiveNumber(
         values.get(WEB_SEARCH_GEMINI_COST_PER_CALL_USD_SETTING_KEY),
-        0.014,
         100
       ),
-      openai_web_search: parsePositiveNumber(
+      openai_web_search: parseConfiguredPositiveNumber(
         values.get(WEB_SEARCH_OPENAI_COST_PER_CALL_USD_SETTING_KEY),
-        0.01,
         100
       ),
     },
     readState,
   };
+}
+
+export function hasWebSearchProviderPricing(
+  config: WebSearchConfig,
+  provider: WebSearchProvider
+) {
+  return (
+    provider !== "disabled" &&
+    parseConfiguredPositiveNumber(config.providerCostPerCallUsd[provider], 100) >
+      0
+  );
 }
 
 const loadCachedWebSearchSettings = unstable_cache(

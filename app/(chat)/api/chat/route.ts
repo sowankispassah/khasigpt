@@ -154,6 +154,7 @@ import {
 } from "@/lib/utils";
 import {
   getWebSearchPlatform,
+  hasWebSearchProviderPricing,
   isWebSearchAllowedForUser,
   loadWebSearchConfig,
 } from "@/lib/web-search/config";
@@ -3230,6 +3231,12 @@ export async function POST(request: Request) {
 
     if (shouldAttemptWebSearch) {
       webSearchAttempted = true;
+      if (!hasWebSearchProviderPricing(webSearchConfig, webSearchConfig.provider)) {
+        throw new ChatSDKError(
+          "bad_request:configuration",
+          "Web search is temporarily unavailable"
+        );
+      }
       if (requiresPaidWebSearchCredits({
         hasActiveCredits,
         testLimitBypass,
@@ -3280,7 +3287,8 @@ export async function POST(request: Request) {
           const fallbackProvider = webSearchConfig.fallbackProvider;
           if (
             fallbackProvider !== "disabled" &&
-            fallbackProvider !== attemptedProvider
+            fallbackProvider !== attemptedProvider &&
+            hasWebSearchProviderPricing(webSearchConfig, fallbackProvider)
           ) {
             attemptedProvider = fallbackProvider;
             try {

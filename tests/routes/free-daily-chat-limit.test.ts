@@ -162,7 +162,7 @@ test.describe("shared free daily chat allowance", () => {
       creditWriteStart
     );
     const creditWriteEnd = databaseQueries.indexOf(
-      "function calculateTokenDeduction",
+      "export type TranslationTableEntry",
       creditWriteStart
     );
     const creditWriteBlock = databaseQueries.slice(
@@ -173,6 +173,7 @@ test.describe("shared free daily chat allowance", () => {
     expect(creditReadBlock).toContain("gt(userSubscription.tokenBalance, 0)");
     expect(creditReadBlock).toContain('eq(userSubscription.status, "active")');
     expect(creditReadBlock).toContain("gt(userSubscription.expiresAt");
+    expect(databaseQueries).not.toContain("function calculateTokenDeduction");
     expect(creditWriteBlock).toContain('eq(userSubscription.status, "active")');
     expect(creditWriteBlock).toContain("gt(userSubscription.expiresAt");
     expect(creditWriteBlock).toContain("lte(userSubscription.expiresAt");

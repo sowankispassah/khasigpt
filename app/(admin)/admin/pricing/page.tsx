@@ -494,7 +494,12 @@ function ImagePromptTranslationModelForm({
   selectedModelId: string | null;
 }) {
   const enabledChatModels = models.filter(
-    (model) => model.type === "chat" && model.isEnabled && !model.deletedAt
+    (model) =>
+      model.type === "chat" &&
+      model.isEnabled &&
+      !model.deletedAt &&
+      Number(model.inputProviderCostPerMillion ?? 0) > 0 &&
+      Number(model.outputProviderCostPerMillion ?? 0) > 0
   );
   return (
     <section className="rounded-xl border bg-card/80 p-4 shadow-sm">
@@ -791,14 +796,20 @@ async function ModelPricingContent({
     ...Object.fromEntries(
       liveVoiceModels.map((model) => [
         `live_voice:${model.id}`,
-        <LiveVoiceModelConfigurationForm key={model.id} model={model} />,
+        <LiveVoiceModelConfigurationForm
+          context={pricingPreviewContext}
+          key={model.id}
+          model={model}
+        />,
       ])
     ),
   };
   const createForms: Record<ModelType, ReactNode> = {
     chat: <ChatModelConfigurationForm context={pricingPreviewContext} />,
     image: <ImageModelConfigurationForm context={pricingPreviewContext} />,
-    live_voice: <LiveVoiceModelConfigurationForm />,
+    live_voice: (
+      <LiveVoiceModelConfigurationForm context={pricingPreviewContext} />
+    ),
   };
   const modelsConfirmed = modelsState.ok;
 

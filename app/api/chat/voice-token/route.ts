@@ -166,7 +166,6 @@ export async function POST(request: Request) {
     "web.voice-token.credits",
     () =>
       hasEnoughCreditsForLiveVoice({
-        tokensPerVoiceInteraction: liveVoiceModel.tokensPerVoiceInteraction,
         userId: authContext.user.id,
       }),
     { slowMs: 750 }
@@ -187,7 +186,7 @@ export async function POST(request: Request) {
   if (!apiKey) {
     return fallbackResponse(
       "live-api-unavailable",
-      "Voice chat is unavailable because the Google API key is not configured.",
+      "Voice chat is temporarily unavailable. Please try again later.",
       500
     );
   }
@@ -273,8 +272,6 @@ export async function POST(request: Request) {
       mediaResolution: liveVoiceModel.mediaResolution,
       systemInstruction: `${liveVoiceModel.systemInstruction}\n\n${RAG_LIVE_SYSTEM_INSTRUCTION}`,
       tools: [RAG_LIVE_TOOL] as Array<Record<string, unknown>>,
-      creditMultiplier: liveVoiceModel.creditMultiplier,
-      tokensPerVoiceInteraction: liveVoiceModel.tokensPerVoiceInteraction,
       webSocketUrl: GEMINI_LIVE_WS_URL,
       inputAudioMimeType: VOICE_INPUT_AUDIO_MIME_TYPE,
       inputSampleRate: VOICE_INPUT_AUDIO_SAMPLE_RATE,

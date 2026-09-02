@@ -38,6 +38,7 @@ import type { ChatMessage } from "@/lib/types";
 import { generateUUID } from "@/lib/utils";
 import {
   getWebSearchPlatform,
+  hasWebSearchProviderPricing,
   isWebSearchAllowedForUser,
   loadWebSearchConfig,
 } from "@/lib/web-search/config";
@@ -266,6 +267,12 @@ export async function POST(request: Request) {
           { status: 403, headers: noStoreHeaders() },
         );
       }
+      if (!hasWebSearchProviderPricing(config, config.provider)) {
+        return NextResponse.json(
+          { error: "search_unavailable" },
+          { status: 503, headers: noStoreHeaders() },
+        );
+      }
       const freeLimit = Math.min(
         DEFAULT_FREE_MESSAGES_PER_DAY,
         freeSettings.mode === "global"
@@ -340,7 +347,8 @@ export async function POST(request: Request) {
         providerError = primaryError;
         if (
           config.fallbackProvider !== "disabled" &&
-          config.fallbackProvider !== config.provider
+          config.fallbackProvider !== config.provider &&
+          hasWebSearchProviderPricing(config, config.fallbackProvider)
         ) {
           attemptedProvider = config.fallbackProvider;
           try {

@@ -234,10 +234,7 @@ export async function POST(request: Request) {
 
     const usage = resolveLiveVoiceTurnUsage({
       assistantText: translatedText,
-      fallbackTokensPerVoiceInteraction:
-        liveVoiceModel.tokensPerVoiceInteraction,
       inputTokens: turn.inputTokens,
-      multiplier: liveVoiceModel.creditMultiplier,
       outputTokens: turn.outputTokens,
       userText: normalizedOriginalText,
     });

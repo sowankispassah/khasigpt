@@ -142,9 +142,23 @@ export function WebSearchSettingsForm({ config }: { config: WebSearchConfig }) {
   )
     .replace("{readState}", config.readState)
     .replace("{accessMode}", config.accessMode);
+  const selectedProviderCost =
+    provider === "gemini_grounding"
+      ? Number(geminiCostPerCallUsd)
+      : provider === "openai_web_search"
+        ? Number(openaiCostPerCallUsd)
+        : null;
 
   return (
     <div className="space-y-6">
+      {selectedProviderCost !== null && selectedProviderCost <= 0 ? (
+        <p className="rounded-lg border border-amber-300/60 bg-amber-50/50 p-3 text-amber-900 text-sm dark:bg-amber-950/20 dark:text-amber-100">
+          {translate(
+            "admin.web_search.pricing_incomplete",
+            "Web search cannot run until a provider cost greater than zero is added for the selected provider."
+          )}
+        </p>
+      ) : null}
       <div className="grid gap-4 md:grid-cols-2">
         <label className="flex flex-col gap-2 text-sm">
           <span className="font-medium">{label("admin.web_search.provider", "Primary provider")}</span>

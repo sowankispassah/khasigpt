@@ -69,8 +69,10 @@ import {
   deleteTranslationFeatureLanguageById,
   deleteTranslationValueEntry,
   getAppSetting,
+  getImageModelConfigById,
   getImageModelConfigByKey,
   getLanguageByIdRaw,
+  getLiveVoiceModelConfigById,
   getLiveVoiceModelConfigByKey,
   getModelConfigById,
   getModelConfigByKey,
@@ -187,7 +189,6 @@ import { generateUUID } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
 import {
   LIVE_VOICE_MODEL_CONFIG_CACHE_TAG,
-  normalizeLiveVoiceCreditMultiplier,
 } from "@/lib/voice/live";
 
 async function requireAdmin() {
@@ -1715,6 +1716,15 @@ export async function setDefaultModelConfigAction(formData: FormData) {
     throw new Error("Missing model configuration id");
   }
 
+  const model = await getModelConfigById({ id });
+  if (
+    !model ||
+    Number(model.inputProviderCostPerMillion ?? 0) <= 0 ||
+    Number(model.outputProviderCostPerMillion ?? 0) <= 0
+  ) {
+    redirect("/admin/pricing?notice=model-provider-cost-required");
+  }
+
   await setDefaultModelConfig(id);
 
   await createAuditLogEntrySafely({
@@ -1739,6 +1749,22 @@ export async function createLiveVoiceModelConfigAction(formData: FormData) {
 
   if (!key || !provider || !providerModelId || !displayName) {
     throw new Error("Missing required live voice model configuration fields");
+  }
+
+  const inputProviderCostPerMillion = parseNumber(
+    formData.get("inputProviderCostPerMillion")
+  );
+  const outputProviderCostPerMillion = parseNumber(
+    formData.get("outputProviderCostPerMillion")
+  );
+  const markupMultiplier = parseNumber(formData.get("markupMultiplier"));
+  if (
+    inputProviderCostPerMillion <= 0 ||
+    outputProviderCostPerMillion <= 0 ||
+    markupMultiplier < 1 ||
+    markupMultiplier > 20
+  ) {
+    redirect("/admin/pricing?notice=model-provider-cost-required");
   }
 
   const existingConfig = await getLiveVoiceModelConfigByKey({
@@ -1768,21 +1794,9 @@ export async function createLiveVoiceModelConfigAction(formData: FormData) {
       mediaResolution:
         formData.get("mediaResolution")?.toString().trim() ||
         "MEDIA_RESOLUTION_MEDIUM",
-      creditMultiplier: normalizeLiveVoiceCreditMultiplier(
-        formData.has("creditMultiplier")
-          ? formData.get("creditMultiplier")
-          : 3
-      ),
-      markupMultiplier: normalizeMarkupMultiplier(
-        formData.get("markupMultiplier"),
-        3
-      ),
-      inputProviderCostPerMillion: parseNumber(
-        formData.get("inputProviderCostPerMillion")
-      ),
-      outputProviderCostPerMillion: parseNumber(
-        formData.get("outputProviderCostPerMillion")
-      ),
+      markupMultiplier,
+      inputProviderCostPerMillion,
+      outputProviderCostPerMillion,
       config: parseJson(formData.get("configJson")),
       isEnabled: parseBoolean(formData.get("isEnabled")),
       enabledOnWeb: parseBoolean(formData.get("enabledOnWeb")),
@@ -1844,11 +1858,6 @@ export async function updateLiveVoiceModelConfigAction(formData: FormData) {
       formData.get("mediaResolution")?.toString().trim() ||
       "MEDIA_RESOLUTION_MEDIUM";
   }
-  if (formData.has("creditMultiplier")) {
-    patch.creditMultiplier = normalizeLiveVoiceCreditMultiplier(
-      formData.get("creditMultiplier")
-    );
-  }
   if (formData.has("inputProviderCostPerMillion")) {
     patch.inputProviderCostPerMillion = parseNumber(
       formData.get("inputProviderCostPerMillion")
@@ -1858,6 +1867,17 @@ export async function updateLiveVoiceModelConfigAction(formData: FormData) {
     patch.outputProviderCostPerMillion = parseNumber(
       formData.get("outputProviderCostPerMillion")
     );
+  }
+  if (formData.has("markupMultiplier")) {
+    patch.markupMultiplier = parseNumber(formData.get("markupMultiplier"));
+  }
+  if (
+    (patch.inputProviderCostPerMillion ?? 0) <= 0 ||
+    (patch.outputProviderCostPerMillion ?? 0) <= 0 ||
+    (patch.markupMultiplier ?? 0) < 1 ||
+    (patch.markupMultiplier ?? 0) > 20
+  ) {
+    redirect("/admin/pricing?notice=model-provider-cost-required");
   }
   if (formData.has("configJson")) {
     patch.config = parseJson(formData.get("configJson"));
@@ -1964,6 +1984,15 @@ export async function setDefaultLiveVoiceModelConfigAction(formData: FormData) {
     throw new Error("Missing live voice model configuration id");
   }
 
+  const model = await getLiveVoiceModelConfigById({ id });
+  if (
+    !model ||
+    Number(model.inputProviderCostPerMillion ?? 0) <= 0 ||
+    Number(model.outputProviderCostPerMillion ?? 0) <= 0
+  ) {
+    redirect("/admin/pricing?notice=model-provider-cost-required");
+  }
+
   await setDefaultLiveVoiceModelConfig(id);
 
   await createAuditLogEntrySafely({
@@ -2005,7 +2034,6 @@ export async function createImageModelConfigAction(formData: FormData) {
   ) {
     redirect("/admin/pricing?notice=model-provider-cost-required");
   }
-
   const existingConfig = await getImageModelConfigByKey({
     key,
     includeDeleted: true,
@@ -2246,7 +2274,6 @@ export async function updateLiveVoiceModelPricingAction(formData: FormData) {
     3
   );
   const pricing = {
-    creditMultiplier: markupMultiplier,
     inputProviderCostPerMillion: Math.max(
       0,
       parseNumber(formData.get("inputProviderCostPerMillion"))
@@ -2257,6 +2284,12 @@ export async function updateLiveVoiceModelPricingAction(formData: FormData) {
       parseNumber(formData.get("outputProviderCostPerMillion"))
     ),
   };
+  if (
+    pricing.inputProviderCostPerMillion <= 0 ||
+    pricing.outputProviderCostPerMillion <= 0
+  ) {
+    redirect("/admin/pricing?notice=model-provider-cost-required");
+  }
 
   try {
     const updated = await updateLiveVoiceModelConfig({ id, ...pricing });
@@ -2334,6 +2367,11 @@ export async function setActiveImageModelConfigAction(formData: FormData) {
     throw new Error("Missing image model configuration id");
   }
 
+  const model = await getImageModelConfigById({ id });
+  if (!model || Number(model.providerCostPerOutputUsd ?? 0) <= 0) {
+    redirect("/admin/pricing?notice=model-provider-cost-required");
+  }
+
   const startedAt = Date.now();
   console.info("[admin/image-models.set-active] started", { imageModelId: id });
   try {
@@ -2376,7 +2414,12 @@ export async function setImagePromptTranslationModelAction(
 
   if (normalizedModelId) {
     const model = await getModelConfigById({ id: normalizedModelId });
-    if (!model || !model.isEnabled) {
+    if (
+      !model ||
+      !model.isEnabled ||
+      Number(model.inputProviderCostPerMillion ?? 0) <= 0 ||
+      Number(model.outputProviderCostPerMillion ?? 0) <= 0
+    ) {
       redirect("/admin/pricing?notice=image-translation-model-invalid");
     }
   }

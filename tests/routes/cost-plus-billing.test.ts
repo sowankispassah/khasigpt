@@ -4,6 +4,8 @@ import {
   calculateTokenProviderCostUsd,
   calculateUnitProviderCostUsd,
   calculateWalletUnitsPerInr,
+  hasCompleteTokenProviderPricing,
+  hasCompleteUnitProviderPricing,
   priceCostPlusLineItems,
   selectBaseCreditPlan,
 } from "@/lib/billing/cost-plus";
@@ -13,6 +15,23 @@ const USD_TO_INR = 95.12;
 // ₹500 for 2,500 displayed credits establishes ₹0.20 per credit. Higher
 // recharge bundles add bonus credits without changing this base conversion.
 const WALLET_UNITS_PER_INR = 500;
+
+test("treats zero or missing provider costs as incomplete pricing", () => {
+  expect(
+    hasCompleteTokenProviderPricing({
+      inputCostPerMillionUsd: 1,
+      outputCostPerMillionUsd: 5,
+    })
+  ).toBe(true);
+  expect(
+    hasCompleteTokenProviderPricing({
+      inputCostPerMillionUsd: 0,
+      outputCostPerMillionUsd: 5,
+    })
+  ).toBe(false);
+  expect(hasCompleteUnitProviderPricing(0.014)).toBe(true);
+  expect(hasCompleteUnitProviderPricing(0)).toBe(false);
+});
 
 test("uses the base pack conversion while keeping larger packs as bonuses", () => {
   const basePlan = selectBaseCreditPlan([

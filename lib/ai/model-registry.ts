@@ -1,6 +1,7 @@
 import "server-only";
 
 import { unstable_cache } from "next/cache";
+import { hasCompleteTokenProviderPricing } from "@/lib/billing/cost-plus";
 
 import {
   getModelConfigById,
@@ -21,7 +22,23 @@ const MODEL_REGISTRY_REVALIDATE_SECONDS =
 
 async function ensureModelConfigs(): Promise<ModelConfig[]> {
   const existingAll = await listModelConfigs({ includeDisabled: true });
-  const enabled = existingAll.filter((config) => config.isEnabled);
+  const enabled = existingAll.filter(
+    (config) =>
+      config.isEnabled &&
+      hasCompleteTokenProviderPricing({
+        inputCostPerMillionUsd: config.inputProviderCostPerMillion,
+        outputCostPerMillionUsd: config.outputProviderCostPerMillion,
+      })
+  );
+
+  const incompleteEnabled = existingAll.filter(
+    (config) => config.isEnabled && !enabled.includes(config)
+  );
+  if (incompleteEnabled.length > 0) {
+    console.error("[models] Enabled models were excluded because provider pricing is incomplete.", {
+      modelConfigIds: incompleteEnabled.map((config) => config.id),
+    });
+  }
 
   if (enabled.length > 0) {
     return enabled;

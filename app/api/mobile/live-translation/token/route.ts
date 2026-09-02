@@ -224,7 +224,6 @@ export async function POST(request: Request) {
     "mobile.live-translation-token.credits",
     () =>
       hasEnoughCreditsForLiveVoice({
-        tokensPerVoiceInteraction: liveVoiceModel.tokensPerVoiceInteraction,
         userId: authContext.user.id,
       }),
     { slowMs: 750 }
@@ -248,7 +247,7 @@ export async function POST(request: Request) {
   if (!apiKey) {
     return fallbackResponse(
       "live-api-unavailable",
-      "Live Translation is unavailable because the Google API key is not configured.",
+      "Live Translation is temporarily unavailable. Please try again later.",
       500
     );
   }
@@ -355,8 +354,6 @@ export async function POST(request: Request) {
       voiceName: liveVoiceModel.voiceName,
       mediaResolution: liveVoiceModel.mediaResolution,
       systemInstruction,
-      creditMultiplier: liveVoiceModel.creditMultiplier,
-      tokensPerVoiceInteraction: liveVoiceModel.tokensPerVoiceInteraction,
       webSocketUrl: GEMINI_LIVE_WS_URL,
       inputAudioMimeType: VOICE_INPUT_AUDIO_MIME_TYPE,
       inputSampleRate: VOICE_INPUT_AUDIO_SAMPLE_RATE,

@@ -240,9 +240,6 @@ export const liveVoiceModelConfig = pgTable(
     mediaResolution: varchar("mediaResolution", { length: 64 })
       .notNull()
       .default("MEDIA_RESOLUTION_MEDIUM"),
-    creditMultiplier: doublePrecision("creditMultiplier")
-      .notNull()
-      .default(3),
     inputProviderCostPerMillion: doublePrecision("inputProviderCostPerMillion")
       .notNull()
       .default(0),

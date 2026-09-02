@@ -7041,13 +7041,26 @@ export async function setDefaultModelConfig(id: string) {
   try {
     await db.transaction(async (tx) => {
       const [target] = await tx
-        .select({ id: modelConfig.id })
+        .select({
+          id: modelConfig.id,
+          inputProviderCostPerMillion: modelConfig.inputProviderCostPerMillion,
+          outputProviderCostPerMillion: modelConfig.outputProviderCostPerMillion,
+        })
         .from(modelConfig)
         .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)))
         .limit(1);
 
       if (!target) {
         throw new Error("Model configuration not found");
+      }
+      if (
+        Number(target.inputProviderCostPerMillion ?? 0) <= 0 ||
+        Number(target.outputProviderCostPerMillion ?? 0) <= 0
+      ) {
+        throw new ChatSDKError(
+          "bad_request:configuration",
+          "Provider costs must be added before this chat model can be made default"
+        );
       }
 
       await tx
@@ -7481,7 +7494,10 @@ export async function setActiveImageModelConfig(id: string) {
       async (adminDb) => {
         await adminDb.transaction(async (tx) => {
           const [target] = await tx
-            .select({ id: imageModelConfig.id })
+            .select({
+              id: imageModelConfig.id,
+              providerCostPerOutputUsd: imageModelConfig.providerCostPerOutputUsd,
+            })
             .from(imageModelConfig)
             .where(
               and(
@@ -7493,6 +7509,12 @@ export async function setActiveImageModelConfig(id: string) {
 
           if (!target) {
             throw new Error("Image model configuration not found");
+          }
+          if (Number(target.providerCostPerOutputUsd ?? 0) <= 0) {
+            throw new ChatSDKError(
+              "bad_request:configuration",
+              "Provider cost must be added before this image model can be activated"
+            );
           }
 
           await tx
@@ -7545,10 +7567,9 @@ export async function createLiveVoiceModelConfig({
   systemInstruction = "",
   voiceName = "Zephyr",
   mediaResolution = "MEDIA_RESOLUTION_MEDIUM",
-  creditMultiplier = 3,
   markupMultiplier,
-  inputProviderCostPerMillion = 0,
-  outputProviderCostPerMillion = 0,
+  inputProviderCostPerMillion,
+  outputProviderCostPerMillion,
   config = null,
   isEnabled = true,
   enabledOnWeb = true,
@@ -7563,10 +7584,9 @@ export async function createLiveVoiceModelConfig({
   systemInstruction?: string;
   voiceName?: string;
   mediaResolution?: string;
-  creditMultiplier?: number;
   markupMultiplier?: number;
-  inputProviderCostPerMillion?: number;
-  outputProviderCostPerMillion?: number;
+  inputProviderCostPerMillion: number;
+  outputProviderCostPerMillion: number;
   config?: Record<string, unknown> | null;
   isEnabled?: boolean;
   enabledOnWeb?: boolean;
@@ -7574,12 +7594,19 @@ export async function createLiveVoiceModelConfig({
   isDefault?: boolean;
 }): Promise<LiveVoiceModelConfig> {
   const now = new Date();
-  const resolvedMultiplier =
-    Number.isFinite(creditMultiplier) && creditMultiplier > 0
-      ? creditMultiplier
-      : 1;
+  if (
+    !Number.isFinite(inputProviderCostPerMillion) ||
+    inputProviderCostPerMillion <= 0 ||
+    !Number.isFinite(outputProviderCostPerMillion) ||
+    outputProviderCostPerMillion <= 0
+  ) {
+    throw new ChatSDKError(
+      "bad_request:configuration",
+      "Live voice provider costs must be greater than zero"
+    );
+  }
   const resolvedMarkup = normalizeMarkupMultiplier(
-    markupMultiplier ?? creditMultiplier,
+    markupMultiplier,
     DEFAULT_LIVE_VOICE_MARKUP_MULTIPLIER
   );
 
@@ -7596,7 +7623,6 @@ export async function createLiveVoiceModelConfig({
           systemInstruction,
           voiceName,
           mediaResolution,
-          creditMultiplier: resolvedMultiplier,
           markupMultiplier: resolvedMarkup,
           inputProviderCostPerMillion,
           outputProviderCostPerMillion,
@@ -7789,6 +7815,8 @@ export async function getDefaultLiveVoiceModelConfig({
         : eq(liveVoiceModelConfig.enabledOnNative, true);
     const commonConditions = and(
       eq(liveVoiceModelConfig.isEnabled, true),
+      gt(liveVoiceModelConfig.inputProviderCostPerMillion, 0),
+      gt(liveVoiceModelConfig.outputProviderCostPerMillion, 0),
       platformCondition,
       isNull(liveVoiceModelConfig.deletedAt)
     );
@@ -7850,7 +7878,6 @@ export async function updateLiveVoiceModelConfig({
   systemInstruction?: string | null;
   voiceName?: string;
   mediaResolution?: string;
-  creditMultiplier?: number;
   markupMultiplier?: number;
   inputProviderCostPerMillion?: number;
   outputProviderCostPerMillion?: number;
@@ -7883,26 +7910,35 @@ export async function updateLiveVoiceModelConfig({
     if (patch.mediaResolution !== undefined) {
       updateData.mediaResolution = patch.mediaResolution;
     }
-    if (patch.creditMultiplier !== undefined) {
-      updateData.creditMultiplier =
-        Number.isFinite(patch.creditMultiplier) && patch.creditMultiplier > 0
-          ? patch.creditMultiplier
-          : 1;
-    }
-    if (
-      patch.markupMultiplier !== undefined ||
-      patch.creditMultiplier !== undefined
-    ) {
+    if (patch.markupMultiplier !== undefined) {
       updateData.markupMultiplier = normalizeMarkupMultiplier(
-        patch.markupMultiplier ?? patch.creditMultiplier,
+        patch.markupMultiplier,
         DEFAULT_LIVE_VOICE_MARKUP_MULTIPLIER
       );
     }
     if (patch.inputProviderCostPerMillion !== undefined) {
+      if (
+        !Number.isFinite(patch.inputProviderCostPerMillion) ||
+        patch.inputProviderCostPerMillion <= 0
+      ) {
+        throw new ChatSDKError(
+          "bad_request:configuration",
+          "Live voice provider input cost must be greater than zero"
+        );
+      }
       updateData.inputProviderCostPerMillion =
         patch.inputProviderCostPerMillion;
     }
     if (patch.outputProviderCostPerMillion !== undefined) {
+      if (
+        !Number.isFinite(patch.outputProviderCostPerMillion) ||
+        patch.outputProviderCostPerMillion <= 0
+      ) {
+        throw new ChatSDKError(
+          "bad_request:configuration",
+          "Live voice provider output cost must be greater than zero"
+        );
+      }
       updateData.outputProviderCostPerMillion =
         patch.outputProviderCostPerMillion;
     }
@@ -8042,7 +8078,13 @@ export async function setDefaultLiveVoiceModelConfig(id: string) {
   try {
     await db.transaction(async (tx) => {
       const [target] = await tx
-        .select({ id: liveVoiceModelConfig.id })
+        .select({
+          id: liveVoiceModelConfig.id,
+          inputProviderCostPerMillion:
+            liveVoiceModelConfig.inputProviderCostPerMillion,
+          outputProviderCostPerMillion:
+            liveVoiceModelConfig.outputProviderCostPerMillion,
+        })
         .from(liveVoiceModelConfig)
         .where(
           and(eq(liveVoiceModelConfig.id, id), isNull(liveVoiceModelConfig.deletedAt))
@@ -8051,6 +8093,15 @@ export async function setDefaultLiveVoiceModelConfig(id: string) {
 
       if (!target) {
         throw new Error("Live voice model configuration not found");
+      }
+      if (
+        Number(target.inputProviderCostPerMillion ?? 0) <= 0 ||
+        Number(target.outputProviderCostPerMillion ?? 0) <= 0
+      ) {
+        throw new ChatSDKError(
+          "bad_request:configuration",
+          "Provider costs must be added before this voice model can be made default"
+        );
       }
 
       await tx
@@ -8444,7 +8495,6 @@ type PricingPlanListOptions = {
 export type AdminModelPricingSnapshotRow = {
   codeTemplate: string | null;
   config: Record<string, unknown> | null;
-  creditMultiplier: number | null;
   deletedAt: Date | null;
   description: string;
   displayName: string;
@@ -8504,7 +8554,6 @@ export async function listAdminModelPricingSnapshot(): Promise<
             NULL::text AS "systemInstruction",
             NULL::text AS "voiceName",
             NULL::text AS "mediaResolution",
-            NULL::double precision AS "creditMultiplier",
             false AS "enabledOnWeb",
             false AS "enabledOnNative",
             ${modelConfig.deletedAt} AS "deletedAt",
@@ -8537,7 +8586,6 @@ export async function listAdminModelPricingSnapshot(): Promise<
             NULL::text AS "systemInstruction",
             NULL::text AS "voiceName",
             NULL::text AS "mediaResolution",
-            NULL::double precision AS "creditMultiplier",
             false AS "enabledOnWeb",
             false AS "enabledOnNative",
             ${imageModelConfig.deletedAt} AS "deletedAt",
@@ -8570,7 +8618,6 @@ export async function listAdminModelPricingSnapshot(): Promise<
             ${liveVoiceModelConfig.systemInstruction} AS "systemInstruction",
             ${liveVoiceModelConfig.voiceName} AS "voiceName",
             ${liveVoiceModelConfig.mediaResolution} AS "mediaResolution",
-            ${liveVoiceModelConfig.creditMultiplier} AS "creditMultiplier",
             ${liveVoiceModelConfig.enabledOnWeb} AS "enabledOnWeb",
             ${liveVoiceModelConfig.enabledOnNative} AS "enabledOnNative",
             ${liveVoiceModelConfig.deletedAt} AS "deletedAt",
@@ -10710,6 +10757,20 @@ export async function recordTokenUsage({
   billTokenUsage?: boolean;
 }): Promise<TokenUsage> {
   const totalTokens = Math.max(0, Math.round(inputTokens + outputTokens));
+  const invalidAdditionalCharge = additionalCharges.some(
+    (charge) =>
+      Number.isFinite(charge.unitCount) &&
+      charge.unitCount > 0 &&
+      (!Number.isFinite(charge.providerCostPerUnitUsd) ||
+        charge.providerCostPerUnitUsd <= 0)
+  );
+
+  if (invalidAdditionalCharge) {
+    throw new ChatSDKError(
+      "bad_request:configuration",
+      "Feature pricing is unavailable"
+    );
+  }
 
   const hasBillableAdditionalCharge = additionalCharges.some(
     (charge) =>
@@ -10773,7 +10834,6 @@ export async function recordTokenUsage({
       >["lineItems"] = [];
       let pricingReferencePlanId: string | null = null;
       let walletUnitsPerInr = 0;
-      let legacyTokensToDeduct = 0;
 
       if (deductCredits) {
         if (requestKey) {
@@ -10841,8 +10901,34 @@ export async function recordTokenUsage({
           );
         }
 
+        const shouldPriceTokenUsage = billTokenUsage && totalTokens > 0;
+        if (
+          shouldPriceTokenUsage &&
+          (!tokenCostPlusSnapshot ||
+            !Number.isFinite(tokenCostPlusSnapshot.inputCostPerMillionUsd) ||
+            tokenCostPlusSnapshot.inputCostPerMillionUsd <= 0 ||
+            !Number.isFinite(tokenCostPlusSnapshot.outputCostPerMillionUsd) ||
+            tokenCostPlusSnapshot.outputCostPerMillionUsd <= 0)
+        ) {
+          throw new ChatSDKError(
+            "bad_request:configuration",
+            "Chat pricing is unavailable"
+          );
+        }
+        if (
+          !Number.isFinite(usdToInr) ||
+          usdToInr <= 0 ||
+          !Number.isFinite(walletUnitsPerInr) ||
+          walletUnitsPerInr <= 0
+        ) {
+          throw new ChatSDKError(
+            "bad_request:configuration",
+            "Credit pricing is unavailable"
+          );
+        }
+
         const costPlusLineItems: UnpricedCostPlusLineItem[] = [];
-        if (tokenCostPlusSnapshot) {
+        if (shouldPriceTokenUsage && tokenCostPlusSnapshot) {
           const providerCostUsd = calculateTokenProviderCostUsd({
             inputCostPerMillionUsd:
               tokenCostPlusSnapshot.inputCostPerMillionUsd,
@@ -10887,20 +10973,16 @@ export async function recordTokenUsage({
           walletUnitsPerInr,
         });
         pricedLineItems = priced.lineItems;
-        if (
-          billTokenUsage &&
-          (!tokenCostPlusSnapshot ||
-            !pricedLineItems.some(
-              (item) =>
-                item.category === "chat" || item.category === "live_voice"
-            ))
-        ) {
-          legacyTokensToDeduct = calculateTokenDeduction({
-            inputTokens,
-            outputTokens,
-          });
+        const expectedPricedLineItemCount =
+          (shouldPriceTokenUsage ? 1 : 0) +
+          additionalCharges.filter((charge) => charge.unitCount > 0).length;
+        if (pricedLineItems.length !== expectedPricedLineItemCount) {
+          throw new ChatSDKError(
+            "bad_request:configuration",
+            "Feature pricing is unavailable"
+          );
         }
-        tokensToDeduct = priced.totalCreditUnits + legacyTokensToDeduct;
+        tokensToDeduct = priced.totalCreditUnits;
 
         if (tokensToDeduct > 0 && subscription.tokenBalance < tokensToDeduct) {
           console.info("[token-usage] Capping the final charge at the remaining wallet balance.", {
@@ -10945,24 +11027,7 @@ export async function recordTokenUsage({
         .returning();
 
       if (insertedUsage && subscription && tokensToDeduct > 0) {
-        const ledgerLineItems = [
-          ...pricedLineItems,
-          ...(legacyTokensToDeduct > 0
-            ? [
-                {
-                  category: "legacy" as const,
-                  providerCostUsd: 0,
-                  markupMultiplier: 1,
-                  customerChargeInr: 0,
-                  rawCreditUnits: legacyTokensToDeduct,
-                  creditUnits: legacyTokensToDeduct,
-                  inputTokens,
-                  outputTokens,
-                  providerKey: "legacy",
-                },
-              ]
-            : []),
-        ];
+        const ledgerLineItems = pricedLineItems;
         let manualUnitsRemaining = manualTokensDeducted;
         let paidUnitsRemaining = paidTokensDeducted;
         let chargeUnitsRemaining = tokensToDeduct;
@@ -11739,17 +11804,6 @@ async function getActiveSubscriptionInternal(
   }
 
   return subscription;
-}
-
-function calculateTokenDeduction({
-  inputTokens,
-  outputTokens,
-}: {
-  inputTokens: number;
-  outputTokens: number;
-}): number {
-  const totalTokens = Math.max(1, Math.round(inputTokens + outputTokens));
-  return Math.max(1, totalTokens);
 }
 
 export type TranslationTableEntry = {

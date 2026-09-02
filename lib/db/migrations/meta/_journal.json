@@ -680,6 +680,13 @@
       "when": 1787443200005,
       "tag": "0094_drop_image_legacy_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1787443200006,
+      "tag": "0095_drop_live_voice_legacy_multiplier",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,4 @@
 import { buildKhasiGptSystemInstruction } from "@/lib/ai/identity";
-import { TOKENS_PER_CREDIT } from "@/lib/constants";
 
 export const GEMINI_VOICE_CHAT_MODEL_ID = "gemini-3.1-flash-live-preview";
 export const GEMINI_VOICE_CHAT_MODEL_NAME = "Gemini 3.1 Flash Live Preview";
@@ -13,7 +12,6 @@ export const VOICE_ACTIVITY_PREFIX_PADDING_MS = 180;
 export const VOICE_ACTIVITY_SILENCE_DURATION_MS = 1_200;
 export const VOICE_TOKEN_NEW_SESSION_WINDOW_MS = 2 * 60 * 1_000;
 export const VOICE_TOKEN_SESSION_WINDOW_MS = 15 * 60 * 1_000;
-export const LIVE_VOICE_BASE_CREDIT_UNITS = 1;
 
 export const GOOGLE_LIVE_VOICE_OPTIONS = [
   { value: "Zephyr", label: "Zephyr", description: "Bright" },
@@ -77,8 +75,6 @@ export type GeminiVoiceTokenResponse =
       mediaResolution: string;
       systemInstruction: string;
       tools?: Array<Record<string, unknown>>;
-      creditMultiplier: number;
-      tokensPerVoiceInteraction: number;
       webSocketUrl: string;
       inputAudioMimeType: string;
       inputSampleRate: number;
@@ -113,26 +109,4 @@ export function getLiveVoiceProviderVoiceOptions(provider: string) {
     return GOOGLE_LIVE_VOICE_OPTIONS;
   }
   return GOOGLE_LIVE_VOICE_OPTIONS;
-}
-
-export function normalizeLiveVoiceCreditMultiplier(value: unknown) {
-  const parsed =
-    typeof value === "number"
-      ? value
-      : Number.parseFloat(String(value ?? "").trim());
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return 1;
-  }
-  return Math.min(100, Math.round(parsed * 100) / 100);
-}
-
-export function calculateLiveVoiceTokensPerInteraction(multiplier: unknown) {
-  return Math.max(
-    1,
-    Math.round(
-      normalizeLiveVoiceCreditMultiplier(multiplier) *
-        LIVE_VOICE_BASE_CREDIT_UNITS *
-        TOKENS_PER_CREDIT
-    )
-  );
 }

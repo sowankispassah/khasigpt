@@ -137,11 +137,12 @@ export function ModelPricingManagementTable({
   const [dialogMode, setDialogMode] = useState<"create" | "delete" | "edit" | "hard-delete" | null>(null);
   const [createType, setCreateType] = useState<ModelType>("chat");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [visibleModelCount, setVisibleModelCount] = useState(DEFAULT_VISIBLE_ROWS);
+  const [visibleModelCounts, setVisibleModelCounts] = useState<
+    Record<ModelType, number>
+  >({ chat: DEFAULT_VISIBLE_ROWS, image: DEFAULT_VISIBLE_ROWS, live_voice: DEFAULT_VISIBLE_ROWS });
   const selectedModel = models.find((model) => model.key === selectedKey) ?? null;
   const selectedDeletedModel = deletedModels.find((model) => model.key === selectedKey) ?? null;
-  const visibleModels = models.slice(0, visibleModelCount);
-  const hasMoreModels = visibleModelCount < models.length;
+  const modelTypes: ModelType[] = ["chat", "image", "live_voice"];
 
   const typeLabel = (type: ModelType) =>
     type === "image"
@@ -149,6 +150,24 @@ export function ModelPricingManagementTable({
       : type === "live_voice"
         ? translate("admin.pricing.model_type.live_voice", "Live voice")
         : translate("admin.pricing.model_type.chat", "Text / chat");
+
+  const sectionTitle = (type: ModelType) =>
+    type === "image"
+      ? translate("admin.pricing.image_models", "Image models")
+      : type === "live_voice"
+        ? translate("admin.pricing.voice_models", "Voice models")
+        : translate("admin.pricing.chat_models", "Chat models");
+
+  const addModelLabel = (type: ModelType) =>
+    type === "image"
+      ? translate("admin.pricing.add_image_model", "+ Add image model")
+      : type === "live_voice"
+        ? translate("admin.pricing.add_voice_model", "+ Add voice model")
+        : translate("admin.pricing.add_chat_model", "+ Add chat model");
+
+  const hasCompletePricing = (model: ModelPricingRow) =>
+    model.providerOutputCostUsd > 0 &&
+    (model.type === "image" || Number(model.providerInputCostUsd ?? 0) > 0);
 
   const closeDialog = () => {
     setDialogMode(null);
@@ -185,9 +204,6 @@ export function ModelPricingManagementTable({
                 : translate("admin.pricing.credit_conversion_unavailable", "Add an active recharge plan to preview model charges in credits.")}
           </p>
         </div>
-        <Button className="cursor-pointer" disabled={loading || !modelsConfirmed} onClick={() => setDialogMode("create")} type="button">
-          {translate("admin.pricing.add_model", "+ Add model")}
-        </Button>
       </div>
 
       {loadWarning && !loading ? (
@@ -196,98 +212,114 @@ export function ModelPricingManagementTable({
         </p>
       ) : null}
 
-      <div className="overflow-hidden rounded-xl border bg-card/80 shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1180px] text-sm">
-          <thead className="bg-muted/50 text-left text-muted-foreground text-xs uppercase tracking-wide">
-            <tr>
-              <th className="px-4 py-3 font-medium">{translate("admin.pricing.model", "Model")}</th>
-              <th className="px-4 py-3 font-medium">{translate("admin.pricing.type", "Type")}</th>
-              <th className="px-4 py-3 font-medium">{translate("admin.pricing.provider", "Provider")}</th>
-              <th className="px-4 py-3 text-right font-medium">{translate("admin.pricing.provider_cost", "Provider cost")}</th>
-              <th className="px-4 py-3 text-right font-medium">{translate("admin.pricing.markup", "Markup")}</th>
-              <th className="px-4 py-3 text-right font-medium">{translate("admin.pricing.customer_charge", "Customer charge")}</th>
-              <th className="px-4 py-3 text-right font-medium">{translate("admin.pricing.credit_charge", "Credit charge")}</th>
-              <th className="px-4 py-3 font-medium">{translate("admin.pricing.status", "Status")}</th>
-              <th className="px-4 py-3 font-medium">{translate("admin.pricing.last_updated", "Last updated")}</th>
-              <th className="px-4 py-3 text-right font-medium">{translate("admin.pricing.actions", "Actions")}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/60">
-            {loading ? (
-              <tr><td className="px-4 py-8 text-center text-muted-foreground" colSpan={10}>{translate("admin.pricing.models_loading", "Loading model costs and markups...")}</td></tr>
-            ) : !modelsConfirmed && models.length === 0 ? (
-              <tr><td className="px-4 py-8 text-center text-muted-foreground" colSpan={10}>{translate("admin.pricing.models_retry", "Model pricing could not be loaded. Recharge plans remain available; retry this page before changing model costs.")}</td></tr>
-            ) : models.length === 0 ? (
-              <tr><td className="px-4 py-8 text-center text-muted-foreground" colSpan={10}>{translate("admin.pricing.models_empty", "No configured models are available. Add a model to get started.")}</td></tr>
-            ) : visibleModels.map((model) => {
-              const unitLabel = model.type === "image" ? translate("admin.pricing.per_output", "per output") : translate("admin.pricing.per_million", "per 1M tokens");
-              return (
-                <tr className="bg-card/70 transition hover:bg-muted/20" key={model.key}>
-                  <td className="max-w-[250px] px-4 py-3"><span className="font-medium">{model.name}</span><span className="block truncate font-mono text-muted-foreground text-xs">{model.providerModelId}</span></td>
-                  <td className="px-4 py-3 text-muted-foreground">{typeLabel(model.type)}</td>
-                  <td className="px-4 py-3">{model.providerLabel}</td>
-                  <td className="px-4 py-3 text-right text-xs">
-                    {model.providerInputCostUsd !== null ? <span className="block">{translate("admin.pricing.input", "Input")}: {formatCurrency(model.providerInputCostUsd, "USD")}</span> : null}
-                    <span className="block">{model.type === "image" ? formatCurrency(model.providerOutputCostUsd, "USD") : `${translate("admin.pricing.output", "Output")}: ${formatCurrency(model.providerOutputCostUsd, "USD")}`}</span>
-                    <span className="block text-muted-foreground">{unitLabel}</span>
-                  </td>
-                  <td className="px-4 py-3 text-right font-medium">{model.markupMultiplier.toFixed(2)}×</td>
-                  <td className="px-4 py-3 text-right text-xs">
-                    {model.customerInputChargeInr !== null ? <span className="block">{translate("admin.pricing.input", "Input")}: {formatCurrency(model.customerInputChargeInr, "INR")}</span> : null}
-                    <span className="block">{model.type === "image" ? formatCurrency(model.customerOutputChargeInr, "INR") : `${translate("admin.pricing.output", "Output")}: ${formatCurrency(model.customerOutputChargeInr, "INR")}`}</span>
-                    <span className="block text-muted-foreground">{unitLabel}</span>
-                  </td>
-                  <td className="px-4 py-3 text-right text-xs">
-                    {model.creditInputCharge !== null ? <span className="block">{translate("admin.pricing.input", "Input")}: {formatCredits(model.creditInputCharge)}</span> : null}
-                    <span className="block">{model.type === "image" ? formatCredits(model.creditOutputCharge) : `${translate("admin.pricing.output", "Output")}: ${formatCredits(model.creditOutputCharge)}`}</span>
-                    <span className="block text-muted-foreground">{unitLabel}</span>
-                  </td>
-                  <td className="px-4 py-3"><div className="flex flex-wrap gap-1"><span className={cn("rounded-full px-2 py-0.5 text-xs", model.isEnabled ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>{model.isEnabled ? translate("admin.pricing.active", "Active") : translate("admin.pricing.inactive", "Inactive")}</span>{model.isDefault ? <span className="rounded-full bg-blue-100 px-2 py-0.5 text-blue-700 text-xs">{translate("admin.pricing.default", "Default")}</span> : null}{model.isActive ? <span className="rounded-full bg-blue-100 px-2 py-0.5 text-blue-700 text-xs">{translate("admin.pricing.selected", "Selected")}</span> : null}</div></td>
-                  <td className="whitespace-nowrap px-4 py-3 text-muted-foreground text-xs">{formatUpdatedAt(model.updatedAt)}</td>
-                  <td className="px-4 py-3 text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild><Button aria-label={translate("admin.pricing.model_actions", "Model actions")} className="cursor-pointer" size="icon" type="button" variant="ghost"><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="min-w-48">
-                        <DropdownMenuItem className="cursor-pointer" onSelect={() => { setSelectedKey(model.key); setDialogMode("edit"); }}>{translate("admin.pricing.edit_model_action", "Edit model")}</DropdownMenuItem>
-                        {model.type === "chat" && !model.isDefault ? <ModelActionForm action={setDefaultModelConfigAction} id={model.id} label={translate("admin.pricing.make_default", "Make default")} pendingLabel={translate("common.updating", "Updating...")} /> : null}
-                        {model.type === "image" && !model.isActive ? <ModelActionForm action={setActiveImageModelConfigAction} id={model.id} label={translate("admin.pricing.make_active", "Make active")} pendingLabel={translate("common.updating", "Updating...")} /> : null}
-                        {model.type === "live_voice" && !model.isDefault ? <ModelActionForm action={setDefaultLiveVoiceModelConfigAction} id={model.id} label={translate("admin.pricing.make_default", "Make default")} pendingLabel={translate("common.updating", "Updating...")} /> : null}
-                        <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive" onSelect={() => { setSelectedKey(model.key); setDialogMode("delete"); }}>{translate("admin.pricing.delete_model", "Delete model")}</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-          </table>
-        </div>
-        {models.length > DEFAULT_VISIBLE_ROWS ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-4 py-3">
-            <span aria-live="polite" className="text-muted-foreground text-xs">
-              {translate("admin.pricing.showing_rows", "Showing {visible} of {total}")
-                .replace("{visible}", String(visibleModels.length))
-                .replace("{total}", String(models.length))}
-            </span>
-            {hasMoreModels ? (
+      {modelTypes.map((type) => {
+        const typeModels = models.filter((model) => model.type === type);
+        const visibleModels = typeModels.slice(0, visibleModelCounts[type]);
+        const hasMoreModels = visibleModelCounts[type] < typeModels.length;
+        return (
+          <section className="overflow-hidden rounded-xl border bg-card/80 shadow-sm" key={type}>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+              <div>
+                <h3 className="font-semibold">{sectionTitle(type)}</h3>
+                <p className="text-muted-foreground text-xs">
+                  {translate("admin.pricing.model_type_count", "{count} configured")
+                    .replace("{count}", String(typeModels.length))}
+                </p>
+              </div>
               <Button
                 className="cursor-pointer"
-                onClick={() =>
-                  setVisibleModelCount((count) =>
-                    Math.min(count + DEFAULT_VISIBLE_ROWS, models.length)
-                  )
-                }
-                size="sm"
+                disabled={loading || !modelsConfirmed}
+                onClick={() => {
+                  setCreateType(type);
+                  setDialogMode("create");
+                }}
                 type="button"
-                variant="outline"
               >
-                {translate("admin.pricing.load_more", "Load more")}
+                {addModelLabel(type)}
               </Button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1080px] text-sm">
+                <thead className="bg-muted/50 text-left text-muted-foreground text-xs uppercase tracking-wide">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">{translate("admin.pricing.model", "Model")}</th>
+                    <th className="px-4 py-3 font-medium">{translate("admin.pricing.provider", "Provider")}</th>
+                    <th className="px-4 py-3 text-right font-medium">{translate("admin.pricing.provider_cost", "Provider cost")}</th>
+                    <th className="px-4 py-3 text-right font-medium">{translate("admin.pricing.markup", "Markup")}</th>
+                    <th className="px-4 py-3 text-right font-medium">{translate("admin.pricing.customer_charge", "Customer charge")}</th>
+                    <th className="px-4 py-3 text-right font-medium">{translate("admin.pricing.credit_charge", "Credit charge")}</th>
+                    <th className="px-4 py-3 font-medium">{translate("admin.pricing.status", "Status")}</th>
+                    <th className="px-4 py-3 font-medium">{translate("admin.pricing.last_updated", "Last updated")}</th>
+                    <th className="px-4 py-3 text-right font-medium">{translate("admin.pricing.actions", "Actions")}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {loading ? (
+                    <tr><td className="px-4 py-8 text-center text-muted-foreground" colSpan={9}>{translate("admin.pricing.models_loading", "Loading model costs and markups...")}</td></tr>
+                  ) : !modelsConfirmed && models.length === 0 ? (
+                    <tr><td className="px-4 py-8 text-center text-muted-foreground" colSpan={9}>{translate("admin.pricing.models_retry", "Model pricing could not be loaded. Recharge plans remain available; retry this page before changing model costs.")}</td></tr>
+                  ) : typeModels.length === 0 ? (
+                    <tr><td className="px-4 py-8 text-center text-muted-foreground" colSpan={9}>{translate("admin.pricing.model_type_empty", "No {type} models are configured. Use the add button above to create one.").replace("{type}", typeLabel(type).toLowerCase())}</td></tr>
+                  ) : visibleModels.map((model) => {
+                    const pricingComplete = hasCompletePricing(model);
+                    const unitLabel = model.type === "image" ? translate("admin.pricing.per_output", "per output") : translate("admin.pricing.per_million", "per 1M tokens");
+                    return (
+                      <tr className="bg-card/70 transition hover:bg-muted/20" key={model.key}>
+                        <td className="max-w-[250px] px-4 py-3"><span className="font-medium">{model.name}</span><span className="block truncate font-mono text-muted-foreground text-xs">{model.providerModelId}</span></td>
+                        <td className="px-4 py-3">{model.providerLabel}</td>
+                        <td className="px-4 py-3 text-right text-xs">
+                          {model.providerInputCostUsd !== null ? <span className="block">{translate("admin.pricing.input", "Input")}: {formatCurrency(model.providerInputCostUsd, "USD")}</span> : null}
+                          <span className="block">{model.type === "image" ? formatCurrency(model.providerOutputCostUsd, "USD") : `${translate("admin.pricing.output", "Output")}: ${formatCurrency(model.providerOutputCostUsd, "USD")}`}</span>
+                          <span className="block text-muted-foreground">{unitLabel}</span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-medium">{model.markupMultiplier.toFixed(2)}×</td>
+                        <td className="px-4 py-3 text-right text-xs">
+                          {model.customerInputChargeInr !== null ? <span className="block">{translate("admin.pricing.input", "Input")}: {formatCurrency(model.customerInputChargeInr, "INR")}</span> : null}
+                          <span className="block">{model.type === "image" ? formatCurrency(model.customerOutputChargeInr, "INR") : `${translate("admin.pricing.output", "Output")}: ${formatCurrency(model.customerOutputChargeInr, "INR")}`}</span>
+                          <span className="block text-muted-foreground">{unitLabel}</span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-xs">
+                          {model.creditInputCharge !== null ? <span className="block">{translate("admin.pricing.input", "Input")}: {formatCredits(model.creditInputCharge)}</span> : null}
+                          <span className="block">{model.type === "image" ? formatCredits(model.creditOutputCharge) : `${translate("admin.pricing.output", "Output")}: ${formatCredits(model.creditOutputCharge)}`}</span>
+                          <span className="block text-muted-foreground">{unitLabel}</span>
+                        </td>
+                        <td className="px-4 py-3"><div className="flex max-w-56 flex-wrap gap-1"><span className={cn("rounded-full px-2 py-0.5 text-xs", model.isEnabled ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>{model.isEnabled ? translate("admin.pricing.active", "Active") : translate("admin.pricing.inactive", "Inactive")}</span>{!pricingComplete ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800 text-xs">{translate("admin.pricing.pricing_incomplete", "Pricing incomplete — add provider cost")}</span> : null}{model.isDefault ? <span className="rounded-full bg-blue-100 px-2 py-0.5 text-blue-700 text-xs">{translate("admin.pricing.default", "Default")}</span> : null}{model.isActive ? <span className="rounded-full bg-blue-100 px-2 py-0.5 text-blue-700 text-xs">{translate("admin.pricing.selected", "Selected")}</span> : null}</div></td>
+                        <td className="whitespace-nowrap px-4 py-3 text-muted-foreground text-xs">{formatUpdatedAt(model.updatedAt)}</td>
+                        <td className="px-4 py-3 text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild><Button aria-label={translate("admin.pricing.model_actions", "Model actions")} className="cursor-pointer" size="icon" type="button" variant="ghost"><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="min-w-48">
+                              <DropdownMenuItem className="cursor-pointer" onSelect={() => { setSelectedKey(model.key); setDialogMode("edit"); }}>{translate("admin.pricing.edit_model_action", "Edit model")}</DropdownMenuItem>
+                              {pricingComplete && model.type === "chat" && !model.isDefault ? <ModelActionForm action={setDefaultModelConfigAction} id={model.id} label={translate("admin.pricing.make_default", "Make default")} pendingLabel={translate("common.updating", "Updating...")} /> : null}
+                              {pricingComplete && model.type === "image" && !model.isActive ? <ModelActionForm action={setActiveImageModelConfigAction} id={model.id} label={translate("admin.pricing.make_active", "Make active")} pendingLabel={translate("common.updating", "Updating...")} /> : null}
+                              {pricingComplete && model.type === "live_voice" && !model.isDefault ? <ModelActionForm action={setDefaultLiveVoiceModelConfigAction} id={model.id} label={translate("admin.pricing.make_default", "Make default")} pendingLabel={translate("common.updating", "Updating...")} /> : null}
+                              <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive" onSelect={() => { setSelectedKey(model.key); setDialogMode("delete"); }}>{translate("admin.pricing.delete_model", "Delete model")}</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {typeModels.length > DEFAULT_VISIBLE_ROWS ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-4 py-3">
+                <span aria-live="polite" className="text-muted-foreground text-xs">
+                  {translate("admin.pricing.showing_rows", "Showing {visible} of {total}")
+                    .replace("{visible}", String(visibleModels.length))
+                    .replace("{total}", String(typeModels.length))}
+                </span>
+                {hasMoreModels ? (
+                  <Button className="cursor-pointer" onClick={() => setVisibleModelCounts((counts) => ({ ...counts, [type]: Math.min(counts[type] + DEFAULT_VISIBLE_ROWS, typeModels.length) }))} size="sm" type="button" variant="outline">
+                    {translate("admin.pricing.load_more", "Load more")}
+                  </Button>
+                ) : null}
+              </div>
             ) : null}
-          </div>
-        ) : null}
-      </div>
+          </section>
+        );
+      })}
 
       {modelSettings}
 
@@ -306,10 +338,10 @@ export function ModelPricingManagementTable({
       <Dialog onOpenChange={(open) => { if (!open) closeDialog(); }} open={dialogMode === "create" || dialogMode === "edit"}>
         <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{dialogMode === "create" ? translate("admin.pricing.add_model", "Add model") : `${translate("admin.pricing.edit_model_action", "Edit model")} · ${selectedModel?.name ?? ""}`}</DialogTitle>
-            <DialogDescription>{dialogMode === "create" ? translate("admin.pricing.add_model_description", "Choose a model type, then configure the provider, availability, and customer pricing in one workflow.") : translate("admin.pricing.edit_full_model_description", "Update this model's provider configuration, availability, provider cost, and customer markup.")}</DialogDescription>
+            <DialogTitle>{dialogMode === "create" ? addModelLabel(createType) : `${translate("admin.pricing.edit_model_action", "Edit model")} · ${selectedModel?.name ?? ""}`}</DialogTitle>
+            <DialogDescription>{dialogMode === "create" ? translate("admin.pricing.add_typed_model_description", "Configure the provider, availability, provider cost, and customer markup for this model.") : translate("admin.pricing.edit_full_model_description", "Update this model's provider configuration, availability, provider cost, and customer markup.")}</DialogDescription>
           </DialogHeader>
-          {dialogMode === "create" ? <div className="space-y-5"><label className="flex flex-col gap-2 font-medium text-sm" htmlFor="new-model-type">{translate("admin.pricing.model_type", "Model type")}<select className="rounded-md border bg-background px-3 py-2 font-normal text-sm" id="new-model-type" onChange={(event) => setCreateType(event.target.value as ModelType)} value={createType}><option value="chat">{typeLabel("chat")}</option><option value="image">{typeLabel("image")}</option><option value="live_voice">{typeLabel("live_voice")}</option></select></label><div key={createType}>{createForms[createType]}</div></div> : selectedKey ? editForms[selectedKey] : null}
+          {dialogMode === "create" ? <div key={createType}>{createForms[createType]}</div> : selectedKey ? editForms[selectedKey] : null}
           <DialogFooter><DialogClose className="cursor-pointer" type="button">{translate("common.close", "Close")}</DialogClose></DialogFooter>
         </DialogContent>
       </Dialog>

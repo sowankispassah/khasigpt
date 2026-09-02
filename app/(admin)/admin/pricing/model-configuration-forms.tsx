@@ -395,8 +395,10 @@ export function ImageModelConfigurationForm({
 }
 
 export function LiveVoiceModelConfigurationForm({
+  context,
   model,
 }: {
+  context: PricingPreviewContext;
   model?: AdminModelPricingSnapshotRow;
 }) {
   const create = !model;
@@ -426,39 +428,12 @@ export function LiveVoiceModelConfigurationForm({
           {LIVE_VOICE_MEDIA_RESOLUTION_OPTIONS.map((resolution) => <option key={resolution.value} value={resolution.value}>{resolution.label}</option>)}
         </select>
       </label>
-      <NumberField
-        defaultValue={Number(model?.inputProviderCostPerMillion ?? 0)}
-        id={`${prefix}-input-cost`}
-        label="Provider input cost (USD / 1M tokens)"
-        name="inputProviderCostPerMillion"
-        translationKey="admin.pricing.provider_input_cost"
-      />
-      <NumberField
-        defaultValue={Number(model?.outputProviderCostPerMillion ?? 0)}
-        id={`${prefix}-output-cost`}
-        label="Provider output cost (USD / 1M tokens)"
-        name="outputProviderCostPerMillion"
-        translationKey="admin.pricing.provider_output_cost"
-      />
-      <NumberField
-        defaultValue={Number(model?.markupMultiplier ?? 3)}
-        id={`${prefix}-markup`}
-        label="Customer markup"
-        max={20}
-        min={1}
-        name="markupMultiplier"
-        step={0.01}
-        translationKey="admin.pricing.markup"
-      />
-      <NumberField
-        defaultValue={Number(model?.creditMultiplier ?? model?.markupMultiplier ?? 3)}
-        id={`${prefix}-credit-multiplier`}
-        label="Legacy credit multiplier"
-        max={20}
-        min={1}
-        name="creditMultiplier"
-        step={0.01}
-        translationKey="admin.pricing.model_form.voice_credit_multiplier"
+      <TokenCostPlusFields
+        context={context}
+        initialInputCost={Number(model?.inputProviderCostPerMillion ?? 0)}
+        initialMarkup={Number(model?.markupMultiplier ?? 3)}
+        initialOutputCost={Number(model?.outputProviderCostPerMillion ?? 0)}
+        prefix={prefix}
       />
       <CheckboxField defaultChecked={model?.isEnabled ?? true} id={`${prefix}-enabled`} label="Enabled" name="isEnabled" translationKey="admin.pricing.model_form.enabled" />
       <CheckboxField defaultChecked={model?.enabledOnWeb ?? true} id={`${prefix}-web`} label="Enabled on web" name="enabledOnWeb" translationKey="admin.pricing.model_form.enabled_web" />

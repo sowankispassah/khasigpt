@@ -141,9 +141,7 @@ export async function POST(request: Request) {
 
   const { inputTokens, outputTokens } = resolveLiveVoiceTurnUsage({
     assistantText,
-    fallbackTokensPerVoiceInteraction: liveVoiceModel.tokensPerVoiceInteraction,
     inputTokens: parsedBody.data.inputTokens,
-    multiplier: liveVoiceModel.creditMultiplier,
     outputTokens: parsedBody.data.outputTokens,
     userText,
   });

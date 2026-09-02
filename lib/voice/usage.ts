@@ -29,40 +29,27 @@ export function estimateTextTokens(text: string) {
 
 export function resolveLiveVoiceTurnUsage({
   assistantText,
-  fallbackTokensPerVoiceInteraction,
   inputTokens,
-  multiplier,
   outputTokens,
   userText,
 }: {
   assistantText: string;
-  fallbackTokensPerVoiceInteraction: number;
   inputTokens?: unknown;
-  multiplier: number;
   outputTokens?: unknown;
   userText: string;
 }): LiveVoiceTurnUsage {
-  const safeMultiplier =
-    Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1;
   const reportedInputTokens = normalizeTokenCount(inputTokens);
   const reportedOutputTokens = normalizeTokenCount(outputTokens);
   const estimatedInputTokens = estimateTextTokens(userText);
   const estimatedOutputTokens = estimateTextTokens(assistantText);
 
   const hasReportedUsage = reportedInputTokens > 0 || reportedOutputTokens > 0;
-  const fallbackBaseTokens = Math.max(
-    1,
-    Math.round(fallbackTokensPerVoiceInteraction / safeMultiplier)
-  );
-  const fallbackInputTokens = Math.ceil(fallbackBaseTokens / 2);
-  const fallbackOutputTokens = Math.max(1, fallbackBaseTokens - fallbackInputTokens);
-
   const baseInputTokens = hasReportedUsage
     ? Math.max(reportedInputTokens, estimatedInputTokens)
-    : estimatedInputTokens || fallbackInputTokens;
+    : estimatedInputTokens;
   const baseOutputTokens = hasReportedUsage
     ? Math.max(reportedOutputTokens, estimatedOutputTokens)
-    : estimatedOutputTokens || fallbackOutputTokens;
+    : estimatedOutputTokens;
 
   return {
     inputTokens: Math.max(1, Math.round(baseInputTokens)),

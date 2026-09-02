@@ -86,7 +86,11 @@ test.describe("admin pricing loading isolation", () => {
     );
     expect(modelTableSource).toContain("loadWarning");
     expect(modelTableSource).toContain("modelsConfirmed");
-    expect(modelTableSource).toContain('translate("admin.pricing.add_model"');
+    expect(modelTableSource).toContain('translate("admin.pricing.add_chat_model"');
+    expect(modelTableSource).toContain('translate("admin.pricing.add_image_model"');
+    expect(modelTableSource).toContain('translate("admin.pricing.add_voice_model"');
+    expect(modelTableSource).toContain('const modelTypes: ModelType[] = ["chat", "image", "live_voice"]');
+    expect(modelTableSource).toContain("modelTypes.map((type) =>");
     expect(modelTableSource).toContain("<DropdownMenuTrigger asChild>");
     expect(modelTableSource).toContain("deleteModelConfigAction");
     expect(modelTableSource).toContain("setActiveImageModelConfigAction");
@@ -151,7 +155,7 @@ test.describe("admin pricing loading isolation", () => {
       );
     }
     expect(planTableSource).toContain("plans.slice(0, visiblePlanCount)");
-    expect(modelTableSource).toContain("models.slice(0, visibleModelCount)");
+    expect(modelTableSource).toContain("typeModels.slice(0, visibleModelCounts[type])");
   });
 
   test("uses the default chat model for previews without a margin-baseline control", async () => {
@@ -199,7 +203,7 @@ test.describe("admin pricing loading isolation", () => {
     );
   });
 
-  test("requires cost-plus pricing and removes image legacy billing", async () => {
+  test("requires cost-plus pricing and removes all legacy model billing", async () => {
     const [
       formSource,
       previewSource,
@@ -207,6 +211,9 @@ test.describe("admin pricing loading isolation", () => {
       querySource,
       schemaSource,
       migrationSource,
+      voiceMigrationSource,
+      voiceSource,
+      webSearchConfigSource,
       searchSource,
       previewRouteSource,
     ] = await Promise.all([
@@ -223,6 +230,11 @@ test.describe("admin pricing loading isolation", () => {
         "lib/db/migrations/0094_drop_image_legacy_pricing.sql"
       ),
       readWorkspaceFile(
+        "lib/db/migrations/0095_drop_live_voice_legacy_multiplier.sql"
+      ),
+      readWorkspaceFile("lib/voice/live-models.ts"),
+      readWorkspaceFile("lib/web-search/config.ts"),
+      readWorkspaceFile(
         "app/(admin)/admin/settings/web-search-settings-form.tsx"
       ),
       readWorkspaceFile("app/api/admin/pricing-preview/route.ts"),
@@ -232,14 +244,23 @@ test.describe("admin pricing loading isolation", () => {
     expect(formSource).toContain("<UnitCostPlusFields");
     expect(formSource).not.toContain("Legacy fixed price");
     expect(formSource).not.toContain("Legacy credits per image");
+    expect(formSource).not.toContain("Legacy credit multiplier");
     expect(previewSource).toContain("calculateCostPlusPreview");
     expect(previewSource).toContain("Profit margin");
     expect(previewSource).toContain("Credits deducted");
     expect(actionSource).not.toContain("resolveImageModelPricing");
     expect(querySource).not.toContain("legacyTokensPerImage");
+    expect(querySource).not.toContain("legacyTokensToDeduct");
+    expect(querySource).not.toContain("function calculateTokenDeduction");
     expect(schemaSource).not.toContain('tokensPerImage: integer("tokensPerImage")');
     expect(migrationSource).toContain('DROP COLUMN IF EXISTS "priceInPaise"');
     expect(migrationSource).toContain('DROP COLUMN IF EXISTS "tokensPerImage"');
+    expect(voiceMigrationSource).toContain(
+      'DROP COLUMN IF EXISTS "creditMultiplier"'
+    );
+    expect(voiceSource).not.toContain("defaultLiveVoiceModelConfig");
+    expect(webSearchConfigSource).not.toContain("0.014");
+    expect(webSearchConfigSource).not.toContain("0.01,");
     expect(searchSource).toContain("<CostPlusPreviewCard");
     expect(searchSource).toContain('required\n            step={0.000001}');
     expect(previewRouteSource).toContain("requireAdminApiUser");
