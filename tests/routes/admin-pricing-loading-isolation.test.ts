@@ -158,6 +158,31 @@ test.describe("admin pricing loading isolation", () => {
     expect(modelTableSource).toContain("typeModels.slice(0, visibleModelCounts[type])");
   });
 
+  test("keeps every pricing table collapsed until its own header is opened", async () => {
+    const [planTableSource, modelTableSource] = await Promise.all([
+      readWorkspaceFile(
+        "app/(admin)/admin/pricing/pricing-management-table.tsx"
+      ),
+      readWorkspaceFile(
+        "app/(admin)/admin/pricing/model-pricing-management-table.tsx"
+      ),
+    ]);
+
+    for (const source of [planTableSource, modelTableSource]) {
+      expect(source).toContain("<Collapsible");
+      expect(source).toContain("<CollapsibleTrigger asChild>");
+      expect(source).toContain("<CollapsibleContent>");
+      expect(source).toContain("defaultOpen={false}");
+      expect(source).toContain("group-data-[state=open]:rotate-180");
+    }
+    expect(planTableSource).toContain(
+      'translate(\n                "admin.pricing.toggle_pricing_plans"'
+    );
+    expect(modelTableSource).toContain(
+      '"admin.pricing.toggle_model_section"'
+    );
+  });
+
   test("uses the default chat model for previews without a margin-baseline control", async () => {
     const [
       pageSource,

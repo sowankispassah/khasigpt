@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreVertical } from "lucide-react";
+import { ChevronDown, MoreVertical } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 
@@ -8,6 +8,11 @@ import { deletePricingPlanAction } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { useTranslation } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogClose,
@@ -117,29 +122,43 @@ export function PricingManagementTable({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card/80 p-4 shadow-sm">
-        <div>
-          <p className="font-medium text-sm">
-            {plansConfirmed
-              ? `${plans.length} pricing ${plans.length === 1 ? "configuration" : "configurations"}`
-              : "Pricing configurations are unavailable"}
-          </p>
-          <p className="mt-1 text-muted-foreground text-xs">
-            {detailsLoading
-              ? "Loading provider costs and editing details..."
-              : referenceModelName
-                ? `Margin preview uses the default model: ${referenceModelName}.`
-                : "Margin preview is unavailable until an enabled model cost is configured."}
-          </p>
+      <Collapsible className="space-y-5" defaultOpen={false}>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card/80 p-4 shadow-sm">
+          <CollapsibleTrigger asChild>
+            <button
+              aria-label={translate(
+                "admin.pricing.toggle_pricing_plans",
+                "Show or hide pricing plans"
+              )}
+              className="group flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 rounded-lg text-left"
+              type="button"
+            >
+              <div>
+                <p className="font-medium text-sm">
+                  {plansConfirmed
+                    ? `${plans.length} pricing ${plans.length === 1 ? "configuration" : "configurations"}`
+                    : "Pricing configurations are unavailable"}
+                </p>
+                <p className="mt-1 text-muted-foreground text-xs">
+                  {detailsLoading
+                    ? "Loading provider costs and editing details..."
+                    : referenceModelName
+                      ? `Margin preview uses the default model: ${referenceModelName}.`
+                      : "Margin preview is unavailable until an enabled model cost is configured."}
+                </p>
+              </div>
+              <ChevronDown className="size-5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+            </button>
+          </CollapsibleTrigger>
+          <Button className="cursor-pointer" onClick={openCreate} type="button">+ Add Pricing</Button>
         </div>
-        <Button className="cursor-pointer" onClick={openCreate} type="button">+ Add Pricing</Button>
-      </div>
 
-      {plansConfirmed && !detailsLoading && !modelCostsConfirmed ? <p className="rounded-lg border border-amber-300/60 bg-amber-50/50 p-3 text-amber-900 text-sm dark:bg-amber-950/20 dark:text-amber-100">Provider cost data could not be confirmed. Plans remain editable; margin values are shown as unavailable.</p> : null}
+        {plansConfirmed && !detailsLoading && !modelCostsConfirmed ? <p className="rounded-lg border border-amber-300/60 bg-amber-50/50 p-3 text-amber-900 text-sm dark:bg-amber-950/20 dark:text-amber-100">Provider cost data could not be confirmed. Plans remain editable; margin values are shown as unavailable.</p> : null}
 
-      <div className="overflow-hidden rounded-xl border bg-card/80 shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1120px] text-sm">
+        <CollapsibleContent>
+          <div className="overflow-hidden rounded-xl border bg-card/80 shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1120px] text-sm">
           <thead className="bg-muted/50 text-left text-muted-foreground text-xs uppercase tracking-wide">
             <tr>
               <th className="px-4 py-3 font-medium">Pricing / model</th>
@@ -195,33 +214,35 @@ export function PricingManagementTable({
               </tr>
             ))}
           </tbody>
-          </table>
-        </div>
-        {plans.length > DEFAULT_VISIBLE_ROWS ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-4 py-3">
-            <span aria-live="polite" className="text-muted-foreground text-xs">
-              {translate("admin.pricing.showing_rows", "Showing {visible} of {total}")
-                .replace("{visible}", String(visiblePlans.length))
-                .replace("{total}", String(plans.length))}
-            </span>
-            {hasMorePlans ? (
-              <Button
-                className="cursor-pointer"
-                onClick={() =>
-                  setVisiblePlanCount((count) =>
-                    Math.min(count + DEFAULT_VISIBLE_ROWS, plans.length)
-                  )
-                }
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                {translate("admin.pricing.load_more", "Load more")}
-              </Button>
+              </table>
+            </div>
+            {plans.length > DEFAULT_VISIBLE_ROWS ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-4 py-3">
+                <span aria-live="polite" className="text-muted-foreground text-xs">
+                  {translate("admin.pricing.showing_rows", "Showing {visible} of {total}")
+                    .replace("{visible}", String(visiblePlans.length))
+                    .replace("{total}", String(plans.length))}
+                </span>
+                {hasMorePlans ? (
+                  <Button
+                    className="cursor-pointer"
+                    onClick={() =>
+                      setVisiblePlanCount((count) =>
+                        Math.min(count + DEFAULT_VISIBLE_ROWS, plans.length)
+                      )
+                    }
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    {translate("admin.pricing.load_more", "Load more")}
+                  </Button>
+                ) : null}
+              </div>
             ) : null}
           </div>
-        ) : null}
-      </div>
+        </CollapsibleContent>
+      </Collapsible>
 
       {Object.keys(deletedForms).length > 0 ? <section className="rounded-xl border bg-card/80 p-4 shadow-sm"><h2 className="font-semibold text-sm">Deleted pricing configurations</h2><div className="mt-3 grid gap-2">{Object.entries(deletedForms).map(([planId, form]) => <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background p-3 text-sm" key={planId}><span className="text-muted-foreground">Soft-deleted plan</span>{form}</div>)}</div></section> : null}
 

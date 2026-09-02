@@ -5089,6 +5089,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   { key: "admin.pricing.add_voice_model", defaultText: "+ Add voice model", description: "Button for adding a voice model in Admin Pricing." },
   { key: "admin.pricing.add_typed_model_description", defaultText: "Configure the provider, availability, provider cost, and customer markup for this model.", description: "Description in a type-specific add-model dialog." },
   { key: "admin.pricing.model_type_count", defaultText: "{count} configured", description: "Configured row count beneath a model-type table heading." },
+  { key: "admin.pricing.toggle_pricing_plans", defaultText: "Show or hide pricing plans", description: "Accessible label for the collapsible recharge-pricing table." },
+  { key: "admin.pricing.toggle_model_section", defaultText: "Show or hide {section}", description: "Accessible label for a collapsible model-pricing table." },
   { key: "admin.pricing.model_type_empty", defaultText: "No {type} models are configured. Use the add button above to create one.", description: "Empty state for one model-type table." },
   { key: "admin.pricing.pricing_incomplete", defaultText: "Pricing incomplete — add provider cost", description: "Warning badge for a model that cannot run until provider cost is configured." },
   { key: "admin.web_search.pricing_incomplete", defaultText: "Web search cannot run until a provider cost greater than zero is added for the selected provider.", description: "Admin warning shown when the selected web-search provider has no billable cost configured." },

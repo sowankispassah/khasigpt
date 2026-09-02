@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreVertical } from "lucide-react";
+import { ChevronDown, MoreVertical } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 
@@ -18,6 +18,11 @@ import {
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { useTranslation } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogClose,
@@ -217,15 +222,31 @@ export function ModelPricingManagementTable({
         const visibleModels = typeModels.slice(0, visibleModelCounts[type]);
         const hasMoreModels = visibleModelCounts[type] < typeModels.length;
         return (
-          <section className="overflow-hidden rounded-xl border bg-card/80 shadow-sm" key={type}>
+          <Collapsible
+            className="overflow-hidden rounded-xl border bg-card/80 shadow-sm"
+            defaultOpen={false}
+            key={type}
+          >
             <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-              <div>
-                <h3 className="font-semibold">{sectionTitle(type)}</h3>
-                <p className="text-muted-foreground text-xs">
-                  {translate("admin.pricing.model_type_count", "{count} configured")
-                    .replace("{count}", String(typeModels.length))}
-                </p>
-              </div>
+              <CollapsibleTrigger asChild>
+                <button
+                  aria-label={translate(
+                    "admin.pricing.toggle_model_section",
+                    "Show or hide {section}"
+                  ).replace("{section}", sectionTitle(type))}
+                  className="group flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 rounded-lg text-left"
+                  type="button"
+                >
+                  <div>
+                    <h3 className="font-semibold">{sectionTitle(type)}</h3>
+                    <p className="text-muted-foreground text-xs">
+                      {translate("admin.pricing.model_type_count", "{count} configured")
+                        .replace("{count}", String(typeModels.length))}
+                    </p>
+                  </div>
+                  <ChevronDown className="size-5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+                </button>
+              </CollapsibleTrigger>
               <Button
                 className="cursor-pointer"
                 disabled={loading || !modelsConfirmed}
@@ -238,8 +259,9 @@ export function ModelPricingManagementTable({
                 {addModelLabel(type)}
               </Button>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1080px] text-sm">
+            <CollapsibleContent>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1080px] text-sm">
                 <thead className="bg-muted/50 text-left text-muted-foreground text-xs uppercase tracking-wide">
                   <tr>
                     <th className="px-4 py-3 font-medium">{translate("admin.pricing.model", "Model")}</th>
@@ -301,23 +323,24 @@ export function ModelPricingManagementTable({
                     );
                   })}
                 </tbody>
-              </table>
-            </div>
-            {typeModels.length > DEFAULT_VISIBLE_ROWS ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-4 py-3">
-                <span aria-live="polite" className="text-muted-foreground text-xs">
-                  {translate("admin.pricing.showing_rows", "Showing {visible} of {total}")
-                    .replace("{visible}", String(visibleModels.length))
-                    .replace("{total}", String(typeModels.length))}
-                </span>
-                {hasMoreModels ? (
-                  <Button className="cursor-pointer" onClick={() => setVisibleModelCounts((counts) => ({ ...counts, [type]: Math.min(counts[type] + DEFAULT_VISIBLE_ROWS, typeModels.length) }))} size="sm" type="button" variant="outline">
-                    {translate("admin.pricing.load_more", "Load more")}
-                  </Button>
-                ) : null}
+                </table>
               </div>
-            ) : null}
-          </section>
+              {typeModels.length > DEFAULT_VISIBLE_ROWS ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-4 py-3">
+                  <span aria-live="polite" className="text-muted-foreground text-xs">
+                    {translate("admin.pricing.showing_rows", "Showing {visible} of {total}")
+                      .replace("{visible}", String(visibleModels.length))
+                      .replace("{total}", String(typeModels.length))}
+                  </span>
+                  {hasMoreModels ? (
+                    <Button className="cursor-pointer" onClick={() => setVisibleModelCounts((counts) => ({ ...counts, [type]: Math.min(counts[type] + DEFAULT_VISIBLE_ROWS, typeModels.length) }))} size="sm" type="button" variant="outline">
+                      {translate("admin.pricing.load_more", "Load more")}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+            </CollapsibleContent>
+          </Collapsible>
         );
       })}
 
