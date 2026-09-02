@@ -4993,6 +4993,16 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Model pricing table actions column.",
   },
   {
+    key: "admin.pricing.showing_rows",
+    defaultText: "Showing {visible} of {total}",
+    description: "Pagination count below Admin Pricing tables.",
+  },
+  {
+    key: "admin.pricing.load_more",
+    defaultText: "Load more",
+    description: "Button that reveals more rows in Admin Pricing tables.",
+  },
+  {
     key: "admin.pricing.model_type.chat",
     defaultText: "Chat",
     description: "Chat model type label in Admin Pricing.",

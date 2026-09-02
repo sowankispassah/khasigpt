@@ -25,6 +25,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
+const DEFAULT_VISIBLE_ROWS = 10;
+
 type PricingPlanRow = {
   billingCycleDays: number;
   credits: number;
@@ -93,7 +95,10 @@ export function PricingManagementTable({
   const { translate } = useTranslation();
   const [dialogMode, setDialogMode] = useState<"create" | "delete" | "edit" | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [visiblePlanCount, setVisiblePlanCount] = useState(DEFAULT_VISIBLE_ROWS);
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) ?? null;
+  const visiblePlans = plans.slice(0, visiblePlanCount);
+  const hasMorePlans = visiblePlanCount < plans.length;
 
   function openCreate() {
     setSelectedPlanId(null);
@@ -132,8 +137,9 @@ export function PricingManagementTable({
 
       {plansConfirmed && !detailsLoading && !modelCostsConfirmed ? <p className="rounded-lg border border-amber-300/60 bg-amber-50/50 p-3 text-amber-900 text-sm dark:bg-amber-950/20 dark:text-amber-100">Provider cost data could not be confirmed. Plans remain editable; margin values are shown as unavailable.</p> : null}
 
-      <div className="overflow-x-auto rounded-xl border bg-card/80 shadow-sm">
-        <table className="w-full min-w-[1120px] text-sm">
+      <div className="overflow-hidden rounded-xl border bg-card/80 shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1120px] text-sm">
           <thead className="bg-muted/50 text-left text-muted-foreground text-xs uppercase tracking-wide">
             <tr>
               <th className="px-4 py-3 font-medium">Pricing / model</th>
@@ -155,7 +161,7 @@ export function PricingManagementTable({
               <tr><td className="px-4 py-8 text-center text-muted-foreground" colSpan={12}>Pricing plans could not be loaded. Retry the page before changing values.</td></tr>
             ) : plans.length === 0 ? (
               <tr><td className="px-4 py-8 text-center text-muted-foreground" colSpan={12}>No pricing configurations yet. Add a plan to get started.</td></tr>
-            ) : plans.map((plan) => (
+            ) : visiblePlans.map((plan) => (
               <tr className="bg-card/70 transition hover:bg-muted/20" key={plan.id}>
                 <td className="max-w-[230px] px-4 py-3">
                   <div className="flex flex-col gap-1">
@@ -189,7 +195,32 @@ export function PricingManagementTable({
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
+        {plans.length > DEFAULT_VISIBLE_ROWS ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-4 py-3">
+            <span aria-live="polite" className="text-muted-foreground text-xs">
+              {translate("admin.pricing.showing_rows", "Showing {visible} of {total}")
+                .replace("{visible}", String(visiblePlans.length))
+                .replace("{total}", String(plans.length))}
+            </span>
+            {hasMorePlans ? (
+              <Button
+                className="cursor-pointer"
+                onClick={() =>
+                  setVisiblePlanCount((count) =>
+                    Math.min(count + DEFAULT_VISIBLE_ROWS, plans.length)
+                  )
+                }
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {translate("admin.pricing.load_more", "Load more")}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {Object.keys(deletedForms).length > 0 ? <section className="rounded-xl border bg-card/80 p-4 shadow-sm"><h2 className="font-semibold text-sm">Deleted pricing configurations</h2><div className="mt-3 grid gap-2">{Object.entries(deletedForms).map(([planId, form]) => <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background p-3 text-sm" key={planId}><span className="text-muted-foreground">Soft-deleted plan</span>{form}</div>)}</div></section> : null}

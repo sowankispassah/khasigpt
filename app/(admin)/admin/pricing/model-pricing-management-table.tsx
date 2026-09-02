@@ -35,6 +35,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
+const DEFAULT_VISIBLE_ROWS = 10;
+
 export type ModelType = "chat" | "image" | "live_voice";
 
 export type ModelPricingRow = {
@@ -135,8 +137,11 @@ export function ModelPricingManagementTable({
   const [dialogMode, setDialogMode] = useState<"create" | "delete" | "edit" | "hard-delete" | null>(null);
   const [createType, setCreateType] = useState<ModelType>("chat");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [visibleModelCount, setVisibleModelCount] = useState(DEFAULT_VISIBLE_ROWS);
   const selectedModel = models.find((model) => model.key === selectedKey) ?? null;
   const selectedDeletedModel = deletedModels.find((model) => model.key === selectedKey) ?? null;
+  const visibleModels = models.slice(0, visibleModelCount);
+  const hasMoreModels = visibleModelCount < models.length;
 
   const typeLabel = (type: ModelType) =>
     type === "image"
@@ -191,8 +196,9 @@ export function ModelPricingManagementTable({
         </p>
       ) : null}
 
-      <div className="overflow-x-auto rounded-xl border bg-card/80 shadow-sm">
-        <table className="w-full min-w-[1180px] text-sm">
+      <div className="overflow-hidden rounded-xl border bg-card/80 shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1180px] text-sm">
           <thead className="bg-muted/50 text-left text-muted-foreground text-xs uppercase tracking-wide">
             <tr>
               <th className="px-4 py-3 font-medium">{translate("admin.pricing.model", "Model")}</th>
@@ -214,7 +220,7 @@ export function ModelPricingManagementTable({
               <tr><td className="px-4 py-8 text-center text-muted-foreground" colSpan={10}>{translate("admin.pricing.models_retry", "Model pricing could not be loaded. Recharge plans remain available; retry this page before changing model costs.")}</td></tr>
             ) : models.length === 0 ? (
               <tr><td className="px-4 py-8 text-center text-muted-foreground" colSpan={10}>{translate("admin.pricing.models_empty", "No configured models are available. Add a model to get started.")}</td></tr>
-            ) : models.map((model) => {
+            ) : visibleModels.map((model) => {
               const unitLabel = model.type === "image" ? translate("admin.pricing.per_output", "per output") : translate("admin.pricing.per_million", "per 1M tokens");
               return (
                 <tr className="bg-card/70 transition hover:bg-muted/20" key={model.key}>
@@ -255,7 +261,32 @@ export function ModelPricingManagementTable({
               );
             })}
           </tbody>
-        </table>
+          </table>
+        </div>
+        {models.length > DEFAULT_VISIBLE_ROWS ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-4 py-3">
+            <span aria-live="polite" className="text-muted-foreground text-xs">
+              {translate("admin.pricing.showing_rows", "Showing {visible} of {total}")
+                .replace("{visible}", String(visibleModels.length))
+                .replace("{total}", String(models.length))}
+            </span>
+            {hasMoreModels ? (
+              <Button
+                className="cursor-pointer"
+                onClick={() =>
+                  setVisibleModelCount((count) =>
+                    Math.min(count + DEFAULT_VISIBLE_ROWS, models.length)
+                  )
+                }
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {translate("admin.pricing.load_more", "Load more")}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {modelSettings}

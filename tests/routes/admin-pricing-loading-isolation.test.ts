@@ -133,6 +133,27 @@ test.describe("admin pricing loading isolation", () => {
     expect(tableSource).toContain("Delete pricing plan?");
   });
 
+  test("shows ten pricing and model rows by default with isolated load-more controls", async () => {
+    const [planTableSource, modelTableSource] = await Promise.all([
+      readWorkspaceFile(
+        "app/(admin)/admin/pricing/pricing-management-table.tsx"
+      ),
+      readWorkspaceFile(
+        "app/(admin)/admin/pricing/model-pricing-management-table.tsx"
+      ),
+    ]);
+
+    for (const source of [planTableSource, modelTableSource]) {
+      expect(source).toContain("const DEFAULT_VISIBLE_ROWS = 10");
+      expect(source).toContain('translate("admin.pricing.load_more", "Load more")');
+      expect(source).toContain(
+        'translate("admin.pricing.showing_rows", "Showing {visible} of {total}")'
+      );
+    }
+    expect(planTableSource).toContain("plans.slice(0, visiblePlanCount)");
+    expect(modelTableSource).toContain("models.slice(0, visibleModelCount)");
+  });
+
   test("uses the default chat model for previews without a margin-baseline control", async () => {
     const [
       pageSource,
