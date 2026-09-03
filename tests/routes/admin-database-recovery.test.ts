@@ -111,8 +111,18 @@ test.describe("admin database recovery", () => {
     expect(pageSource).toContain('defaultText="Online"');
     expect(tableSource).toContain('id="admin-user-presence"');
     expect(tableSource).toContain('id="admin-user-sort"');
-    expect(tableSource).toContain('params.set("presence", presence)');
-    expect(tableSource).toContain('params.set("sort", sort)');
+    expect(tableSource).toContain('params.set("presence", nextPresence)');
+    expect(tableSource).toContain('params.set("sort", nextSort)');
+    expect(tableSource).toContain("function applyFilters(");
+    expect(tableSource).toContain("filtersRef.current = nextFilters");
+    expect(tableSource).toContain("applyFilters({ role: nextRole })");
+    expect(tableSource).toContain(
+      "applyFilters({ accountStatus: nextAccountStatus })"
+    );
+    expect(tableSource).toContain("applyFilters({ presence: nextPresence })");
+    expect(tableSource).toContain("applyFilters({ sort: nextSort })");
+    expect(tableSource).toContain("router.replace(");
+    expect(tableSource).toContain("{ scroll: false }");
     expect(apiSource).toContain("isAdminUserPresenceFilter");
     expect(apiSource).toContain("isAdminUserSortOption");
     expect(querySource).toContain('LEFT JOIN "UserPresence"');

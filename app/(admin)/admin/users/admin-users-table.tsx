@@ -7,6 +7,7 @@ import {
   type FormEvent,
   type ReactNode,
   useEffect,
+  useRef,
   useState,
   useTransition,
 } from "react";
@@ -351,6 +352,14 @@ export function AdminUserChatsButton({
 
 type AdminUserAccountStatusFilter = "active" | "all" | "suspended";
 
+type AdminUsersFilterValues = {
+  accountStatus: AdminUserAccountStatusFilter;
+  presence: AdminUserPresenceFilter;
+  role: UserRole | "all";
+  search: string;
+  sort: AdminUserSortOption;
+};
+
 function AdminUsersSearchForm({
   initialAccountStatus,
   initialPresence,
@@ -370,6 +379,13 @@ function AdminUsersSearchForm({
   const [presence, setPresence] = useState(initialPresence);
   const [role, setRole] = useState(initialRole);
   const [sort, setSort] = useState(initialSort);
+  const filtersRef = useRef<AdminUsersFilterValues>({
+    accountStatus: initialAccountStatus,
+    presence: initialPresence,
+    role: initialRole,
+    search: initialSearch,
+    sort: initialSort,
+  });
   const [isPending, startTransition] = useTransition();
   const { translate } = useTranslation();
   const { editButton, text: placeholder } = useEditableTranslation(
@@ -379,6 +395,13 @@ function AdminUsersSearchForm({
   );
 
   useEffect(() => {
+    filtersRef.current = {
+      accountStatus: initialAccountStatus,
+      presence: initialPresence,
+      role: initialRole,
+      search: initialSearch,
+      sort: initialSort,
+    };
     setValue(initialSearch);
     setAccountStatus(initialAccountStatus);
     setPresence(initialPresence);
@@ -398,34 +421,63 @@ function AdminUsersSearchForm({
     }
   }, [isPending]);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const search = value.trim();
+  function applyFilters(
+    overrides: Partial<AdminUsersFilterValues> = {}
+  ) {
+    const nextFilters: AdminUsersFilterValues = {
+      ...filtersRef.current,
+      ...overrides,
+      search: (overrides.search ?? value).trim(),
+    };
+    filtersRef.current = nextFilters;
+
+    const {
+      accountStatus: nextAccountStatus,
+      presence: nextPresence,
+      role: nextRole,
+      search: nextSearch,
+      sort: nextSort,
+    } = nextFilters;
     const params = new URLSearchParams();
-    if (search) {
-      params.set("q", search);
+    if (nextSearch) {
+      params.set("q", nextSearch);
     }
-    if (role !== "all") {
-      params.set("role", role);
+    if (nextRole !== "all") {
+      params.set("role", nextRole);
     }
-    if (accountStatus !== "all") {
-      params.set("active", accountStatus === "active" ? "true" : "false");
+    if (nextAccountStatus !== "all") {
+      params.set(
+        "active",
+        nextAccountStatus === "active" ? "true" : "false"
+      );
     }
-    if (presence !== "all") {
-      params.set("presence", presence);
+    if (nextPresence !== "all") {
+      params.set("presence", nextPresence);
     }
-    if (sort !== "created_desc") {
-      params.set("sort", sort);
+    if (nextSort !== "created_desc") {
+      params.set("sort", nextSort);
     }
 
     startGlobalProgress();
     startTransition(() => {
-      router.push(params.size > 0 ? `/admin/users?${params}` : "/admin/users");
+      router.replace(
+        params.size > 0 ? `/admin/users?${params}` : "/admin/users",
+        { scroll: false }
+      );
     });
   }
 
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    applyFilters({ search: value });
+  }
+
   return (
-    <form className="flex flex-wrap items-end gap-2" onSubmit={handleSubmit}>
+    <form
+      aria-busy={isPending}
+      className="flex flex-wrap items-end gap-2"
+      onSubmit={handleSubmit}
+    >
       <div className="min-w-0 flex-1 sm:min-w-[18rem]">
         <input
           aria-label={translate("admin.users.search.label", "Search users")}
@@ -443,7 +495,11 @@ function AdminUsersSearchForm({
           aria-label={translate("admin.users.filters.role.label", "Role")}
           className="h-9 min-w-32 rounded-md border border-input bg-background px-2 text-sm"
           id="admin-user-role"
-          onChange={(event) => setRole(event.target.value as UserRole | "all")}
+          onChange={(event) => {
+            const nextRole = event.target.value as UserRole | "all";
+            setRole(nextRole);
+            applyFilters({ role: nextRole });
+          }}
           value={role}
         >
           <option value="all">
@@ -468,9 +524,12 @@ function AdminUsersSearchForm({
           )}
           className="h-9 min-w-36 rounded-md border border-input bg-background px-2 text-sm"
           id="admin-user-account-status"
-          onChange={(event) =>
-            setAccountStatus(event.target.value as AdminUserAccountStatusFilter)
-          }
+          onChange={(event) => {
+            const nextAccountStatus = event.target
+              .value as AdminUserAccountStatusFilter;
+            setAccountStatus(nextAccountStatus);
+            applyFilters({ accountStatus: nextAccountStatus });
+          }}
           value={accountStatus}
         >
           <option value="all">
@@ -492,9 +551,12 @@ function AdminUsersSearchForm({
           aria-label={translate("admin.users.filters.presence.label", "Presence")}
           className="h-9 min-w-32 rounded-md border border-input bg-background px-2 text-sm"
           id="admin-user-presence"
-          onChange={(event) =>
-            setPresence(event.target.value as AdminUserPresenceFilter)
-          }
+          onChange={(event) => {
+            const nextPresence = event.target
+              .value as AdminUserPresenceFilter;
+            setPresence(nextPresence);
+            applyFilters({ presence: nextPresence });
+          }}
           value={presence}
         >
           <option value="all">
@@ -513,9 +575,11 @@ function AdminUsersSearchForm({
           aria-label={translate("admin.users.filters.sort.label", "Sort by")}
           className="h-9 min-w-44 rounded-md border border-input bg-background px-2 text-sm"
           id="admin-user-sort"
-          onChange={(event) =>
-            setSort(event.target.value as AdminUserSortOption)
-          }
+          onChange={(event) => {
+            const nextSort = event.target.value as AdminUserSortOption;
+            setSort(nextSort);
+            applyFilters({ sort: nextSort });
+          }}
           value={sort}
         >
           <option value="created_desc">
