@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
     );
 
     invalidateAdminMutation({
-      source: "settings.web_search.update",
+      source: "pricing.web_search.update",
       tags: [WEB_SEARCH_CONFIG_CACHE_TAG, ...WEB_SEARCH_SETTING_KEYS.map(appSettingCacheTagForKey)],
     });
     void withTimeout(
@@ -124,11 +124,11 @@ export async function POST(request: NextRequest) {
         metadata: { ...values },
       }),
       AUDIT_TIMEOUT_MS
-    ).catch((error) => console.error("[api/admin/settings/web-search] Audit write failed.", error));
+    ).catch((error) => console.error("[api/admin/pricing/web-search] Audit write failed.", error));
 
     return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    console.error("[api/admin/settings/web-search] Save failed.", error);
+    console.error("[api/admin/pricing/web-search] Save failed.", error);
     return NextResponse.json(
       { error: "save_failed", message: "Failed to save Web Search settings." },
       { status: 500 }

@@ -34,6 +34,7 @@ import {
   PRICING_PLAN_CACHE_TAG,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   TOKENS_PER_CREDIT,
+  WEB_SEARCH_ENABLED_SETTING_KEY,
 } from "@/lib/constants";
 import {
   type AdminModelPricingSnapshotRow,
@@ -45,8 +46,14 @@ import {
   type listPricingPlans,
 } from "@/lib/db/queries";
 import { getFallbackUsdToInrRate, getUsdToInrRate } from "@/lib/services/exchange-rate";
+import {
+  loadFeatureAccessSettingsByKeys,
+  resolveFeatureAccessControlState,
+} from "@/lib/settings/feature-access-settings";
 import { withTimeout } from "@/lib/utils/async";
 import { LIVE_VOICE_MODEL_CONFIG_CACHE_TAG } from "@/lib/voice/live";
+import { loadWebSearchConfig } from "@/lib/web-search/config";
+import { FeatureAccessModeControl } from "../settings/feature-access-mode-control";
 import { PlanPricingFields } from "../settings/plan-pricing-fields";
 import { PricingPlanEditForm } from "../settings/pricing-plan-edit-form";
 import {
@@ -62,6 +69,7 @@ import {
 } from "./model-pricing-management-table";
 import { PricingNotice } from "./notice";
 import { PricingManagementTable } from "./pricing-management-table";
+import { WebSearchPricingForm } from "./web-search-pricing-form";
 
 export const dynamic = "force-dynamic";
 
@@ -865,6 +873,73 @@ function ModelPricingLoading({ activePlans }: { activePlans: PricingPlans }) {
   );
 }
 
+function WebSearchPricingSection({ children }: { children?: ReactNode }) {
+  return (
+    <details className="group overflow-hidden rounded-xl border bg-card/80 shadow-sm">
+      <summary className="flex cursor-pointer items-center justify-between gap-3 px-6 py-4">
+        <div className="space-y-1">
+          <h2 className="font-semibold text-lg">
+            <EditableTranslation
+              defaultText="Web Search settings"
+              description="Title for the Web Search settings section in Admin Pricing."
+              translationKey="admin.web_search.section_title"
+            />
+          </h2>
+          <p className="text-muted-foreground text-sm">
+            <EditableTranslation
+              defaultText="Configure grounding, platform availability, limits, provider costs, and customer markup."
+              description="Description for the Web Search settings section in Admin Pricing."
+              translationKey="admin.web_search.section_description"
+            />
+          </p>
+        </div>
+        <span className="font-semibold text-muted-foreground text-xs transition-transform duration-150 group-open:rotate-180">
+          ▼
+        </span>
+      </summary>
+      {children ? (
+        <div className="space-y-5 border-t px-6 py-5">{children}</div>
+      ) : null}
+    </details>
+  );
+}
+
+async function WebSearchPricingContent() {
+  const queryTimeoutMs = getAdminQueryTimeoutMs(3500);
+  const [config, featureAccessSnapshot] = await Promise.all([
+    loadWebSearchConfig({ timeoutMs: queryTimeoutMs }),
+    loadFeatureAccessSettingsByKeys([WEB_SEARCH_ENABLED_SETTING_KEY], {
+      source: "admin.pricing.web-search",
+      timeoutMs: queryTimeoutMs,
+    }),
+  ]);
+  const accessState = resolveFeatureAccessControlState({
+    settingKey: WEB_SEARCH_ENABLED_SETTING_KEY,
+    snapshot: featureAccessSnapshot,
+  });
+
+  return (
+    <WebSearchPricingSection>
+      <div className="rounded-lg border bg-background p-4">
+        <FeatureAccessModeControl
+          currentMode={accessState.mode}
+          description="Control whether time-sensitive public questions may use grounded web search."
+          fieldName="webSearchAccessMode"
+          readState={accessState.readState}
+          successMessage="Web Search availability updated."
+          title="Web Search access"
+        />
+      </div>
+      <WebSearchPricingForm
+        config={{
+          ...config,
+          accessMode: accessState.mode ?? config.accessMode,
+        }}
+      />
+    </WebSearchPricingSection>
+  );
+}
+
 export default async function AdminPricingPage({
   searchParams,
 }: {
@@ -961,6 +1036,11 @@ export default async function AdminPricingPage({
             activePlans={activePlans}
             modelPricingSnapshotPromise={modelPricingSnapshotPromise}
           />
+        </Suspense>
+      </section>
+      <section className="mt-4 flex flex-col gap-5 border-t pt-8">
+        <Suspense fallback={<WebSearchPricingSection />}>
+          <WebSearchPricingContent />
         </Suspense>
       </section>
     </div>

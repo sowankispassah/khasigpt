@@ -449,7 +449,7 @@ test.describe("web search grounding", () => {
     ] = await Promise.all([
       readWorkspaceFile("lib/web-search/service.ts"),
       readWorkspaceFile("app/(chat)/api/chat/route.ts"),
-      readWorkspaceFile("app/api/admin/settings/web-search/route.ts"),
+      readWorkspaceFile("app/api/admin/pricing/web-search/route.ts"),
       readWorkspaceFile("lib/db/migrations/0088_web_search_usage.sql"),
       readWorkspaceFile("components/chat.tsx"),
       readWorkspaceFile("components/message.tsx"),
@@ -515,7 +515,7 @@ test.describe("web search grounding", () => {
     expect(productImageRoute).toContain("verifyProductImageToken");
     expect(productImageRoute).toContain("fetchPublicResource");
     expect(adminRoute).toContain('requireAdminApiUser');
-    expect(adminRoute).toContain('settings.web_search.update');
+    expect(adminRoute).toContain('pricing.web_search.update');
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS "WebSearchUsage"');
   });
 });

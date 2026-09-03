@@ -33,7 +33,7 @@ const PROVIDERS: Array<{
   },
 ];
 
-export function WebSearchSettingsForm({ config }: { config: WebSearchConfig }) {
+export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
   const { translate } = useTranslation();
   const [provider, setProvider] = useState(config.provider);
   const [fallbackProvider, setFallbackProvider] = useState(config.fallbackProvider);
@@ -94,7 +94,7 @@ export function WebSearchSettingsForm({ config }: { config: WebSearchConfig }) {
     }
     setIsSaving(true);
     try {
-      const response = await fetch("/api/admin/settings/web-search", {
+      const response = await fetch("/api/admin/pricing/web-search", {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "same-origin",

@@ -260,7 +260,7 @@ test.describe("admin pricing loading isolation", () => {
       readWorkspaceFile("lib/voice/live-models.ts"),
       readWorkspaceFile("lib/web-search/config.ts"),
       readWorkspaceFile(
-        "app/(admin)/admin/settings/web-search-settings-form.tsx"
+        "app/(admin)/admin/pricing/web-search-pricing-form.tsx"
       ),
       readWorkspaceFile("app/api/admin/pricing-preview/route.ts"),
     ]);
@@ -290,5 +290,38 @@ test.describe("admin pricing loading isolation", () => {
     expect(searchSource).toContain('required\n            step={0.000001}');
     expect(previewRouteSource).toContain("requireAdminApiUser");
     expect(previewRouteSource).toContain('"Cache-Control": "no-store"');
+  });
+
+  test("owns the complete Web Search configuration on Pricing", async () => {
+    const [pricingSource, searchFormSource, searchRouteSource, settingsSource] =
+      await Promise.all([
+        readWorkspaceFile("app/(admin)/admin/pricing/page.tsx"),
+        readWorkspaceFile(
+          "app/(admin)/admin/pricing/web-search-pricing-form.tsx"
+        ),
+        readWorkspaceFile("app/api/admin/pricing/web-search/route.ts"),
+        readWorkspaceFile("app/(admin)/admin/settings/page.tsx"),
+      ]);
+
+    expect(pricingSource).toContain("async function WebSearchPricingContent");
+    expect(pricingSource).toContain("<WebSearchPricingForm");
+    expect(pricingSource).toContain("<FeatureAccessModeControl");
+    expect(pricingSource).toContain("loadWebSearchConfig");
+    expect(pricingSource).toContain("loadFeatureAccessSettingsByKeys");
+    expect(pricingSource).toContain(
+      "<Suspense fallback={<WebSearchPricingSection />}>"
+    );
+    expect(searchFormSource).toContain('fetch("/api/admin/pricing/web-search"');
+    expect(searchFormSource).toContain("Primary provider");
+    expect(searchFormSource).toContain("Enable on web");
+    expect(searchFormSource).toContain("Max search calls");
+    expect(searchFormSource).toContain("Customer markup");
+    expect(searchFormSource).toContain("Grounded search provider cost");
+    expect(searchRouteSource).toContain('source: "pricing.web_search.update"');
+    expect(settingsSource).not.toContain("<WebSearchSettingsForm");
+    expect(settingsSource).not.toContain('title="Web Search"');
+    expect(settingsSource).not.toContain(
+      'translationKey="admin.web_search.section_title"'
+    );
   });
 });

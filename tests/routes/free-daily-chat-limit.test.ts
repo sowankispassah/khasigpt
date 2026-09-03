@@ -95,12 +95,12 @@ test.describe("shared free daily chat allowance", () => {
       readFile(
         path.join(
           process.cwd(),
-          "app/(admin)/admin/settings/web-search-settings-form.tsx"
+          "app/(admin)/admin/pricing/web-search-pricing-form.tsx"
         ),
         "utf8"
       ),
       readFile(
-        path.join(process.cwd(), "app/(admin)/admin/settings/page.tsx"),
+        path.join(process.cwd(), "app/(admin)/admin/pricing/page.tsx"),
         "utf8"
       ),
       readFile(
