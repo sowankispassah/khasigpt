@@ -9,6 +9,10 @@ import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
 import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
+import {
+  getRequiredWebSearchCostProviders,
+  hasValidWebSearchProviderCosts,
+} from "@/lib/web-search/pricing";
 import type { WebSearchConfig, WebSearchProvider } from "@/lib/web-search/types";
 
 const PROVIDERS: Array<{
@@ -52,6 +56,12 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
   const [isSaving, setIsSaving] = useState(false);
   const [pricingContext, setPricingContext] =
     useState<PricingPreviewContext | null>(null);
+  const requiredCostProviders = getRequiredWebSearchCostProviders({
+    fallbackProvider,
+    provider,
+  });
+  const requiresGeminiCost = requiredCostProviders.includes("gemini_grounding");
+  const requiresOpenAiCost = requiredCostProviders.includes("openai_web_search");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -78,16 +88,22 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
 
   const save = async () => {
     if (
-      Number(geminiCostPerCallUsd) <= 0 ||
-      Number(openaiCostPerCallUsd) <= 0 ||
+      !hasValidWebSearchProviderCosts({
+        fallbackProvider,
+        provider,
+        providerCostPerCallUsd: {
+          gemini_grounding: Number(geminiCostPerCallUsd),
+          openai_web_search: Number(openaiCostPerCallUsd),
+        },
+      }) ||
       Number(markupMultiplier) < 1 ||
       Number(markupMultiplier) > 20
     ) {
       toast({
         type: "error",
         description: translate(
-          "admin.web_search.invalid_pricing",
-          "Provider costs must be greater than zero and markup must be between 1 and 20."
+          "admin.web_search.invalid_selected_pricing",
+          "Add a provider cost greater than zero for each selected provider. Disabled providers may remain at zero, and markup must be between 1 and 20."
         ),
       });
       return;
@@ -113,10 +129,13 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
         }),
       });
       const body = (await response.json().catch(() => null)) as {
+        error?: string;
         message?: string;
       } | null;
       if (!response.ok) {
-        throw new Error(body?.message ?? "save_failed");
+        throw new Error(
+          body?.error === "invalid_pricing" ? "invalid_pricing" : "save_failed"
+        );
       }
       toast({
         type: "success",
@@ -126,9 +145,15 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
       toast({
         type: "error",
         description:
-          error instanceof Error && error.message !== "save_failed"
-            ? error.message
-            : translate("admin.web_search.save_failed", "Failed to save Web Search settings."),
+          error instanceof Error && error.message === "invalid_pricing"
+            ? translate(
+                "admin.web_search.invalid_selected_pricing",
+                "Add a provider cost greater than zero for each selected provider. Disabled providers may remain at zero, and markup must be between 1 and 20."
+              )
+            : translate(
+                "admin.web_search.save_failed",
+                "Failed to save Web Search settings."
+              ),
       });
     } finally {
       setIsSaving(false);
@@ -151,7 +176,15 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
 
   return (
     <div className="space-y-6">
-      {selectedProviderCost !== null && selectedProviderCost <= 0 ? (
+      {(selectedProviderCost !== null && selectedProviderCost <= 0) ||
+      !hasValidWebSearchProviderCosts({
+        fallbackProvider,
+        provider,
+        providerCostPerCallUsd: {
+          gemini_grounding: Number(geminiCostPerCallUsd),
+          openai_web_search: Number(openaiCostPerCallUsd),
+        },
+      }) ? (
         <p className="rounded-lg border border-amber-300/60 bg-amber-50/50 p-3 text-amber-900 text-sm dark:bg-amber-950/20 dark:text-amber-100">
           {translate(
             "admin.web_search.pricing_incomplete",
@@ -233,11 +266,12 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
           </span>
           <input
             className="cursor-pointer rounded-md border bg-background px-3 py-2"
-            disabled={isSaving}
+            aria-required={requiresGeminiCost}
+            disabled={isSaving || !requiresGeminiCost}
             max={100}
-            min={0.000001}
+            min={0}
             onChange={(event) => setGeminiCostPerCallUsd(event.target.value)}
-            required
+            required={requiresGeminiCost}
             step={0.000001}
             type="number"
             value={geminiCostPerCallUsd}
@@ -252,11 +286,12 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
           </span>
           <input
             className="cursor-pointer rounded-md border bg-background px-3 py-2"
-            disabled={isSaving}
+            aria-required={requiresOpenAiCost}
+            disabled={isSaving || !requiresOpenAiCost}
             max={100}
-            min={0.000001}
+            min={0}
             onChange={(event) => setOpenaiCostPerCallUsd(event.target.value)}
-            required
+            required={requiresOpenAiCost}
             step={0.000001}
             type="number"
             value={openaiCostPerCallUsd}
@@ -265,24 +300,28 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
       </div>
 
       <div className="space-y-3">
-        <CostPlusPreviewCard
-          context={pricingContext}
-          markupMultiplier={Number(markupMultiplier)}
-          providerCostUsd={Number(geminiCostPerCallUsd)}
-          title={label(
-            "admin.web_search.gemini_price_preview",
-            "Grounded search pricing per call"
-          )}
-        />
-        <CostPlusPreviewCard
-          context={pricingContext}
-          markupMultiplier={Number(markupMultiplier)}
-          providerCostUsd={Number(openaiCostPerCallUsd)}
-          title={label(
-            "admin.web_search.openai_price_preview",
-            "Fallback search pricing per call"
-          )}
-        />
+        {requiresGeminiCost ? (
+          <CostPlusPreviewCard
+            context={pricingContext}
+            markupMultiplier={Number(markupMultiplier)}
+            providerCostUsd={Number(geminiCostPerCallUsd)}
+            title={label(
+              "admin.web_search.gemini_price_preview",
+              "Grounded search pricing per call"
+            )}
+          />
+        ) : null}
+        {requiresOpenAiCost ? (
+          <CostPlusPreviewCard
+            context={pricingContext}
+            markupMultiplier={Number(markupMultiplier)}
+            providerCostUsd={Number(openaiCostPerCallUsd)}
+            title={label(
+              "admin.web_search.openai_price_preview",
+              "Fallback search pricing per call"
+            )}
+          />
+        ) : null}
       </div>
 
       <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/30 p-3 text-muted-foreground text-xs">

@@ -12,6 +12,7 @@ import {
   WEB_SEARCH_CONFIG_CACHE_TAG,
   WEB_SEARCH_SETTING_KEYS,
 } from "@/lib/web-search/config";
+import { hasValidWebSearchProviderCosts } from "@/lib/web-search/pricing";
 import type { WebSearchProvider } from "@/lib/web-search/types";
 
 export const runtime = "nodejs";
@@ -69,19 +70,27 @@ export async function POST(request: NextRequest) {
 
   const maxCalls = parseNumber(body.maxCalls, { integer: true, max: 10, min: 1 });
   const markupMultiplier = parseNumber(body.markupMultiplier, { integer: false, max: 20, min: 1 });
-  const geminiCostPerCallUsd = parseNumber(body.geminiCostPerCallUsd, { integer: false, max: 100, min: 0.000001 });
-  const openaiCostPerCallUsd = parseNumber(body.openaiCostPerCallUsd, { integer: false, max: 100, min: 0.000001 });
+  const geminiCostPerCallUsd = parseNumber(body.geminiCostPerCallUsd, { integer: false, max: 100, min: 0 });
+  const openaiCostPerCallUsd = parseNumber(body.openaiCostPerCallUsd, { integer: false, max: 100, min: 0 });
   if (
     maxCalls === null ||
     markupMultiplier === null ||
     geminiCostPerCallUsd === null ||
-    openaiCostPerCallUsd === null
+    openaiCostPerCallUsd === null ||
+    !hasValidWebSearchProviderCosts({
+      fallbackProvider: fallbackProvider as WebSearchProvider,
+      provider: provider as WebSearchProvider,
+      providerCostPerCallUsd: {
+        gemini_grounding: geminiCostPerCallUsd ?? 0,
+        openai_web_search: openaiCostPerCallUsd ?? 0,
+      },
+    })
   ) {
     return NextResponse.json(
       {
         error: "invalid_pricing",
         message:
-          "Provider costs must be greater than zero and markup must be between 1 and 20.",
+          "Add a provider cost greater than zero for each selected provider. Disabled providers may remain at zero, and markup must be between 1 and 20.",
       },
       { status: 400 }
     );

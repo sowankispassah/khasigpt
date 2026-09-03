@@ -287,7 +287,9 @@ test.describe("admin pricing loading isolation", () => {
     expect(webSearchConfigSource).not.toContain("0.014");
     expect(webSearchConfigSource).not.toContain("0.01,");
     expect(searchSource).toContain("<CostPlusPreviewCard");
-    expect(searchSource).toContain('required\n            step={0.000001}');
+    expect(searchSource).toContain("hasValidWebSearchProviderCosts");
+    expect(searchSource).toContain("required={requiresGeminiCost}");
+    expect(searchSource).toContain("required={requiresOpenAiCost}");
     expect(previewRouteSource).toContain("requireAdminApiUser");
     expect(previewRouteSource).toContain('"Cache-Control": "no-store"');
   });

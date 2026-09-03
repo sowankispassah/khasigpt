@@ -9,6 +9,10 @@ import {
   resolveWebSearchQuery,
 } from "@/lib/web-search/detection";
 import {
+  getRequiredWebSearchCostProviders,
+  hasValidWebSearchProviderCosts,
+} from "@/lib/web-search/pricing";
+import {
   buildGroundedShoppingFallbacks,
   buildVerifiedShoppingProduct,
   extractProductPageMetadata,
@@ -25,6 +29,45 @@ async function readWorkspaceFile(relativePath: string) {
 }
 
 test.describe("web search grounding", () => {
+  test("requires costs only for selected Web Search providers", () => {
+    expect(
+      getRequiredWebSearchCostProviders({
+        fallbackProvider: "disabled",
+        provider: "gemini_grounding",
+      })
+    ).toEqual(["gemini_grounding"]);
+    expect(
+      hasValidWebSearchProviderCosts({
+        fallbackProvider: "disabled",
+        provider: "gemini_grounding",
+        providerCostPerCallUsd: {
+          gemini_grounding: 0.014,
+          openai_web_search: 0,
+        },
+      })
+    ).toBe(true);
+    expect(
+      hasValidWebSearchProviderCosts({
+        fallbackProvider: "openai_web_search",
+        provider: "gemini_grounding",
+        providerCostPerCallUsd: {
+          gemini_grounding: 0.014,
+          openai_web_search: 0,
+        },
+      })
+    ).toBe(false);
+    expect(
+      hasValidWebSearchProviderCosts({
+        fallbackProvider: "disabled",
+        provider: "disabled",
+        providerCostPerCallUsd: {
+          gemini_grounding: 0,
+          openai_web_search: 0,
+        },
+      })
+    ).toBe(true);
+  });
+
   test("detects live time and weather questions before RAG or web search", () => {
     expect(detectCurrentInfoNeed("Katno baje mynta?")).toMatchObject({
       intent: "time",

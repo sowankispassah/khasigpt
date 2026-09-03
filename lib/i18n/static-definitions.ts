@@ -5138,7 +5138,7 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   { key: "admin.pricing.model_form.enabled_web", defaultText: "Enabled on web", description: "Live voice web availability checkbox label." },
   { key: "admin.pricing.model_form.enabled_native", defaultText: "Enabled on native", description: "Live voice native availability checkbox label." },
   { key: "admin.pricing.model_form.default_voice", defaultText: "Set as default live voice model", description: "New live voice default checkbox label." },
-  { key: "admin.web_search.invalid_pricing", defaultText: "Provider costs must be greater than zero and markup must be between 1 and 20.", description: "Validation error for Web Search cost-plus pricing." },
+  { key: "admin.web_search.invalid_selected_pricing", defaultText: "Add a provider cost greater than zero for each selected provider. Disabled providers may remain at zero, and markup must be between 1 and 20.", description: "Validation error for selected Web Search provider costs and markup." },
   { key: "admin.web_search.gemini_price_preview", defaultText: "Grounded search pricing per call", description: "Primary Web Search cost-plus preview heading." },
   { key: "admin.web_search.openai_price_preview", defaultText: "Fallback search pricing per call", description: "Fallback Web Search cost-plus preview heading." },
   { key: "admin.pricing.plan_actions", defaultText: "Pricing plan actions", description: "Accessible label for the pricing plan row action menu." },
