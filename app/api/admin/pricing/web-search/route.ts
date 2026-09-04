@@ -20,6 +20,7 @@ export const runtime = "nodejs";
 const PROVIDERS = new Set<WebSearchProvider>([
   "gemini_grounding",
   "openai_web_search",
+  "serper",
   "disabled",
 ]);
 const WRITE_TIMEOUT_MS = 15_000;
@@ -72,17 +73,20 @@ export async function POST(request: NextRequest) {
   const markupMultiplier = parseNumber(body.markupMultiplier, { integer: false, max: 20, min: 1 });
   const geminiCostPerCallUsd = parseNumber(body.geminiCostPerCallUsd, { integer: false, max: 100, min: 0 });
   const openaiCostPerCallUsd = parseNumber(body.openaiCostPerCallUsd, { integer: false, max: 100, min: 0 });
+  const serperCostPerCallUsd = parseNumber(body.serperCostPerCallUsd, { integer: false, max: 100, min: 0 });
   if (
     maxCalls === null ||
     markupMultiplier === null ||
     geminiCostPerCallUsd === null ||
     openaiCostPerCallUsd === null ||
+    serperCostPerCallUsd === null ||
     !hasValidWebSearchProviderCosts({
       fallbackProvider: fallbackProvider as WebSearchProvider,
       provider: provider as WebSearchProvider,
       providerCostPerCallUsd: {
         gemini_grounding: geminiCostPerCallUsd ?? 0,
         openai_web_search: openaiCostPerCallUsd ?? 0,
+        serper: serperCostPerCallUsd ?? 0,
       },
     })
   ) {
@@ -91,6 +95,19 @@ export async function POST(request: NextRequest) {
         error: "invalid_pricing",
         message:
           "Add a provider cost greater than zero for each selected provider. Disabled providers may remain at zero, and markup must be between 1 and 20.",
+      },
+      { status: 400 }
+    );
+  }
+  if (
+    (provider === "serper" || fallbackProvider === "serper") &&
+    !process.env.SERPER_API_KEY?.trim()
+  ) {
+    return NextResponse.json(
+      {
+        error: "provider_not_configured",
+        message:
+          "Add SERPER_API_KEY to the server environment before activating Serper.",
       },
       { status: 400 }
     );
@@ -107,6 +124,7 @@ export async function POST(request: NextRequest) {
     web_search_credit_multiplier: markupMultiplier,
     web_search_gemini_cost_per_call_usd: geminiCostPerCallUsd,
     web_search_openai_cost_per_call_usd: openaiCostPerCallUsd,
+    web_search_serper_cost_per_call_usd: serperCostPerCallUsd,
   };
 
   try {

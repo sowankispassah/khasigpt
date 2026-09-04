@@ -31,13 +31,24 @@ const PROVIDERS: Array<{
     defaultLabel: "OpenAI web search (when implemented)",
   },
   {
+    value: "serper",
+    labelKey: "admin.web_search.provider.serper",
+    defaultLabel: "Serper Google Search",
+  },
+  {
     value: "disabled",
     labelKey: "admin.web_search.provider.disabled",
     defaultLabel: "Disabled",
   },
 ];
 
-export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
+export function WebSearchPricingForm({
+  config,
+  serperConfigured,
+}: {
+  config: WebSearchConfig;
+  serperConfigured: boolean;
+}) {
   const { translate } = useTranslation();
   const [provider, setProvider] = useState(config.provider);
   const [fallbackProvider, setFallbackProvider] = useState(config.fallbackProvider);
@@ -53,6 +64,9 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
   const [openaiCostPerCallUsd, setOpenaiCostPerCallUsd] = useState(
     String(config.providerCostPerCallUsd.openai_web_search)
   );
+  const [serperCostPerCallUsd, setSerperCostPerCallUsd] = useState(
+    String(config.providerCostPerCallUsd.serper)
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [pricingContext, setPricingContext] =
     useState<PricingPreviewContext | null>(null);
@@ -62,6 +76,7 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
   });
   const requiresGeminiCost = requiredCostProviders.includes("gemini_grounding");
   const requiresOpenAiCost = requiredCostProviders.includes("openai_web_search");
+  const requiresSerperCost = requiredCostProviders.includes("serper");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -94,6 +109,7 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
         providerCostPerCallUsd: {
           gemini_grounding: Number(geminiCostPerCallUsd),
           openai_web_search: Number(openaiCostPerCallUsd),
+          serper: Number(serperCostPerCallUsd),
         },
       }) ||
       Number(markupMultiplier) < 1 ||
@@ -126,6 +142,7 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
           markupMultiplier: Number(markupMultiplier),
           geminiCostPerCallUsd: Number(geminiCostPerCallUsd),
           openaiCostPerCallUsd: Number(openaiCostPerCallUsd),
+          serperCostPerCallUsd: Number(serperCostPerCallUsd),
         }),
       });
       const body = (await response.json().catch(() => null)) as {
@@ -134,7 +151,10 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
       } | null;
       if (!response.ok) {
         throw new Error(
-          body?.error === "invalid_pricing" ? "invalid_pricing" : "save_failed"
+          body?.error === "invalid_pricing" ||
+            body?.error === "provider_not_configured"
+            ? body.error
+            : "save_failed"
         );
       }
       toast({
@@ -150,10 +170,15 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
                 "admin.web_search.invalid_selected_pricing",
                 "Add a provider cost greater than zero for each selected provider. Disabled providers may remain at zero, and markup must be between 1 and 20."
               )
-            : translate(
+            : error instanceof Error && error.message === "provider_not_configured"
+              ? translate(
+                  "admin.web_search.serper_not_configured",
+                  "Add SERPER_API_KEY to the server environment before activating Serper."
+                )
+              : translate(
                 "admin.web_search.save_failed",
                 "Failed to save Web Search settings."
-              ),
+                ),
       });
     } finally {
       setIsSaving(false);
@@ -172,7 +197,9 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
       ? Number(geminiCostPerCallUsd)
       : provider === "openai_web_search"
         ? Number(openaiCostPerCallUsd)
-        : null;
+        : provider === "serper"
+          ? Number(serperCostPerCallUsd)
+          : null;
 
   return (
     <div className="space-y-6">
@@ -183,6 +210,7 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
         providerCostPerCallUsd: {
           gemini_grounding: Number(geminiCostPerCallUsd),
           openai_web_search: Number(openaiCostPerCallUsd),
+          serper: Number(serperCostPerCallUsd),
         },
       }) ? (
         <p className="rounded-lg border border-amber-300/60 bg-amber-50/50 p-3 text-amber-900 text-sm dark:bg-amber-950/20 dark:text-amber-100">
@@ -202,7 +230,11 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
             value={provider}
           >
             {PROVIDERS.map((option) => (
-              <option key={option.value} value={option.value}>
+              <option
+                disabled={option.value === "serper" && !serperConfigured}
+                key={option.value}
+                value={option.value}
+              >
                 {translate(option.labelKey, option.defaultLabel)}
               </option>
             ))}
@@ -217,7 +249,11 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
             value={fallbackProvider}
           >
             {PROVIDERS.map((option) => (
-              <option key={option.value} value={option.value}>
+              <option
+                disabled={option.value === "serper" && !serperConfigured}
+                key={option.value}
+                value={option.value}
+              >
                 {translate(option.labelKey, option.defaultLabel)}
               </option>
             ))}
@@ -255,8 +291,24 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
           <input className="cursor-pointer rounded-md border bg-background px-3 py-2" disabled={isSaving} max={20} min={1} onChange={(event) => setMarkupMultiplier(event.target.value)} required step={0.01} type="number" value={markupMultiplier} />
         </label>
       </div>
+      {provider === "serper" ? (
+        <p className="text-muted-foreground text-xs">
+          {translate(
+            "admin.web_search.serper_single_call_note",
+            "Serper uses one provider search call per user search. The max-calls setting applies only to providers that support multiple grounded searches."
+          )}
+        </p>
+      ) : null}
+      {!serperConfigured ? (
+        <p className="rounded-md border border-amber-300/60 bg-amber-50/50 p-3 text-amber-900 text-xs dark:bg-amber-950/20 dark:text-amber-100">
+          {translate(
+            "admin.web_search.serper_not_configured",
+            "Add SERPER_API_KEY to the server environment before activating Serper."
+          )}
+        </p>
+      ) : null}
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
         <label className="flex flex-col gap-2 text-sm">
           <span className="font-medium">
             {label(
@@ -297,6 +349,26 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
             value={openaiCostPerCallUsd}
           />
         </label>
+        <label className="flex flex-col gap-2 text-sm">
+          <span className="font-medium">
+            {label(
+              "admin.web_search.serper_cost_per_call",
+              "Serper provider cost (USD / call)"
+            )}
+          </span>
+          <input
+            className="cursor-pointer rounded-md border bg-background px-3 py-2"
+            aria-required={requiresSerperCost}
+            disabled={isSaving || !requiresSerperCost}
+            max={100}
+            min={0}
+            onChange={(event) => setSerperCostPerCallUsd(event.target.value)}
+            required={requiresSerperCost}
+            step={0.000001}
+            type="number"
+            value={serperCostPerCallUsd}
+          />
+        </label>
       </div>
 
       <div className="space-y-3">
@@ -319,6 +391,17 @@ export function WebSearchPricingForm({ config }: { config: WebSearchConfig }) {
             title={label(
               "admin.web_search.openai_price_preview",
               "Fallback search pricing per call"
+            )}
+          />
+        ) : null}
+        {requiresSerperCost ? (
+          <CostPlusPreviewCard
+            context={pricingContext}
+            markupMultiplier={Number(markupMultiplier)}
+            providerCostUsd={Number(serperCostPerCallUsd)}
+            title={label(
+              "admin.web_search.serper_price_preview",
+              "Serper search pricing per call"
             )}
           />
         ) : null}

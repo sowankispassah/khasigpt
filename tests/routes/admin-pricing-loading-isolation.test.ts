@@ -290,6 +290,7 @@ test.describe("admin pricing loading isolation", () => {
     expect(searchSource).toContain("hasValidWebSearchProviderCosts");
     expect(searchSource).toContain("required={requiresGeminiCost}");
     expect(searchSource).toContain("required={requiresOpenAiCost}");
+    expect(searchSource).toContain("required={requiresSerperCost}");
     expect(previewRouteSource).toContain("requireAdminApiUser");
     expect(previewRouteSource).toContain('"Cache-Control": "no-store"');
   });
@@ -319,6 +320,12 @@ test.describe("admin pricing loading isolation", () => {
     expect(searchFormSource).toContain("Max search calls");
     expect(searchFormSource).toContain("Customer markup");
     expect(searchFormSource).toContain("Grounded search provider cost");
+    expect(searchFormSource).toContain("Serper Google Search");
+    expect(searchFormSource).toContain("Serper provider cost");
+    expect(searchFormSource).toContain("serperConfigured");
+    expect(pricingSource).toContain("process.env.SERPER_API_KEY");
+    expect(searchRouteSource).toContain("web_search_serper_cost_per_call_usd");
+    expect(searchRouteSource).toContain('error: "provider_not_configured"');
     expect(searchRouteSource).toContain('source: "pricing.web_search.update"');
     expect(settingsSource).not.toContain("<WebSearchSettingsForm");
     expect(settingsSource).not.toContain('title="Web Search"');

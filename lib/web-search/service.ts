@@ -6,6 +6,7 @@ import {
   buildGroundedShoppingFallbacks,
   extractShoppingProducts,
 } from "./products";
+import { parseSerperSearchResponse } from "./serper";
 import type {
   WebSearchAnswer,
   WebSearchCitation,
@@ -18,6 +19,28 @@ import { getYouTubeThumbnailUrl, getYouTubeVideoId } from "./youtube";
 
 const DEFAULT_GEMINI_WEB_SEARCH_MODEL = "gemini-2.5-flash";
 const MAX_SOURCES = 12;
+const SERPER_SEARCH_TIMEOUT_MS = 12_000;
+
+function getSerperEndpoint({
+  includeNews,
+  includeProducts,
+  includeVideos,
+}: {
+  includeNews: boolean;
+  includeProducts: boolean;
+  includeVideos: boolean;
+}) {
+  if (includeProducts) {
+    return "https://google.serper.dev/shopping";
+  }
+  if (includeVideos) {
+    return "https://google.serper.dev/videos";
+  }
+  if (includeNews) {
+    return "https://google.serper.dev/news";
+  }
+  return "https://google.serper.dev/search";
+}
 
 function normalizeVideoLink(
   url: string,
@@ -325,10 +348,86 @@ async function answerWithGeminiGrounding({
   };
 }
 
+async function answerWithSerper({
+  includeNews,
+  includeProducts,
+  includeVideos,
+  userMessage,
+}: {
+  includeNews: boolean;
+  includeProducts: boolean;
+  includeVideos: boolean;
+  userMessage: string;
+}): Promise<WebSearchAnswer> {
+  const apiKey = process.env.SERPER_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("Serper web search requires SERPER_API_KEY.");
+  }
+
+  const response = await fetch(
+    getSerperEndpoint({ includeNews, includeProducts, includeVideos }),
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "X-API-KEY": apiKey,
+      },
+      body: JSON.stringify({
+        q: userMessage.trim(),
+        gl: "in",
+        hl: "en",
+        num: 10,
+      }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(SERPER_SEARCH_TIMEOUT_MS),
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Serper web search failed with status ${response.status}.`);
+  }
+
+  const parsed = parseSerperSearchResponse({
+    includeProducts,
+    includeVideos,
+    response: await response.json(),
+  });
+  const enrichedProducts = includeProducts
+    ? await enrichShoppingProducts({
+        products: parsed.products,
+        userMessage,
+      })
+    : [];
+  const products =
+    includeProducts && enrichedProducts.length === 0
+      ? buildGroundedShoppingFallbacks({
+          sources: parsed.sources,
+          userMessage,
+        })
+      : enrichedProducts;
+
+  return {
+    answer: parsed.answer,
+    provider: "serper",
+    grounded: parsed.sources.length > 0,
+    sources: parsed.sources,
+    videos: parsed.videos,
+    products,
+    searchQueries: [userMessage.trim()],
+    citations: [],
+    searchCallCount: 1,
+    usage: {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+    },
+  };
+}
+
 export type WebSearchAnswerInput = {
   provider: WebSearchProvider;
   userMessage: string;
   conversationContext?: string;
+  includeNews?: boolean;
   includeVideos?: boolean;
   includeProducts?: boolean;
   model: string;
@@ -338,6 +437,7 @@ export type WebSearchAnswerInput = {
 export const webSearchService = {
   async answerWithSearch({
     conversationContext,
+    includeNews = false,
     includeVideos = false,
     includeProducts = false,
     maxSearches,
@@ -357,6 +457,13 @@ export const webSearchService = {
         });
       case "openai_web_search":
         throw new Error("OpenAI web search is not implemented yet.");
+      case "serper":
+        return answerWithSerper({
+          includeNews,
+          includeProducts,
+          includeVideos,
+          userMessage,
+        });
       case "disabled":
         throw new Error("Web search is disabled.");
       default:

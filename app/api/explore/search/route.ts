@@ -372,7 +372,10 @@ export async function POST(request: Request) {
           searchProvider !== "disabled"
             ? config.providerCostPerCallUsd[searchProvider]
             : 0;
-        if (answer.usage.inputTokens + answer.usage.outputTokens > 0) {
+        if (
+          answer.usage.inputTokens + answer.usage.outputTokens > 0 ||
+          answer.searchCallCount > 0
+        ) {
           await recordTokenUsage({
             userId: auth.user.id,
             chatId,

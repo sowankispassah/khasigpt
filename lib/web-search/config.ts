@@ -13,6 +13,7 @@ import {
   WEB_SEARCH_OPENAI_COST_PER_CALL_USD_SETTING_KEY,
   WEB_SEARCH_PAID_USERS_ENABLED_SETTING_KEY,
   WEB_SEARCH_PROVIDER_SETTING_KEY,
+  WEB_SEARCH_SERPER_COST_PER_CALL_USD_SETTING_KEY,
 } from "@/lib/constants";
 import { getLiteAppSettingsByKeysUncached } from "@/lib/db/app-settings-lite";
 import type { UserRole } from "@/lib/db/schema";
@@ -37,6 +38,7 @@ export const WEB_SEARCH_SETTING_KEYS = [
   WEB_SEARCH_CREDIT_MULTIPLIER_SETTING_KEY,
   WEB_SEARCH_GEMINI_COST_PER_CALL_USD_SETTING_KEY,
   WEB_SEARCH_OPENAI_COST_PER_CALL_USD_SETTING_KEY,
+  WEB_SEARCH_SERPER_COST_PER_CALL_USD_SETTING_KEY,
 ] as const;
 
 const DEFAULT_PROVIDER: WebSearchProvider = "gemini_grounding";
@@ -81,6 +83,7 @@ function parseConfiguredPositiveNumber(value: unknown, max: number) {
 function parseProvider(value: unknown, fallback: WebSearchProvider) {
   return value === "gemini_grounding" ||
     value === "openai_web_search" ||
+    value === "serper" ||
     value === "disabled"
     ? value
     : fallback;
@@ -136,6 +139,10 @@ export function resolveWebSearchConfig(
         values.get(WEB_SEARCH_OPENAI_COST_PER_CALL_USD_SETTING_KEY),
         100
       ),
+      serper: parseConfiguredPositiveNumber(
+        values.get(WEB_SEARCH_SERPER_COST_PER_CALL_USD_SETTING_KEY),
+        100
+      ),
     },
     readState,
   };
@@ -154,7 +161,7 @@ export function hasWebSearchProviderPricing(
 
 const loadCachedWebSearchSettings = unstable_cache(
   async () => getLiteAppSettingsByKeysUncached([...WEB_SEARCH_SETTING_KEYS]),
-  ["web-search-settings:v1"],
+  ["web-search-settings:v2"],
   {
     revalidate: 60,
     tags: [

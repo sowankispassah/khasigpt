@@ -19,6 +19,7 @@ import {
   extractShoppingProducts,
 } from "@/lib/web-search/products";
 import { mergeSemanticWebSearchDecision } from "@/lib/web-search/semantic-routing";
+import { parseSerperSearchResponse } from "@/lib/web-search/serper";
 import { clearTransientWebSearchMessages } from "@/lib/web-search/status";
 import { getYouTubeVideoId } from "@/lib/web-search/youtube";
 
@@ -43,6 +44,18 @@ test.describe("web search grounding", () => {
         providerCostPerCallUsd: {
           gemini_grounding: 0.014,
           openai_web_search: 0,
+          serper: 0,
+        },
+      })
+    ).toBe(true);
+    expect(
+      hasValidWebSearchProviderCosts({
+        fallbackProvider: "disabled",
+        provider: "serper",
+        providerCostPerCallUsd: {
+          gemini_grounding: 0,
+          openai_web_search: 0,
+          serper: 0.001,
         },
       })
     ).toBe(true);
@@ -53,6 +66,7 @@ test.describe("web search grounding", () => {
         providerCostPerCallUsd: {
           gemini_grounding: 0.014,
           openai_web_search: 0,
+          serper: 0,
         },
       })
     ).toBe(false);
@@ -63,9 +77,72 @@ test.describe("web search grounding", () => {
         providerCostPerCallUsd: {
           gemini_grounding: 0,
           openai_web_search: 0,
+          serper: 0,
         },
       })
     ).toBe(true);
+  });
+
+  test("parses Serper search, shopping, and video payloads into shared result types", () => {
+    const search = parseSerperSearchResponse({
+      includeProducts: false,
+      includeVideos: false,
+      response: {
+        answerBox: {
+          answer: "Shillong is the capital of Meghalaya.",
+          link: "https://example.com/shillong",
+          title: "Shillong",
+        },
+        organic: [
+          {
+            link: "https://example.com/meghalaya",
+            snippet: "Current public information about Meghalaya.",
+            title: "Meghalaya",
+          },
+        ],
+      },
+    });
+    expect(search.answer).toContain("Shillong is the capital of Meghalaya.");
+    expect(search.sources).toHaveLength(2);
+
+    const shopping = parseSerperSearchResponse({
+      includeProducts: true,
+      includeVideos: false,
+      response: {
+        shopping: [
+          {
+            imageUrl: "https://example.com/shirt.jpg",
+            link: "https://example.com/shirt",
+            price: "₹499",
+            source: "Example Shop",
+            title: "Cotton T-shirt",
+          },
+        ],
+      },
+    });
+    expect(shopping.products).toEqual([
+      expect.objectContaining({
+        merchant: "Example Shop",
+        price: "₹499",
+        title: "Cotton T-shirt",
+      }),
+    ]);
+
+    const videos = parseSerperSearchResponse({
+      includeProducts: false,
+      includeVideos: true,
+      response: {
+        videos: [
+          {
+            link: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            title: "Example video",
+          },
+        ],
+      },
+    });
+    expect(videos.videos).toEqual([
+      expect.objectContaining({ videoId: "dQw4w9WgXcQ" }),
+    ]);
   });
 
   test("detects live time and weather questions before RAG or web search", () => {
@@ -507,6 +584,9 @@ test.describe("web search grounding", () => {
     expect(service).toContain("groundingSupports");
     expect(service).toContain("webSearchQueries");
     expect(service).toContain('case "openai_web_search"');
+    expect(service).toContain('case "serper"');
+    expect(service).toContain("https://google.serper.dev/search");
+    expect(service).toContain("searchCallCount: 1");
     expect(route).toContain("retrieveRagContext");
     expect(route).toContain("webSearchService.answerWithSearch");
     expect(route).toContain("classifyToolIntent");

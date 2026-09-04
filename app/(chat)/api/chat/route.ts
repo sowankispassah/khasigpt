@@ -3272,6 +3272,7 @@ export async function POST(request: Request) {
         try {
           webSearchAnswer = await webSearchService.answerWithSearch({
             conversationContext,
+            includeNews: resolvedChatMode === NEWS_CHAT_MODE,
             includeProducts: webSearchDecision.hasShoppingIntent,
             includeVideos: webSearchDecision.hasVideoIntent,
             maxSearches: webSearchConfig.maxCalls,
@@ -3294,6 +3295,7 @@ export async function POST(request: Request) {
             try {
               webSearchAnswer = await webSearchService.answerWithSearch({
                 conversationContext,
+                includeNews: resolvedChatMode === NEWS_CHAT_MODE,
                 includeProducts: webSearchDecision.hasShoppingIntent,
                 includeVideos: webSearchDecision.hasVideoIntent,
                 maxSearches: webSearchConfig.maxCalls,

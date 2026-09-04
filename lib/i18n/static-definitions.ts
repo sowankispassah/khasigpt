@@ -4819,6 +4819,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Web Search admin setting for the provider-cost markup.",
   },
   {
+    key: "admin.web_search.provider.serper",
+    defaultText: "Serper Google Search",
+    description: "Web Search provider option for Serper's Google search API.",
+  },
+  {
     key: "admin.web_search.gemini_cost_per_call",
     defaultText: "Grounded search provider cost (USD / call)",
     description: "Provider cost for each billable grounded web-search call.",
@@ -5141,6 +5146,10 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   { key: "admin.web_search.invalid_selected_pricing", defaultText: "Add a provider cost greater than zero for each selected provider. Disabled providers may remain at zero, and markup must be between 1 and 20.", description: "Validation error for selected Web Search provider costs and markup." },
   { key: "admin.web_search.gemini_price_preview", defaultText: "Grounded search pricing per call", description: "Primary Web Search cost-plus preview heading." },
   { key: "admin.web_search.openai_price_preview", defaultText: "Fallback search pricing per call", description: "Fallback Web Search cost-plus preview heading." },
+  { key: "admin.web_search.serper_cost_per_call", defaultText: "Serper provider cost (USD / call)", description: "Serper Web Search provider cost field label." },
+  { key: "admin.web_search.serper_price_preview", defaultText: "Serper search pricing per call", description: "Serper Web Search cost-plus preview heading." },
+  { key: "admin.web_search.serper_single_call_note", defaultText: "Serper uses one provider search call per user search. The max-calls setting applies only to providers that support multiple grounded searches.", description: "Admin note explaining Serper's single-call billing behavior." },
+  { key: "admin.web_search.serper_not_configured", defaultText: "Add SERPER_API_KEY to the server environment before activating Serper.", description: "Admin warning shown when the Serper server credential is missing." },
   { key: "admin.pricing.plan_actions", defaultText: "Pricing plan actions", description: "Accessible label for the pricing plan row action menu." },
   { key: "admin.pricing.edit_plan", defaultText: "Edit pricing", description: "Pricing plan row edit action." },
   { key: "admin.pricing.delete_plan", defaultText: "Delete pricing", description: "Pricing plan row delete action." },
