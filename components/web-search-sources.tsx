@@ -16,6 +16,10 @@ import { AnimatedStatus } from "@/components/animated-status";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { cn } from "@/lib/utils";
+import {
+  type DisplayWebSearchProduct,
+  normalizeWebSearchProductForDisplay,
+} from "@/lib/web-search/product-display";
 import type {
   WebSearchCitation,
   WebSearchProduct,
@@ -197,46 +201,6 @@ function normalizeVideo(video: WebSearchVideo) {
   };
 }
 
-function normalizeProduct(product: WebSearchProduct) {
-  try {
-    const url = new URL(product.url);
-    const kind: NonNullable<WebSearchProduct["kind"]> =
-      product.kind === "collection" ? "collection" : "product";
-    if (
-      (url.protocol !== "http:" && url.protocol !== "https:") ||
-      !product.title?.trim() ||
-      !product.merchant?.trim() ||
-      !product.price?.trim() ||
-      (kind === "product" && !/\d/.test(product.price))
-    ) {
-      return null;
-    }
-    let imageUrl: string | null = null;
-    if (
-      product.imageUrl &&
-      product.imageProxyToken &&
-      product.imageProxyToken.length <= 4096 &&
-      /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(product.imageProxyToken)
-    ) {
-      const candidate = new URL(product.imageUrl);
-      imageUrl = candidate.protocol === "https:"
-        ? `/api/web-search/product-image?token=${encodeURIComponent(product.imageProxyToken)}`
-        : null;
-    }
-    return {
-      ...product,
-      imageUrl,
-      kind,
-      merchant: product.merchant.trim(),
-      price: product.price.trim(),
-      title: product.title.trim(),
-      url: url.toString(),
-    };
-  } catch {
-    return null;
-  }
-}
-
 function ProductThumbnail({ imageUrl, title }: { imageUrl?: string | null; title: string }) {
   const [failed, setFailed] = useState(false);
   if (!imageUrl || failed) {
@@ -259,12 +223,12 @@ function ProductThumbnail({ imageUrl, title }: { imageUrl?: string | null; title
   );
 }
 
-function WebSearchProducts({ products }: { products: WebSearchProduct[] }) {
+function WebSearchProducts({
+  products,
+}: {
+  products: DisplayWebSearchProduct[];
+}) {
   const safeProducts = products
-    .map(normalizeProduct)
-    .filter((product): product is NonNullable<ReturnType<typeof normalizeProduct>> =>
-      Boolean(product)
-    )
     .filter(
       (product, index, all) =>
         all.findIndex((candidate) => candidate.url === product.url) === index
@@ -461,10 +425,8 @@ export function WebSearchSources({
         Boolean(video)
     );
   const safeProducts = products
-    .map(normalizeProduct)
-    .filter((product): product is NonNullable<ReturnType<typeof normalizeProduct>> =>
-      Boolean(product)
-    );
+    .map(normalizeWebSearchProductForDisplay)
+    .filter((product): product is DisplayWebSearchProduct => Boolean(product));
 
   if (
     safeSources.length === 0 &&

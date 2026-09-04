@@ -12,6 +12,7 @@ import {
   getRequiredWebSearchCostProviders,
   hasValidWebSearchProviderCosts,
 } from "@/lib/web-search/pricing";
+import { normalizeWebSearchProductForDisplay } from "@/lib/web-search/product-display";
 import {
   buildGroundedShoppingFallbacks,
   buildVerifiedShoppingProduct,
@@ -453,6 +454,28 @@ test.describe("web search grounding", () => {
     expect(normalizeProductImageUrl("https://127.0.0.1/image.jpg")).toBeNull();
   });
 
+  test("keeps an unverified Serper product and signs its fallback image once", () => {
+    const product = normalizeWebSearchProductForDisplay({
+      availability: null,
+      imageProxyToken: "payload.signature",
+      imageUrl: "https://encrypted-tbn1.gstatic.com/shopping?q=test",
+      merchant: "Example Store",
+      price: "₹349",
+      rating: null,
+      reviewCount: null,
+      title: "Example T-shirt",
+      url: "https://www.google.com/search?ibp=oshop&q=tshirt",
+      verified: false,
+    });
+
+    expect(product).toMatchObject({
+      imageUrl: "/api/web-search/product-image?token=payload.signature",
+      kind: "product",
+      title: "Example T-shirt",
+      verified: false,
+    });
+  });
+
   test("builds shopping cards only from matching product-page metadata", () => {
     const metadata = extractProductPageMetadata({
       finalUrl: "https://shop.example.com/products/classic-shirt",
@@ -635,7 +658,7 @@ test.describe("web search grounding", () => {
     expect(sources).toContain('data-testid="web-search-status"');
     expect(sources).toContain('data-testid="web-search-sources"');
     expect(sources).toContain('data-testid="web-search-products"');
-    expect(sources).toContain("product.imageProxyToken");
+    expect(sources).toContain("normalizeWebSearchProductForDisplay");
     expect(sources).toContain("getProviderOpaqueSourceDomain");
     expect(sources).not.toContain("Google Search");
     expect(sources).not.toContain("getProviderCopy");
