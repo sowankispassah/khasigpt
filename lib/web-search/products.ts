@@ -104,6 +104,10 @@ function normalizePublicUrl(value: unknown, { image = false } = {}) {
   }
 }
 
+export function normalizeProductImageUrl(value: unknown) {
+  return normalizePublicUrl(value, { image: true });
+}
+
 function normalizeProduct(value: unknown): WebSearchProduct | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -135,7 +139,7 @@ function normalizeProduct(value: unknown): WebSearchProduct | null {
     url,
     merchant,
     price,
-    imageUrl: normalizePublicUrl(record.imageUrl, { image: true }),
+    imageUrl: normalizeProductImageUrl(record.imageUrl),
     rating,
     reviewCount: normalizeText(record.reviewCount, 40),
     availability: normalizeText(record.availability, 80),

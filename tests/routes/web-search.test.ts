@@ -17,6 +17,7 @@ import {
   buildVerifiedShoppingProduct,
   extractProductPageMetadata,
   extractShoppingProducts,
+  normalizeProductImageUrl,
 } from "@/lib/web-search/products";
 import { mergeSemanticWebSearchDecision } from "@/lib/web-search/semantic-routing";
 import { parseSerperSearchResponse } from "@/lib/web-search/serper";
@@ -444,6 +445,14 @@ test.describe("web search grounding", () => {
     ]);
   });
 
+  test("accepts only public HTTPS product image fallbacks", () => {
+    expect(normalizeProductImageUrl("https://cdn.example.com/image.jpg")).toBe(
+      "https://cdn.example.com/image.jpg"
+    );
+    expect(normalizeProductImageUrl("http://cdn.example.com/image.jpg")).toBeNull();
+    expect(normalizeProductImageUrl("https://127.0.0.1/image.jpg")).toBeNull();
+  });
+
   test("builds shopping cards only from matching product-page metadata", () => {
     const metadata = extractProductPageMetadata({
       finalUrl: "https://shop.example.com/products/classic-shirt",
@@ -626,7 +635,7 @@ test.describe("web search grounding", () => {
     expect(sources).toContain('data-testid="web-search-status"');
     expect(sources).toContain('data-testid="web-search-sources"');
     expect(sources).toContain('data-testid="web-search-products"');
-    expect(sources).toContain("product.verified === true");
+    expect(sources).toContain("product.imageProxyToken");
     expect(sources).toContain("getProviderOpaqueSourceDomain");
     expect(sources).not.toContain("Google Search");
     expect(sources).not.toContain("getProviderCopy");
@@ -637,7 +646,7 @@ test.describe("web search grounding", () => {
     expect(nativeChat).toContain("getWebSearchCitationsFromMessage");
     expect(nativeChat).toContain("WebSearchVideoResults");
     expect(nativeChat).toContain("WebSearchProductResults");
-    expect(nativeChat).toContain("data.verified === true");
+    expect(nativeChat).toContain("typeof data.imageUrl === \"string\"");
     expect(nativeChat).toContain('data?.kind === "collection"');
     expect(nativeChat).toContain("getWebSearchVideosFromMessage");
     expect(nativeChat).toContain("expandedWebSourcesByMessageId");

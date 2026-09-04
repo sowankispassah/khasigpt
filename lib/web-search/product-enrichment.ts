@@ -4,6 +4,7 @@ import { createProductImageToken } from "./product-image-token";
 import {
   buildVerifiedShoppingProduct,
   extractProductPageMetadata,
+  normalizeProductImageUrl,
   type ProductPageMetadata,
 } from "./products";
 import { fetchPublicResource } from "./public-fetch";
@@ -57,10 +58,29 @@ async function getProductPageMetadata(url: string) {
   return metadata;
 }
 
+function attachProductImageFallback({
+  product,
+  fallbackImageUrl,
+}: {
+  product: WebSearchProduct;
+  fallbackImageUrl?: string | null;
+}) {
+  const imageUrl =
+    normalizeProductImageUrl(product.imageUrl) ??
+    normalizeProductImageUrl(fallbackImageUrl);
+  return {
+    ...product,
+    imageProxyToken: imageUrl ? createProductImageToken(imageUrl) : null,
+    imageUrl,
+  } satisfies WebSearchProduct;
+}
+
 export async function enrichShoppingProducts({
+  preserveCandidateImage = false,
   products,
   userMessage,
 }: {
+  preserveCandidateImage?: boolean;
   products: WebSearchProduct[];
   userMessage: string;
 }) {
@@ -68,28 +88,28 @@ export async function enrichShoppingProducts({
     products.slice(0, 6).map(async (candidate): Promise<WebSearchProduct | null> => {
       const metadata = await getProductPageMetadata(candidate.url);
       if (!metadata) {
-        return {
-          ...candidate,
-          imageProxyToken: null,
-          imageUrl: null,
-          verified: false,
-        };
+        return attachProductImageFallback({
+          fallbackImageUrl: preserveCandidateImage ? candidate.imageUrl : null,
+          product: {
+            ...candidate,
+            verified: false,
+          },
+        });
       }
       const verified = buildVerifiedShoppingProduct({ candidate, metadata, userMessage });
       if (!verified) {
-        return {
-          ...candidate,
-          imageProxyToken: null,
-          imageUrl: null,
-          verified: false,
-        };
+        return attachProductImageFallback({
+          fallbackImageUrl: preserveCandidateImage ? candidate.imageUrl : null,
+          product: {
+            ...candidate,
+            verified: false,
+          },
+        });
       }
-      return {
-        ...verified,
-        imageProxyToken: verified.imageUrl
-          ? createProductImageToken(verified.imageUrl)
-          : null,
-      } satisfies WebSearchProduct;
+      return attachProductImageFallback({
+        fallbackImageUrl: preserveCandidateImage ? candidate.imageUrl : null,
+        product: verified,
+      });
     })
   );
 

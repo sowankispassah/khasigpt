@@ -393,6 +393,7 @@ async function answerWithSerper({
   });
   const enrichedProducts = includeProducts
     ? await enrichShoppingProducts({
+        preserveCandidateImage: true,
         products: parsed.products,
         userMessage,
       })

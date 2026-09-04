@@ -213,7 +213,6 @@ function normalizeProduct(product: WebSearchProduct) {
     }
     let imageUrl: string | null = null;
     if (
-      product.verified === true &&
       product.imageUrl &&
       product.imageProxyToken &&
       product.imageProxyToken.length <= 4096 &&
