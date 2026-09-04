@@ -111,6 +111,7 @@ export function WebSearchPricingForm({
   const [isSaving, setIsSaving] = useState(false);
   const [pricingContext, setPricingContext] =
     useState<PricingPreviewContext | null>(null);
+  const maxCallsApplies = provider !== "serper";
 
   useEffect(() => {
     const controller = new AbortController();
@@ -389,23 +390,46 @@ export function WebSearchPricingForm({
 
       <label className="flex max-w-xl flex-col gap-2 text-sm">
         <span className="font-medium">
-          {label("admin.web_search.max_calls", "Max search calls")}
+          {maxCallsApplies
+            ? label("admin.web_search.max_calls", "Max search calls")
+            : label(
+                "admin.web_search.max_calls_gemini_only",
+                "Max search calls (Gemini Grounding only)"
+              )}
         </span>
         <input
-          className="cursor-pointer rounded-md border bg-background px-3 py-2"
-          disabled={isSaving}
+          aria-describedby={
+            maxCallsApplies ? undefined : "web-search-max-calls-note"
+          }
+          aria-label={
+            maxCallsApplies
+              ? label("admin.web_search.max_calls", "Max search calls")
+              : label(
+                  "admin.web_search.max_calls_not_applicable",
+                  "Max search calls not applicable for Serper"
+                )
+          }
+          className="cursor-pointer rounded-md border bg-background px-3 py-2 disabled:cursor-not-allowed disabled:bg-muted"
+          disabled={isSaving || !maxCallsApplies}
           max={10}
           min={1}
           onChange={(event) => setMaxCalls(event.target.value)}
-          type="number"
-          value={maxCalls}
+          type={maxCallsApplies ? "number" : "text"}
+          value={
+            maxCallsApplies
+              ? maxCalls
+              : label("admin.web_search.not_applicable", "N/A")
+          }
         />
       </label>
       {provider === "serper" ? (
-        <p className="text-muted-foreground text-xs">
+        <p
+          className="text-muted-foreground text-xs"
+          id="web-search-max-calls-note"
+        >
           {translate(
             "admin.web_search.serper_single_call_note",
-            "Serper uses one provider search call per user search. The max-calls setting applies only to providers that support multiple grounded searches."
+            "Serper uses one provider call per user search. Max search calls is not applicable to Serper; it is only used by providers that support multiple grounded searches."
           )}
         </p>
       ) : null}

@@ -292,7 +292,12 @@ test.describe("admin pricing loading isolation", () => {
     expect(searchSource).toContain("providerPricing[providerKey]");
     expect(searchSource).toContain("providerCostPerCallUsd");
     expect(searchSource).toContain("markupMultiplier");
-    expect(searchSource).not.toContain("disabled={isSaving ||");
+    expect(searchSource).toContain("const maxCallsApplies = provider !== \"serper\";");
+    expect(searchSource).toContain("disabled={isSaving || !maxCallsApplies}");
+    expect(searchSource).toContain("admin.web_search.max_calls_gemini_only");
+    expect(searchSource).toContain("admin.web_search.not_applicable");
+    expect(searchSource).toContain('id="web-search-max-calls-note"');
+    expect(searchSource).toContain("admin.web_search.serper_single_call_note");
     expect(previewRouteSource).toContain("requireAdminApiUser");
     expect(previewRouteSource).toContain('"Cache-Control": "no-store"');
   });
