@@ -329,8 +329,9 @@ test.describe("admin pricing loading isolation", () => {
     expect(searchFormSource).toContain("Web Search provider pricing");
     expect(searchFormSource).toContain("Provider unit cost (USD)");
     expect(searchFormSource).toContain(
-      "The table previews one provider billing unit."
+      "Serper Shopping searches consume 2 Serper credits"
     );
+    expect(searchFormSource).toContain("text-red-600");
     expect(searchFormSource).toContain("Serper Google Search");
     expect(searchFormSource).toContain("serperConfigured");
     expect(searchFormSource).toContain("providerPricing: Object.fromEntries");

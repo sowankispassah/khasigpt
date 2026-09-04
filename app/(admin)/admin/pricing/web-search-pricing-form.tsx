@@ -423,15 +423,23 @@ export function WebSearchPricingForm({
         />
       </label>
       {provider === "serper" ? (
-        <p
-          className="text-muted-foreground text-xs"
-          id="web-search-max-calls-note"
-        >
-          {translate(
-            "admin.web_search.serper_single_call_note",
-            "Serper uses one provider call per user search. Max search calls is not applicable to Serper; it is only used by providers that support multiple grounded searches."
-          )}
-        </p>
+        <div className="space-y-1 text-xs">
+          <p className="font-medium text-red-600 dark:text-red-400">
+            {translate(
+              "admin.web_search.serper_billing_units_note",
+              "Serper Shopping searches consume 2 Serper credits for one provider request. Product images are included and do not add another request."
+            )}
+          </p>
+          <p
+            className="text-muted-foreground"
+            id="web-search-max-calls-note"
+          >
+            {translate(
+              "admin.web_search.serper_single_call_note",
+              "Serper uses one provider call per user search. Max search calls is not applicable to Serper; it is only used by providers that support multiple grounded searches."
+            )}
+          </p>
+        </div>
       ) : null}
       {!serperConfigured ? (
         <p className="rounded-md border border-amber-300/60 bg-amber-50/50 p-3 text-amber-900 text-xs dark:bg-amber-950/20 dark:text-amber-100">
@@ -630,25 +638,17 @@ export function WebSearchPricingForm({
             </tbody>
           </table>
         </div>
-        <div className="space-y-1 border-t bg-muted/20 px-4 py-3 text-muted-foreground text-xs">
-          <p>
-            {translate(
-              "admin.web_search.serper_billing_units_note",
-              "The table previews one provider billing unit. Serper standard searches use 1 unit; Shopping searches use 2 units for one API call, so their displayed cost and credit charge are doubled."
-            )}
-          </p>
-          <p>
-            {pricingContext?.basePlanName
-              ? translate(
-                  "admin.pricing.preview.base_plan",
-                  "Credit conversion: {plan}"
-                ).replace("{plan}", pricingContext.basePlanName)
-              : translate(
-                  "admin.pricing.preview.unavailable",
-                  "Add an active recharge plan to calculate customer charges and credits."
-                )}
-          </p>
-        </div>
+        <p className="border-t bg-muted/20 px-4 py-3 text-muted-foreground text-xs">
+          {pricingContext?.basePlanName
+            ? translate(
+                "admin.pricing.preview.base_plan",
+                "Credit conversion: {plan}"
+              ).replace("{plan}", pricingContext.basePlanName)
+            : translate(
+                "admin.pricing.preview.unavailable",
+                "Add an active recharge plan to calculate customer charges and credits."
+              )}
+        </p>
       </section>
 
       <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/30 p-3 text-muted-foreground text-xs">
