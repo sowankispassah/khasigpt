@@ -1,0 +1,15 @@
+.git
+.env
+.env.*
+native
+node_modules
+.next
+.next-build-clean
+dist-next
+build_output
+tmp
+playwright-report
+test-results
+.codex
+.codex-remote-attachments
+.agents
