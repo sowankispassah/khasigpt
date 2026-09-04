@@ -6,18 +6,51 @@ export const MIN_MARKUP_MULTIPLIER = 1;
 export const MAX_MARKUP_MULTIPLIER = 20;
 
 /**
- * Estimate tokens attributable to the current user-authored text.
- *
- * Provider usage includes hidden system instructions, prior turns, and
- * retrieved context. This estimate is intentionally limited to the text the
- * user just submitted so those internal prompt tokens are not billed to them.
+ * Estimate a token count for text when a provider does not expose a separate
+ * segment-level count. Provider usage remains the source of truth for the
+ * complete request; this is only used to identify the internal system portion
+ * that should be excluded from customer billing.
  */
-export function estimateBillableInputTokens(text: string) {
+export function estimateTokenCountFromText(text: string) {
   const trimmed = text.trim();
   if (!trimmed.length) {
     return 0;
   }
   return Math.max(1, Math.ceil(trimmed.length / 4));
+}
+
+/**
+ * Resolve the customer-billable input for one provider request.
+ *
+ * The provider-reported input count includes the full prompt sent for this
+ * request: prior user/assistant turns, the current user message, and any
+ * retrieved or grounded context. Only our internal system/developer prompt is
+ * excluded. Because providers do not expose a per-segment system-token count,
+ * the system text is estimated with the same deterministic fallback used for
+ * other usage recovery paths, then subtracted from the provider total exactly
+ * once.
+ */
+export function calculateBillableInputTokens({
+  internalSystemPromptText,
+  providerInputTokens,
+}: {
+  internalSystemPromptText?: string | null;
+  providerInputTokens: number;
+}) {
+  const providerTokens = Number.isFinite(providerInputTokens)
+    ? Math.max(0, Math.round(providerInputTokens))
+    : 0;
+  if (providerTokens === 0) {
+    return 0;
+  }
+
+  const estimatedInternalTokens = estimateTokenCountFromText(
+    internalSystemPromptText ?? ""
+  );
+  return Math.max(
+    0,
+    providerTokens - Math.min(providerTokens, estimatedInternalTokens)
+  );
 }
 
 export type CostPlusCategory =

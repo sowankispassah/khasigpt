@@ -10754,8 +10754,9 @@ export async function recordTokenUsage({
   /**
    * Optional customer-billable input count. Provider-reported input tokens
    * can include system prompts, conversation history, and retrieved context;
-   * callers may keep those in usage analytics while billing only the user's
-   * actual input. Existing callers default to provider input tokens.
+   * callers may keep the full provider count in usage analytics while billing
+   * the full non-system context for this request. Existing callers default to
+   * provider input tokens.
    */
   billableInputTokens?: number;
   outputTokens: number;
@@ -10968,6 +10969,10 @@ export async function recordTokenUsage({
               metadata: {
                 providerInputTokens: inputTokens,
                 billableInputTokens: resolvedBillableInputTokens,
+                estimatedInternalSystemPromptTokens: Math.max(
+                  0,
+                  Math.round(inputTokens - resolvedBillableInputTokens)
+                ),
               },
             });
           }

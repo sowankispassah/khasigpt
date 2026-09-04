@@ -29,7 +29,10 @@ import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { resolveLanguageModel } from "@/lib/ai/providers";
 import { classifyToolIntent } from "@/lib/ai/tool-intent-classifier";
 import { verifyToolIntentToken } from "@/lib/ai/web-search-intent-token";
-import { estimateBillableInputTokens } from "@/lib/billing/cost-plus";
+import {
+  calculateBillableInputTokens,
+  estimateTokenCountFromText,
+} from "@/lib/billing/cost-plus";
 import {
   getConversationalAcknowledgementReply,
   sanitizeAssistantDisplayText,
@@ -186,14 +189,6 @@ const CHAT_API_FEATURE_ACCESS_KEYS = [
   JOBS_FEATURE_FLAG_KEY,
   NEWS_FEATURE_FLAG_KEY,
 ] as const;
-
-function estimateTokenCountFromText(text: string) {
-  const trimmed = text.trim();
-  if (!trimmed.length) {
-    return 0;
-  }
-  return Math.max(1, Math.ceil(trimmed.length / 4));
-}
 
 let globalStreamContext: ResumableStreamContext | null = null;
 let streamContextDisabled = false;
@@ -2096,17 +2091,18 @@ export async function POST(request: Request) {
       const jobsPromptText =
         jobsUserText.length > 0 ? jobsUserText : "Show me relevant jobs.";
       if (isJobsMetaConversationQuery(jobsPromptText)) {
+        const metaConversationSystemPrompt = [
+          selectedLanguageSystemPrompt ?? "",
+          "You are a modern conversational assistant inside Meghalaya Jobs mode.",
+          "Reply naturally and briefly like a normal LLM assistant.",
+          "Do not return job cards for greetings or meta conversation.",
+          "You may mention that you can help search Meghalaya jobs by place, salary, qualification, deadline, or source when relevant.",
+          "Always answer in the user's selected language unless the user explicitly asks for a different one.",
+        ].join("\n");
         const metaConversationResult = await generateText({
           model: resolveLanguageModel(modelConfig),
           ...(modelConfig.provider === "google" ? { maxRetries: 0 } : {}),
-          system: [
-            selectedLanguageSystemPrompt ?? "",
-            "You are a modern conversational assistant inside Meghalaya Jobs mode.",
-            "Reply naturally and briefly like a normal LLM assistant.",
-            "Do not return job cards for greetings or meta conversation.",
-            "You may mention that you can help search Meghalaya jobs by place, salary, qualification, deadline, or source when relevant.",
-            "Always answer in the user's selected language unless the user explicitly asks for a different one.",
-          ].join("\n"),
+          system: metaConversationSystemPrompt,
           messages: convertToModelMessages([
             ...jobsHistoryMessages,
             {
@@ -2141,7 +2137,10 @@ export async function POST(request: Request) {
             chatId: id,
             modelConfigId: modelConfig.id,
             inputTokens: metaInputTokens,
-            billableInputTokens: estimateBillableInputTokens(jobsPromptText),
+            billableInputTokens: calculateBillableInputTokens({
+              internalSystemPromptText: metaConversationSystemPrompt,
+              providerInputTokens: metaInputTokens,
+            }),
             outputTokens: metaOutputTokens,
             deductCredits: hasActiveCredits,
           }).catch((tokenError) => {
@@ -2203,19 +2202,20 @@ export async function POST(request: Request) {
                 .join("\n")
             : "No job cards were returned.";
 
+        const listingSummarySystemPrompt = [
+          selectedLanguageSystemPrompt ?? "",
+          "You are summarizing Meghalaya job search results for a chat UI.",
+          "Always answer in the user's selected language unless the user explicitly asks for another one.",
+          "Keep the response concise, natural, and human.",
+          "Do not translate or rewrite job titles, company names, source names, or locations from the result cards unless necessary.",
+          "Do not mention internal retrieval, ranking, filtering, or system behavior.",
+          "If there are no direct matches but statewide or all-district jobs are suggested, explain that naturally.",
+          "Do not invent salary, location, or eligibility details.",
+        ].join("\n");
         const listingSummaryResult = await generateText({
           model: resolveLanguageModel(modelConfig),
           ...(modelConfig.provider === "google" ? { maxRetries: 0 } : {}),
-          system: [
-            selectedLanguageSystemPrompt ?? "",
-            "You are summarizing Meghalaya job search results for a chat UI.",
-            "Always answer in the user's selected language unless the user explicitly asks for another one.",
-            "Keep the response concise, natural, and human.",
-            "Do not translate or rewrite job titles, company names, source names, or locations from the result cards unless necessary.",
-            "Do not mention internal retrieval, ranking, filtering, or system behavior.",
-            "If there are no direct matches but statewide or all-district jobs are suggested, explain that naturally.",
-            "Do not invent salary, location, or eligibility details.",
-          ].join("\n"),
+          system: listingSummarySystemPrompt,
           messages: convertToModelMessages([
             ...jobsHistoryMessages,
             {
@@ -2260,7 +2260,10 @@ export async function POST(request: Request) {
             chatId: id,
             modelConfigId: modelConfig.id,
             inputTokens: listingInputTokens,
-            billableInputTokens: estimateBillableInputTokens(jobsPromptText),
+            billableInputTokens: calculateBillableInputTokens({
+              internalSystemPromptText: listingSummarySystemPrompt,
+              providerInputTokens: listingInputTokens,
+            }),
             outputTokens: listingOutputTokens,
             deductCredits: hasActiveCredits,
           }).catch((tokenError) => {
@@ -2309,18 +2312,19 @@ export async function POST(request: Request) {
           ],
         };
 
+        const followUpSystemPrompt = [
+          selectedLanguageSystemPrompt ?? "",
+          "You are answering a jobs question from retrieved Meghalaya job knowledge.",
+          "Use only the provided job knowledge.",
+          "If a requested detail is missing, say the listing does not mention it.",
+          "Do not mention retrieval, search, or internal ranking.",
+          "Format the answer in concise Markdown.",
+          "Always answer in the user's selected language unless the user explicitly asks for a different one.",
+        ].join("\n");
         const followUpResult = await generateText({
           model: resolveLanguageModel(modelConfig),
           ...(modelConfig.provider === "google" ? { maxRetries: 0 } : {}),
-          system: [
-            selectedLanguageSystemPrompt ?? "",
-            "You are answering a jobs question from retrieved Meghalaya job knowledge.",
-            "Use only the provided job knowledge.",
-            "If a requested detail is missing, say the listing does not mention it.",
-            "Do not mention retrieval, search, or internal ranking.",
-            "Format the answer in concise Markdown.",
-            "Always answer in the user's selected language unless the user explicitly asks for a different one.",
-          ].join("\n"),
+          system: followUpSystemPrompt,
           messages: convertToModelMessages([
             ...jobsHistoryMessages,
             followUpPrompt,
@@ -2352,7 +2356,10 @@ export async function POST(request: Request) {
             chatId: id,
             modelConfigId: modelConfig.id,
             inputTokens: followUpInputTokens,
-            billableInputTokens: estimateBillableInputTokens(jobsPromptText),
+            billableInputTokens: calculateBillableInputTokens({
+              internalSystemPromptText: followUpSystemPrompt,
+              providerInputTokens: followUpInputTokens,
+            }),
             outputTokens: followUpOutputTokens,
             deductCredits: hasActiveCredits,
           }).catch((tokenError) => {
@@ -3534,8 +3541,9 @@ export async function POST(request: Request) {
     const promptText = uiMessagesForModel
       .map((entry) => getTextFromMessage(entry))
       .join(" ");
-    const estimatedInputTokens = estimateTokenCountFromText(promptText);
-    const billableInputTokens = estimateBillableInputTokens(userMessageText);
+    const estimatedInputTokens = estimateTokenCountFromText(
+      [systemInstruction, promptText].filter(Boolean).join("\n\n")
+    );
     const persistUserMessagePromise = saveMessages({
       messages: [
         {
@@ -3638,6 +3646,10 @@ export async function POST(request: Request) {
             : getUsageNumber(usageFallback.completionTokens);
 
         if (inputTokens > 0 || outputTokens > 0) {
+          const billableInputTokens = calculateBillableInputTokens({
+            internalSystemPromptText: systemInstruction,
+            providerInputTokens: inputTokens,
+          });
           const searchProvider = webSearchAnswer?.provider;
           const searchCostPerCallUsd =
             searchProvider && searchProvider !== "disabled"

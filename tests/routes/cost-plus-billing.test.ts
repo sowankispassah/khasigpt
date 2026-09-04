@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 import {
+  calculateBillableInputTokens,
   calculateCostPlusPreview,
   calculateTokenProviderCostUsd,
   calculateUnitProviderCostUsd,
   calculateWalletUnitsPerInr,
-  estimateBillableInputTokens,
   hasCompleteTokenProviderPricing,
   hasCompleteUnitProviderPricing,
   priceCostPlusLineItems,
@@ -17,9 +17,33 @@ const USD_TO_INR = 95.12;
 // recharge bundles add bonus credits without changing this base conversion.
 const WALLET_UNITS_PER_INR = 500;
 
-test("estimates billable input from the current user text only", () => {
-  expect(estimateBillableInputTokens("what happen today in shillong?")).toBe(8);
-  expect(estimateBillableInputTokens("   ")).toBe(0);
+test("bills provider context after excluding only the internal system prompt", () => {
+  expect(
+    calculateBillableInputTokens({
+      internalSystemPromptText: "1234567890",
+      providerInputTokens: 120,
+    })
+  ).toBe(117);
+  expect(
+    calculateBillableInputTokens({
+      internalSystemPromptText: "",
+      providerInputTokens: 120,
+    })
+  ).toBe(120);
+  // A provider total that grows with the conversation remains billable in
+  // full; it is not replaced with a count of only the newest user message.
+  expect(
+    calculateBillableInputTokens({
+      internalSystemPromptText: "1234567890",
+      providerInputTokens: 3_412,
+    })
+  ).toBe(3_409);
+  expect(
+    calculateBillableInputTokens({
+      internalSystemPromptText: "A very long internal prompt",
+      providerInputTokens: 2,
+    })
+  ).toBe(0);
 });
 
 test("treats zero or missing provider costs as incomplete pricing", () => {
