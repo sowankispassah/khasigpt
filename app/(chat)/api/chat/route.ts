@@ -29,6 +29,7 @@ import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { resolveLanguageModel } from "@/lib/ai/providers";
 import { classifyToolIntent } from "@/lib/ai/tool-intent-classifier";
 import { verifyToolIntentToken } from "@/lib/ai/web-search-intent-token";
+import { estimateBillableInputTokens } from "@/lib/billing/cost-plus";
 import {
   getConversationalAcknowledgementReply,
   sanitizeAssistantDisplayText,
@@ -185,6 +186,14 @@ const CHAT_API_FEATURE_ACCESS_KEYS = [
   JOBS_FEATURE_FLAG_KEY,
   NEWS_FEATURE_FLAG_KEY,
 ] as const;
+
+function estimateTokenCountFromText(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed.length) {
+    return 0;
+  }
+  return Math.max(1, Math.ceil(trimmed.length / 4));
+}
 
 let globalStreamContext: ResumableStreamContext | null = null;
 let streamContextDisabled = false;
@@ -2132,6 +2141,7 @@ export async function POST(request: Request) {
             chatId: id,
             modelConfigId: modelConfig.id,
             inputTokens: metaInputTokens,
+            billableInputTokens: estimateBillableInputTokens(jobsPromptText),
             outputTokens: metaOutputTokens,
             deductCredits: hasActiveCredits,
           }).catch((tokenError) => {
@@ -2250,6 +2260,7 @@ export async function POST(request: Request) {
             chatId: id,
             modelConfigId: modelConfig.id,
             inputTokens: listingInputTokens,
+            billableInputTokens: estimateBillableInputTokens(jobsPromptText),
             outputTokens: listingOutputTokens,
             deductCredits: hasActiveCredits,
           }).catch((tokenError) => {
@@ -2341,6 +2352,7 @@ export async function POST(request: Request) {
             chatId: id,
             modelConfigId: modelConfig.id,
             inputTokens: followUpInputTokens,
+            billableInputTokens: estimateBillableInputTokens(jobsPromptText),
             outputTokens: followUpOutputTokens,
             deductCredits: hasActiveCredits,
           }).catch((tokenError) => {
@@ -3522,14 +3534,8 @@ export async function POST(request: Request) {
     const promptText = uiMessagesForModel
       .map((entry) => getTextFromMessage(entry))
       .join(" ");
-    const estimateTokensFromText = (text: string) => {
-      const trimmed = text.trim();
-      if (!trimmed.length) {
-        return 0;
-      }
-      return Math.max(1, Math.ceil(trimmed.length / 4));
-    };
-    const estimatedInputTokens = estimateTokensFromText(promptText);
+    const estimatedInputTokens = estimateTokenCountFromText(promptText);
+    const billableInputTokens = estimateBillableInputTokens(userMessageText);
     const persistUserMessagePromise = saveMessages({
       messages: [
         {
@@ -3642,6 +3648,7 @@ export async function POST(request: Request) {
             chatId: id,
             modelConfigId: modelConfig.id,
             inputTokens,
+            billableInputTokens,
             outputTokens,
             deductCredits: hasActiveCredits,
             additionalCharges:
@@ -3670,6 +3677,7 @@ export async function POST(request: Request) {
                   ? webSearchConfig.providerMarkupMultiplier[searchProvider]
                   : 1,
               inputTokens,
+              billableInputTokens,
               outputTokens,
               searchCallCount: webSearchAnswer.searchCallCount,
             });
@@ -3805,7 +3813,7 @@ export async function POST(request: Request) {
 
       const partialText = streamedText.trim();
       if (partialText.length > 0) {
-        const estimatedOutputTokens = estimateTokensFromText(partialText);
+        const estimatedOutputTokens = estimateTokenCountFromText(partialText);
         const inputTokens = Math.max(1, estimatedInputTokens || 1);
         const fallbackUsage: AppUsage = {
           inputTokens,

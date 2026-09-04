@@ -4,6 +4,7 @@ import {
   calculateTokenProviderCostUsd,
   calculateUnitProviderCostUsd,
   calculateWalletUnitsPerInr,
+  estimateBillableInputTokens,
   hasCompleteTokenProviderPricing,
   hasCompleteUnitProviderPricing,
   priceCostPlusLineItems,
@@ -15,6 +16,11 @@ const USD_TO_INR = 95.12;
 // ₹500 for 2,500 displayed credits establishes ₹0.20 per credit. Higher
 // recharge bundles add bonus credits without changing this base conversion.
 const WALLET_UNITS_PER_INR = 500;
+
+test("estimates billable input from the current user text only", () => {
+  expect(estimateBillableInputTokens("what happen today in shillong?")).toBe(8);
+  expect(estimateBillableInputTokens("   ")).toBe(0);
+});
 
 test("treats zero or missing provider costs as incomplete pricing", () => {
   expect(

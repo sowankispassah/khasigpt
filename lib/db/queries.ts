@@ -10739,6 +10739,7 @@ export async function recordTokenUsage({
   modelConfigId,
   liveVoiceModelConfigId = null,
   inputTokens,
+  billableInputTokens,
   outputTokens,
   deductCredits = true,
   additionalCharges = [],
@@ -10750,6 +10751,13 @@ export async function recordTokenUsage({
   modelConfigId: string | null;
   liveVoiceModelConfigId?: string | null;
   inputTokens: number;
+  /**
+   * Optional customer-billable input count. Provider-reported input tokens
+   * can include system prompts, conversation history, and retrieved context;
+   * callers may keep those in usage analytics while billing only the user's
+   * actual input. Existing callers default to provider input tokens.
+   */
+  billableInputTokens?: number;
   outputTokens: number;
   deductCredits?: boolean;
   additionalCharges?: AdditionalUsageCharge[];
@@ -10757,6 +10765,15 @@ export async function recordTokenUsage({
   billTokenUsage?: boolean;
 }): Promise<TokenUsage> {
   const totalTokens = Math.max(0, Math.round(inputTokens + outputTokens));
+  const resolvedBillableInputTokens =
+    typeof billableInputTokens === "number" &&
+    Number.isFinite(billableInputTokens)
+      ? Math.max(0, Math.round(billableInputTokens))
+      : Math.max(0, Math.round(inputTokens));
+  const billableTotalTokens = Math.max(
+    0,
+    Math.round(resolvedBillableInputTokens + outputTokens)
+  );
   const invalidAdditionalCharge = additionalCharges.some(
     (charge) =>
       Number.isFinite(charge.unitCount) &&
@@ -10901,7 +10918,8 @@ export async function recordTokenUsage({
           );
         }
 
-        const shouldPriceTokenUsage = billTokenUsage && totalTokens > 0;
+        const shouldPriceTokenUsage =
+          billTokenUsage && billableTotalTokens > 0;
         if (
           shouldPriceTokenUsage &&
           (!tokenCostPlusSnapshot ||
@@ -10932,7 +10950,7 @@ export async function recordTokenUsage({
           const providerCostUsd = calculateTokenProviderCostUsd({
             inputCostPerMillionUsd:
               tokenCostPlusSnapshot.inputCostPerMillionUsd,
-            inputTokens,
+            inputTokens: resolvedBillableInputTokens,
             outputCostPerMillionUsd:
               tokenCostPlusSnapshot.outputCostPerMillionUsd,
             outputTokens,
@@ -10943,10 +10961,14 @@ export async function recordTokenUsage({
               providerCostUsd,
               markupMultiplier: tokenCostPlusSnapshot.markupMultiplier,
               providerKey: tokenCostPlusSnapshot.providerKey,
-              inputTokens,
+              inputTokens: resolvedBillableInputTokens,
               outputTokens,
               modelConfigId,
               liveVoiceModelConfigId,
+              metadata: {
+                providerInputTokens: inputTokens,
+                billableInputTokens: resolvedBillableInputTokens,
+              },
             });
           }
         }

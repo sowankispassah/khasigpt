@@ -5,6 +5,21 @@ export const DEFAULT_LIVE_VOICE_MARKUP_MULTIPLIER = 3;
 export const MIN_MARKUP_MULTIPLIER = 1;
 export const MAX_MARKUP_MULTIPLIER = 20;
 
+/**
+ * Estimate tokens attributable to the current user-authored text.
+ *
+ * Provider usage includes hidden system instructions, prior turns, and
+ * retrieved context. This estimate is intentionally limited to the text the
+ * user just submitted so those internal prompt tokens are not billed to them.
+ */
+export function estimateBillableInputTokens(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed.length) {
+    return 0;
+  }
+  return Math.max(1, Math.ceil(trimmed.length / 4));
+}
+
 export type CostPlusCategory =
   | "chat"
   | "image"
