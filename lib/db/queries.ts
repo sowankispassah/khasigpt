@@ -11550,7 +11550,13 @@ function istKeyToDate(key: string): Date {
 export async function getDailyTokenUsageForUser(
   userId: string,
   days: number
-): Promise<Array<{ day: Date; totalTokens: number }>> {
+): Promise<
+  Array<{
+    day: Date;
+    totalTokens: number;
+    billableCreditUnits: number;
+  }>
+> {
   try {
     const windowStart = new Date(
       Date.now() - Math.max(1, days) * 24 * 60 * 60 * 1000
@@ -11565,26 +11571,71 @@ export async function getDailyTokenUsageForUser(
     const totalTokens = sql<number>`sum(${tokenUsage.totalTokens})`.as(
       "totalTokens"
     );
+    const billableCreditUnits = sql<number>`sum(${creditCharge.creditUnits})`.as(
+      "billableCreditUnits"
+    );
+    const creditDayKey = sql<string>`to_char((${creditCharge.createdAt} + ${istOffsetInterval})::date, 'YYYY-MM-DD')`.as(
+      "dayKey"
+    );
 
-    const rows = await db
-      .select({
-        dayKey,
-        totalTokens,
-      })
-      .from(tokenUsage)
-      .where(
-        and(
-          eq(tokenUsage.userId, userId),
-          gte(tokenUsage.createdAt, windowStart)
+    const [tokenRows, creditRows] = await Promise.all([
+      db
+        .select({
+          dayKey,
+          totalTokens,
+        })
+        .from(tokenUsage)
+        .where(
+          and(
+            eq(tokenUsage.userId, userId),
+            gte(tokenUsage.createdAt, windowStart)
+          )
         )
-      )
-      .groupBy(dayKey)
-      .orderBy(asc(dayKey));
+        .groupBy(dayKey)
+        .orderBy(asc(dayKey)),
+      db
+        .select({
+          dayKey: creditDayKey,
+          billableCreditUnits,
+        })
+        .from(creditCharge)
+        .where(
+          and(
+            eq(creditCharge.userId, userId),
+            eq(creditCharge.status, "settled"),
+            gt(creditCharge.creditUnits, 0),
+            gte(creditCharge.createdAt, windowStart)
+          )
+        )
+        .groupBy(creditDayKey)
+        .orderBy(asc(creditDayKey)),
+    ]);
 
-    return rows.map((row) => ({
-      day: istKeyToDate(row.dayKey),
-      totalTokens: Number(row.totalTokens ?? 0),
-    }));
+    const usageByDay = new Map<
+      string,
+      { day: Date; totalTokens: number; billableCreditUnits: number }
+    >();
+
+    for (const row of tokenRows) {
+      usageByDay.set(row.dayKey, {
+        day: istKeyToDate(row.dayKey),
+        totalTokens: Number(row.totalTokens ?? 0),
+        billableCreditUnits: 0,
+      });
+    }
+
+    for (const row of creditRows) {
+      const current = usageByDay.get(row.dayKey);
+      usageByDay.set(row.dayKey, {
+        day: current?.day ?? istKeyToDate(row.dayKey),
+        totalTokens: current?.totalTokens ?? 0,
+        billableCreditUnits: Number(row.billableCreditUnits ?? 0),
+      });
+    }
+
+    return [...usageByDay.values()].sort(
+      (left, right) => left.day.getTime() - right.day.getTime()
+    );
   } catch (_error) {
     if (isTableMissingError(_error)) {
       return [];
@@ -11605,6 +11656,7 @@ export async function getSessionTokenUsageForUser(
     chatTitle: string | null;
     chatCreatedAt: Date | null;
     totalTokens: number;
+    billableCreditUnits: number;
     lastUsedAt: Date | null;
   }>
 > {
@@ -11615,6 +11667,24 @@ export async function getSessionTokenUsageForUser(
       "totalTokens"
     );
     const lastUsedAt = sql<Date>`max(${tokenUsage.createdAt})`.as("lastUsedAt");
+    const chargeTotals = db
+      .select({
+        chatId: creditCharge.chatId,
+        billableCreditUnits: sql<number>`sum(${creditCharge.creditUnits})`.as(
+          "billableCreditUnits"
+        ),
+      })
+      .from(creditCharge)
+      .where(
+        and(
+          eq(creditCharge.userId, userId),
+          eq(creditCharge.status, "settled"),
+          isNotNull(creditCharge.chatId),
+          gt(creditCharge.creditUnits, 0)
+        )
+      )
+      .groupBy(creditCharge.chatId)
+      .as("session_charge_totals");
 
     const query = db
       .select({
@@ -11622,16 +11692,23 @@ export async function getSessionTokenUsageForUser(
         chatTitle: chat.title,
         chatCreatedAt: chat.createdAt,
         totalTokens,
+        billableCreditUnits: chargeTotals.billableCreditUnits,
         lastUsedAt,
       })
       .from(tokenUsage)
       .leftJoin(chat, eq(tokenUsage.chatId, chat.id))
+      .innerJoin(chargeTotals, eq(chargeTotals.chatId, tokenUsage.chatId))
       .where(eq(tokenUsage.userId, userId))
-      .groupBy(tokenUsage.chatId, chat.title, chat.createdAt);
+      .groupBy(
+        tokenUsage.chatId,
+        chat.title,
+        chat.createdAt,
+        chargeTotals.billableCreditUnits
+      );
 
     const orderedQuery =
       sortBy === "usage"
-        ? query.orderBy(desc(totalTokens), desc(lastUsedAt))
+        ? query.orderBy(desc(chargeTotals.billableCreditUnits), desc(lastUsedAt))
         : query.orderBy(desc(lastUsedAt));
 
     const rows = await orderedQuery;
@@ -11646,6 +11723,7 @@ export async function getSessionTokenUsageForUser(
             ? new Date(row.chatCreatedAt as unknown as string)
             : null,
       totalTokens: Number(row.totalTokens ?? 0),
+      billableCreditUnits: Number(row.billableCreditUnits ?? 0),
       lastUsedAt:
         row.lastUsedAt instanceof Date
           ? row.lastUsedAt

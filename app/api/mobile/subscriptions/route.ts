@@ -63,7 +63,11 @@ function formatRechargeStatus(status: string) {
 }
 
 function buildDailySeries(
-  raw: Array<{ day: Date; totalTokens: number }>,
+  raw: Array<{
+    day: Date;
+    totalTokens: number;
+    billableCreditUnits: number;
+  }>,
   range: number
 ) {
   const toIstKey = (date: Date) => {
@@ -100,12 +104,12 @@ function buildDailySeries(
     const today = normalizeToIstMidnight(new Date());
     return Array.from({ length: range }, (_, idx) => {
       const day = new Date(today.getTime() - (range - 1 - idx) * 86_400_000);
-      return { day, totalTokens: 0 };
+      return { day, totalTokens: 0, billableCreditUnits: 0 };
     });
   }
 
   const usageMap = new Map(
-    raw.map((entry) => [toIstKey(entry.day), entry.totalTokens])
+    raw.map((entry) => [toIstKey(entry.day), entry])
   );
   const latestDataDay = raw.reduce(
     (latest, entry) =>
@@ -119,9 +123,11 @@ function buildDailySeries(
 
   return Array.from({ length: range }, (_, idx) => {
     const day = new Date(start.getTime() + idx * 86_400_000);
+    const entry = usageMap.get(toIstKey(day));
     return {
       day,
-      totalTokens: usageMap.get(toIstKey(day)) ?? 0,
+      totalTokens: entry?.totalTokens ?? 0,
+      billableCreditUnits: entry?.billableCreditUnits ?? 0,
     };
   });
 }
@@ -329,13 +335,14 @@ export async function GET(request: Request) {
       },
       dailyUsage: dailySeries.map((entry) => ({
         date: entry.day.toISOString(),
-        credits: entry.totalTokens / TOKENS_PER_CREDIT,
+        credits: entry.billableCreditUnits / TOKENS_PER_CREDIT,
         totalTokens: entry.totalTokens,
       })),
       peakDay: peakEntry
-        ? {
+          ? {
             date: peakEntry.day.toISOString(),
-            credits: peakEntry.totalTokens / TOKENS_PER_CREDIT,
+            credits:
+              peakEntry.billableCreditUnits / TOKENS_PER_CREDIT,
             totalTokens: peakEntry.totalTokens,
           }
         : null,
@@ -344,7 +351,7 @@ export async function GET(request: Request) {
         chatTitle: entry.chatTitle,
         chatCreatedAt: serializeDate(entry.chatCreatedAt),
         lastUsedAt: serializeDate(entry.lastUsedAt),
-        creditsUsed: entry.totalTokens / TOKENS_PER_CREDIT,
+        creditsUsed: entry.billableCreditUnits / TOKENS_PER_CREDIT,
         totalTokens: entry.totalTokens,
       })),
       rechargeHistory: rechargeHistory.map((entry) => {

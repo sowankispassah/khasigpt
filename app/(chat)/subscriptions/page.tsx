@@ -395,16 +395,18 @@ export default async function SubscriptionsPage({
   const dailySeries = buildDailySeries(rawDailyUsage, range);
   const dailyChartData = dailySeries.map((entry) => ({
     date: entry.day.toISOString(),
-    credits: entry.totalTokens / TOKENS_PER_CREDIT,
+    credits: entry.billableCreditUnits / TOKENS_PER_CREDIT,
   }));
-  const maxTokens = dailySeries.reduce(
-    (max, entry) => Math.max(max, entry.totalTokens),
+  const maxBillableCreditUnits = dailySeries.reduce(
+    (max, entry) => Math.max(max, entry.billableCreditUnits),
     0
   );
   const peakEntry =
     dailySeries.length > 0
       ? dailySeries.reduce((prev, current) =>
-          current.totalTokens > prev.totalTokens ? current : prev
+          current.billableCreditUnits > prev.billableCreditUnits
+            ? current
+            : prev
         )
       : null;
   const rangeStart = dailySeries[0]?.day ?? new Date();
@@ -652,7 +654,7 @@ export default async function SubscriptionsPage({
               translationKey="subscriptions.daily_usage.unavailable"
             />
           </div>
-        ) : maxTokens === 0 ? (
+        ) : maxBillableCreditUnits === 0 ? (
           <div className="mt-6 flex h-48 items-center justify-center rounded-md border border-muted-foreground/30 border-dashed bg-muted/30 text-muted-foreground text-sm">
             <EditableTranslation
               defaultText="No usage recorded in this range."
@@ -675,7 +677,7 @@ export default async function SubscriptionsPage({
                   translationKey="subscriptions.daily_usage.peak_day"
                   values={{
                     date: istMonthDayFormatter.format(peakEntry.day),
-                    credits: formatCredits(peakEntry.totalTokens),
+                    credits: formatCredits(peakEntry.billableCreditUnits),
                   }}
                 />
               </p>
@@ -781,7 +783,7 @@ export default async function SubscriptionsPage({
                       )}
                     </td>
                     <td className="py-2 text-right">
-                      {formatCredits(entry.totalTokens)}
+                      {formatCredits(entry.billableCreditUnits)}
                     </td>
                   </tr>
                 ))
@@ -852,7 +854,11 @@ function toSingleValue(
 }
 
 function buildDailySeries(
-  raw: Array<{ day: Date; totalTokens: number }>,
+  raw: Array<{
+    day: Date;
+    totalTokens: number;
+    billableCreditUnits: number;
+  }>,
   range: number
 ) {
   const toIstKey = (date: Date) => {
@@ -889,12 +895,12 @@ function buildDailySeries(
     const today = normalizeToIstMidnight(new Date());
     return Array.from({ length: range }, (_, idx) => {
       const day = new Date(today.getTime() - (range - 1 - idx) * 86_400_000);
-      return { day, totalTokens: 0 };
+      return { day, totalTokens: 0, billableCreditUnits: 0 };
     });
   }
 
   const usageMap = new Map(
-    raw.map((entry) => [toIstKey(entry.day), entry.totalTokens])
+    raw.map((entry) => [toIstKey(entry.day), entry])
   );
 
   const latestDataDay = raw.reduce((latest, entry) => {
@@ -908,9 +914,11 @@ function buildDailySeries(
   return Array.from({ length: range }, (_, idx) => {
     const day = new Date(start.getTime() + idx * 86_400_000);
     const key = toIstKey(day);
+    const entry = usageMap.get(key);
     return {
       day,
-      totalTokens: usageMap.get(key) ?? 0,
+      totalTokens: entry?.totalTokens ?? 0,
+      billableCreditUnits: entry?.billableCreditUnits ?? 0,
     };
   });
 }
