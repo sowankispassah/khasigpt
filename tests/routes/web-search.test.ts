@@ -566,6 +566,8 @@ test.describe("web search grounding", () => {
       nativeTypes,
       semanticRouter,
       productImageRoute,
+      webSearchConfig,
+      exploreRoute,
     ] = await Promise.all([
       readWorkspaceFile("lib/web-search/service.ts"),
       readWorkspaceFile("app/(chat)/api/chat/route.ts"),
@@ -578,6 +580,8 @@ test.describe("web search grounding", () => {
       readWorkspaceFile("native/src/api/types.ts"),
       readWorkspaceFile("lib/ai/tool-intent-classifier.ts"),
       readWorkspaceFile("app/api/web-search/product-image/route.ts"),
+      readWorkspaceFile("lib/web-search/config.ts"),
+      readWorkspaceFile("app/api/explore/search/route.ts"),
     ]);
 
     expect(service).toContain('tools: [{ googleSearch: {} }]');
@@ -602,6 +606,17 @@ test.describe("web search grounding", () => {
     expect(route).toContain('type: "data-webSearchStatus"');
     expect(route).toContain("webSearchFinalStatusPart");
     expect(route).toContain("Falling back to normal model answer");
+    expect(route).toContain(
+      "webSearchConfig.providerMarkupMultiplier[searchProvider]"
+    );
+    expect(exploreRoute).toContain(
+      "config.providerMarkupMultiplier[searchProvider]"
+    );
+    expect(webSearchConfig).toContain("providerMarkupMultiplier");
+    expect(webSearchConfig).toContain(
+      "WEB_SEARCH_SERPER_MARKUP_MULTIPLIER_SETTING_KEY"
+    );
+    expect(webSearchConfig).toContain("legacyMarkupMultiplier");
     expect(chat).toContain("sendMessageWithWebSearchStatus");
     expect(chat).toContain("clearTransientWebSearchMessages");
     expect(chat).not.toContain("isSearchingWeb");

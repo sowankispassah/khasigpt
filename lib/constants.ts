@@ -46,6 +46,12 @@ export const WEB_SEARCH_PAID_USERS_ENABLED_SETTING_KEY =
 export const WEB_SEARCH_MAX_CALLS_SETTING_KEY = "web_search_max_calls";
 export const WEB_SEARCH_CREDIT_MULTIPLIER_SETTING_KEY =
   "web_search_credit_multiplier";
+export const WEB_SEARCH_GEMINI_MARKUP_MULTIPLIER_SETTING_KEY =
+  "web_search_gemini_markup_multiplier";
+export const WEB_SEARCH_OPENAI_MARKUP_MULTIPLIER_SETTING_KEY =
+  "web_search_openai_markup_multiplier";
+export const WEB_SEARCH_SERPER_MARKUP_MULTIPLIER_SETTING_KEY =
+  "web_search_serper_markup_multiplier";
 export const WEB_SEARCH_GEMINI_COST_PER_CALL_USD_SETTING_KEY =
   "web_search_gemini_cost_per_call_usd";
 export const WEB_SEARCH_OPENAI_COST_PER_CALL_USD_SETTING_KEY =

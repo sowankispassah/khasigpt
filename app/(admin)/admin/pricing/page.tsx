@@ -887,7 +887,7 @@ function WebSearchPricingSection({ children }: { children?: ReactNode }) {
           </h2>
           <p className="text-muted-foreground text-sm">
             <EditableTranslation
-              defaultText="Configure grounding, platform availability, limits, provider costs, and customer markup."
+              defaultText="Configure grounding, platform availability, limits, and independent pricing for each search provider."
               description="Description for the Web Search settings section in Admin Pricing."
               translationKey="admin.web_search.section_description"
             />

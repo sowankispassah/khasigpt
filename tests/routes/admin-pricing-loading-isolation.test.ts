@@ -286,11 +286,13 @@ test.describe("admin pricing loading isolation", () => {
     expect(voiceSource).not.toContain("defaultLiveVoiceModelConfig");
     expect(webSearchConfigSource).not.toContain("0.014");
     expect(webSearchConfigSource).not.toContain("0.01,");
-    expect(searchSource).toContain("<CostPlusPreviewCard");
+    expect(searchSource).toContain("calculateCostPlusPreview");
     expect(searchSource).toContain("hasValidWebSearchProviderCosts");
-    expect(searchSource).toContain("required={requiresGeminiCost}");
-    expect(searchSource).toContain("required={requiresOpenAiCost}");
-    expect(searchSource).toContain("required={requiresSerperCost}");
+    expect(searchSource).toContain("BILLABLE_PROVIDER_ROWS");
+    expect(searchSource).toContain("providerPricing[providerKey]");
+    expect(searchSource).toContain("providerCostPerCallUsd");
+    expect(searchSource).toContain("markupMultiplier");
+    expect(searchSource).not.toContain("disabled={isSaving ||");
     expect(previewRouteSource).toContain("requireAdminApiUser");
     expect(previewRouteSource).toContain('"Cache-Control": "no-store"');
   });
@@ -319,12 +321,23 @@ test.describe("admin pricing loading isolation", () => {
     expect(searchFormSource).toContain("Enable on web");
     expect(searchFormSource).toContain("Max search calls");
     expect(searchFormSource).toContain("Customer markup");
-    expect(searchFormSource).toContain("Grounded search provider cost");
+    expect(searchFormSource).toContain("Web Search provider pricing");
+    expect(searchFormSource).toContain("Provider cost (USD / call)");
     expect(searchFormSource).toContain("Serper Google Search");
-    expect(searchFormSource).toContain("Serper provider cost");
     expect(searchFormSource).toContain("serperConfigured");
+    expect(searchFormSource).toContain("providerPricing: Object.fromEntries");
+    expect(searchFormSource).toContain("orderedProviderRows");
     expect(pricingSource).toContain("process.env.SERPER_API_KEY");
-    expect(searchRouteSource).toContain("web_search_serper_cost_per_call_usd");
+    expect(searchRouteSource).toContain(
+      "WEB_SEARCH_SERPER_COST_PER_CALL_USD_SETTING_KEY"
+    );
+    expect(searchRouteSource).toContain(
+      "WEB_SEARCH_SERPER_MARKUP_MULTIPLIER_SETTING_KEY"
+    );
+    expect(searchRouteSource).not.toContain(
+      "WEB_SEARCH_CREDIT_MULTIPLIER_SETTING_KEY"
+    );
+    expect(searchRouteSource).toContain("parsedProviderPricing");
     expect(searchRouteSource).toContain('error: "provider_not_configured"');
     expect(searchRouteSource).toContain('source: "pricing.web_search.update"');
     expect(settingsSource).not.toContain("<WebSearchSettingsForm");

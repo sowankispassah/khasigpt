@@ -3316,13 +3316,18 @@ export async function POST(request: Request) {
         webSearchUsed = Boolean(webSearchAnswer);
         const responseTimeMs = Math.round(performance.now() - webSearchStartedAt);
         const creditCostTokens = 0;
+        const usageProvider = webSearchAnswer?.provider ?? attemptedProvider;
+        const usageMarkupMultiplier =
+          usageProvider === "disabled"
+            ? 1
+            : webSearchConfig.providerMarkupMultiplier[usageProvider];
         void recordWebSearchUsage({
           chatId: id,
           creditCostTokens,
-          creditMultiplier: webSearchConfig.markupMultiplier,
+          creditMultiplier: usageMarkupMultiplier,
           errorReason: webSearchFailureReason,
           platform: webSearchPlatform,
-          provider: webSearchAnswer?.provider ?? attemptedProvider,
+          provider: usageProvider,
           queryHash,
           responseTimeMs,
           searchCallCount: webSearchAnswer?.searchCallCount ?? 0,
@@ -3334,9 +3339,9 @@ export async function POST(request: Request) {
         });
         console.info("[web-search] completed", {
           chatId: id,
-          markupMultiplier: webSearchConfig.markupMultiplier,
+          markupMultiplier: usageMarkupMultiplier,
           platform: webSearchPlatform,
-          provider: webSearchAnswer?.provider ?? attemptedProvider,
+          provider: usageProvider,
           responseTimeMs,
           searchCallCount: webSearchAnswer?.searchCallCount ?? 0,
           sourceCount: webSearchAnswer?.sources.length ?? 0,
@@ -3647,7 +3652,10 @@ export async function POST(request: Request) {
                       providerKey: searchProvider,
                       providerCostPerUnitUsd: searchCostPerCallUsd,
                       unitCount: webSearchAnswer.searchCallCount,
-                      markupMultiplier: webSearchConfig.markupMultiplier,
+                      markupMultiplier:
+                        webSearchConfig.providerMarkupMultiplier[
+                          searchProvider
+                        ],
                       metadata: { sourceCount: webSearchAnswer.sources.length },
                     },
                   ]
@@ -3657,7 +3665,10 @@ export async function POST(request: Request) {
           if (webSearchAnswer) {
             console.info("[web-search] credit_charge", {
               chatId: id,
-              markupMultiplier: webSearchConfig.markupMultiplier,
+              markupMultiplier:
+                searchProvider && searchProvider !== "disabled"
+                  ? webSearchConfig.providerMarkupMultiplier[searchProvider]
+                  : 1,
               inputTokens,
               outputTokens,
               searchCallCount: webSearchAnswer.searchCallCount,

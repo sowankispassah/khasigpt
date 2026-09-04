@@ -392,7 +392,8 @@ export async function POST(request: Request) {
                       providerKey: searchProvider,
                       providerCostPerUnitUsd,
                       unitCount: answer.searchCallCount,
-                      markupMultiplier: config.markupMultiplier,
+                      markupMultiplier:
+                        config.providerMarkupMultiplier[searchProvider],
                       metadata: { sourceCount: answer.sources.length },
                     },
                   ]
@@ -403,7 +404,10 @@ export async function POST(request: Request) {
         await recordWebSearchUsage({
           chatId,
           creditCostTokens: 0,
-          creditMultiplier: config.markupMultiplier,
+          creditMultiplier:
+            searchProvider === "disabled"
+              ? 1
+              : config.providerMarkupMultiplier[searchProvider],
           platform,
           provider: answer.provider,
           queryHash,
@@ -416,10 +420,14 @@ export async function POST(request: Request) {
           userId: auth.user.id,
         });
       } else {
+        const attemptedMarkupMultiplier =
+          attemptedProvider === "disabled"
+            ? 1
+            : config.providerMarkupMultiplier[attemptedProvider];
         await recordWebSearchUsage({
           chatId,
           creditCostTokens: 0,
-          creditMultiplier: config.markupMultiplier,
+          creditMultiplier: attemptedMarkupMultiplier,
           errorReason:
             providerError instanceof Error
               ? providerError.message.slice(0, 500)

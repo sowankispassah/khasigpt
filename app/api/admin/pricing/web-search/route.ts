@@ -1,6 +1,20 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
-import { WEB_SEARCH_ENABLED_SETTING_KEY } from "@/lib/constants";
+import {
+  WEB_SEARCH_ENABLED_NATIVE_SETTING_KEY,
+  WEB_SEARCH_ENABLED_WEB_SETTING_KEY,
+  WEB_SEARCH_FALLBACK_PROVIDER_SETTING_KEY,
+  WEB_SEARCH_FREE_USERS_ENABLED_SETTING_KEY,
+  WEB_SEARCH_GEMINI_COST_PER_CALL_USD_SETTING_KEY,
+  WEB_SEARCH_GEMINI_MARKUP_MULTIPLIER_SETTING_KEY,
+  WEB_SEARCH_MAX_CALLS_SETTING_KEY,
+  WEB_SEARCH_OPENAI_COST_PER_CALL_USD_SETTING_KEY,
+  WEB_SEARCH_OPENAI_MARKUP_MULTIPLIER_SETTING_KEY,
+  WEB_SEARCH_PAID_USERS_ENABLED_SETTING_KEY,
+  WEB_SEARCH_PROVIDER_SETTING_KEY,
+  WEB_SEARCH_SERPER_COST_PER_CALL_USD_SETTING_KEY,
+  WEB_SEARCH_SERPER_MARKUP_MULTIPLIER_SETTING_KEY,
+} from "@/lib/constants";
 import {
   appSettingCacheTagForKey,
   createLiteAuditLogEntry,
@@ -12,7 +26,10 @@ import {
   WEB_SEARCH_CONFIG_CACHE_TAG,
   WEB_SEARCH_SETTING_KEYS,
 } from "@/lib/web-search/config";
-import { hasValidWebSearchProviderCosts } from "@/lib/web-search/pricing";
+import {
+  type BillableWebSearchProvider,
+  hasValidWebSearchProviderCosts,
+} from "@/lib/web-search/pricing";
 import type { WebSearchProvider } from "@/lib/web-search/types";
 
 export const runtime = "nodejs";
@@ -23,6 +40,11 @@ const PROVIDERS = new Set<WebSearchProvider>([
   "serper",
   "disabled",
 ]);
+const BILLABLE_PROVIDERS: BillableWebSearchProvider[] = [
+  "gemini_grounding",
+  "serper",
+  "openai_web_search",
+];
 const WRITE_TIMEOUT_MS = 15_000;
 const AUDIT_TIMEOUT_MS = 3_000;
 
@@ -70,31 +92,63 @@ export async function POST(request: NextRequest) {
   }
 
   const maxCalls = parseNumber(body.maxCalls, { integer: true, max: 10, min: 1 });
-  const markupMultiplier = parseNumber(body.markupMultiplier, { integer: false, max: 20, min: 1 });
-  const geminiCostPerCallUsd = parseNumber(body.geminiCostPerCallUsd, { integer: false, max: 100, min: 0 });
-  const openaiCostPerCallUsd = parseNumber(body.openaiCostPerCallUsd, { integer: false, max: 100, min: 0 });
-  const serperCostPerCallUsd = parseNumber(body.serperCostPerCallUsd, { integer: false, max: 100, min: 0 });
+  const providerPricing = body.providerPricing;
+  if (!isRecord(providerPricing)) {
+    return NextResponse.json(
+      { error: "invalid_pricing", message: "Provider pricing is required." },
+      { status: 400 }
+    );
+  }
+  const parsedProviderPricing = Object.fromEntries(
+    BILLABLE_PROVIDERS.map((providerKey) => {
+      const row = providerPricing[providerKey];
+      if (!isRecord(row)) {
+        return [providerKey, null];
+      }
+      const providerCostPerCallUsd = parseNumber(row.providerCostPerCallUsd, {
+        integer: false,
+        max: 100,
+        min: 0,
+      });
+      const markupMultiplier = parseNumber(row.markupMultiplier, {
+        integer: false,
+        max: 20,
+        min: 1,
+      });
+      return [
+        providerKey,
+        providerCostPerCallUsd === null || markupMultiplier === null
+          ? null
+          : { markupMultiplier, providerCostPerCallUsd },
+      ];
+    })
+  ) as Record<
+    BillableWebSearchProvider,
+    { markupMultiplier: number; providerCostPerCallUsd: number } | null
+  >;
+  const pricingRowsAreValid = BILLABLE_PROVIDERS.every(
+    (providerKey) => parsedProviderPricing[providerKey] !== null
+  );
+  const providerCostPerCallUsd = Object.fromEntries(
+    BILLABLE_PROVIDERS.map((providerKey) => [
+      providerKey,
+      parsedProviderPricing[providerKey]?.providerCostPerCallUsd ?? 0,
+    ])
+  ) as Record<BillableWebSearchProvider, number>;
   if (
     maxCalls === null ||
-    markupMultiplier === null ||
-    geminiCostPerCallUsd === null ||
-    openaiCostPerCallUsd === null ||
-    serperCostPerCallUsd === null ||
+    !pricingRowsAreValid ||
     !hasValidWebSearchProviderCosts({
       fallbackProvider: fallbackProvider as WebSearchProvider,
       provider: provider as WebSearchProvider,
-      providerCostPerCallUsd: {
-        gemini_grounding: geminiCostPerCallUsd ?? 0,
-        openai_web_search: openaiCostPerCallUsd ?? 0,
-        serper: serperCostPerCallUsd ?? 0,
-      },
+      providerCostPerCallUsd,
     })
   ) {
     return NextResponse.json(
       {
         error: "invalid_pricing",
         message:
-          "Add a provider cost greater than zero for each selected provider. Disabled providers may remain at zero, and markup must be between 1 and 20.",
+          "Add a provider cost greater than zero for each selected provider. Inactive providers may remain at zero, and every provider markup must be between 1 and 20.",
       },
       { status: 400 }
     );
@@ -114,26 +168,32 @@ export async function POST(request: NextRequest) {
   }
 
   const values: Record<string, unknown> = {
-    web_search_provider: provider,
-    web_search_fallback_provider: fallbackProvider,
-    web_search_enabled_web: parsedBooleans.enabledWeb,
-    web_search_enabled_native: parsedBooleans.enabledNative,
-    web_search_free_users_enabled: parsedBooleans.freeUsersEnabled,
-    web_search_paid_users_enabled: parsedBooleans.paidUsersEnabled,
-    web_search_max_calls: maxCalls,
-    web_search_credit_multiplier: markupMultiplier,
-    web_search_gemini_cost_per_call_usd: geminiCostPerCallUsd,
-    web_search_openai_cost_per_call_usd: openaiCostPerCallUsd,
-    web_search_serper_cost_per_call_usd: serperCostPerCallUsd,
+    [WEB_SEARCH_PROVIDER_SETTING_KEY]: provider,
+    [WEB_SEARCH_FALLBACK_PROVIDER_SETTING_KEY]: fallbackProvider,
+    [WEB_SEARCH_ENABLED_WEB_SETTING_KEY]: parsedBooleans.enabledWeb,
+    [WEB_SEARCH_ENABLED_NATIVE_SETTING_KEY]: parsedBooleans.enabledNative,
+    [WEB_SEARCH_FREE_USERS_ENABLED_SETTING_KEY]: parsedBooleans.freeUsersEnabled,
+    [WEB_SEARCH_PAID_USERS_ENABLED_SETTING_KEY]: parsedBooleans.paidUsersEnabled,
+    [WEB_SEARCH_MAX_CALLS_SETTING_KEY]: maxCalls,
+    [WEB_SEARCH_GEMINI_COST_PER_CALL_USD_SETTING_KEY]:
+      providerCostPerCallUsd.gemini_grounding,
+    [WEB_SEARCH_GEMINI_MARKUP_MULTIPLIER_SETTING_KEY]:
+      parsedProviderPricing.gemini_grounding?.markupMultiplier,
+    [WEB_SEARCH_OPENAI_COST_PER_CALL_USD_SETTING_KEY]:
+      providerCostPerCallUsd.openai_web_search,
+    [WEB_SEARCH_OPENAI_MARKUP_MULTIPLIER_SETTING_KEY]:
+      parsedProviderPricing.openai_web_search?.markupMultiplier,
+    [WEB_SEARCH_SERPER_COST_PER_CALL_USD_SETTING_KEY]:
+      providerCostPerCallUsd.serper,
+    [WEB_SEARCH_SERPER_MARKUP_MULTIPLIER_SETTING_KEY]:
+      parsedProviderPricing.serper?.markupMultiplier,
   };
 
   try {
     await withTimeout(
       Promise.all(
-        WEB_SEARCH_SETTING_KEYS.filter(
-          (key) => key !== WEB_SEARCH_ENABLED_SETTING_KEY
-        ).map((key) =>
-          setLiteAppSetting({ key, value: values[key] })
+        Object.entries(values).map(([key, value]) =>
+          setLiteAppSetting({ key, value })
         )
       ),
       WRITE_TIMEOUT_MS

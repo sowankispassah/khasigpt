@@ -82,7 +82,10 @@ export type WebSearchConfig = {
   freeUsersEnabled: boolean;
   paidUsersEnabled: boolean;
   maxCalls: number;
-  markupMultiplier: number;
+  providerMarkupMultiplier: Record<
+    Exclude<WebSearchProvider, "disabled">,
+    number
+  >;
   providerCostPerCallUsd: Record<
     Exclude<WebSearchProvider, "disabled">,
     number

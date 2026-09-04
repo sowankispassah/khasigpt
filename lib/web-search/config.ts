@@ -9,11 +9,14 @@ import {
   WEB_SEARCH_FALLBACK_PROVIDER_SETTING_KEY,
   WEB_SEARCH_FREE_USERS_ENABLED_SETTING_KEY,
   WEB_SEARCH_GEMINI_COST_PER_CALL_USD_SETTING_KEY,
+  WEB_SEARCH_GEMINI_MARKUP_MULTIPLIER_SETTING_KEY,
   WEB_SEARCH_MAX_CALLS_SETTING_KEY,
   WEB_SEARCH_OPENAI_COST_PER_CALL_USD_SETTING_KEY,
+  WEB_SEARCH_OPENAI_MARKUP_MULTIPLIER_SETTING_KEY,
   WEB_SEARCH_PAID_USERS_ENABLED_SETTING_KEY,
   WEB_SEARCH_PROVIDER_SETTING_KEY,
   WEB_SEARCH_SERPER_COST_PER_CALL_USD_SETTING_KEY,
+  WEB_SEARCH_SERPER_MARKUP_MULTIPLIER_SETTING_KEY,
 } from "@/lib/constants";
 import { getLiteAppSettingsByKeysUncached } from "@/lib/db/app-settings-lite";
 import type { UserRole } from "@/lib/db/schema";
@@ -36,6 +39,9 @@ export const WEB_SEARCH_SETTING_KEYS = [
   WEB_SEARCH_PAID_USERS_ENABLED_SETTING_KEY,
   WEB_SEARCH_MAX_CALLS_SETTING_KEY,
   WEB_SEARCH_CREDIT_MULTIPLIER_SETTING_KEY,
+  WEB_SEARCH_GEMINI_MARKUP_MULTIPLIER_SETTING_KEY,
+  WEB_SEARCH_OPENAI_MARKUP_MULTIPLIER_SETTING_KEY,
+  WEB_SEARCH_SERPER_MARKUP_MULTIPLIER_SETTING_KEY,
   WEB_SEARCH_GEMINI_COST_PER_CALL_USD_SETTING_KEY,
   WEB_SEARCH_OPENAI_COST_PER_CALL_USD_SETTING_KEY,
   WEB_SEARCH_SERPER_COST_PER_CALL_USD_SETTING_KEY,
@@ -99,6 +105,14 @@ export function resolveWebSearchConfig(
     readState?: WebSearchConfig["readState"];
   } = {}
 ): WebSearchConfig {
+  // Preserve the previously configured shared markup until an admin saves the
+  // new provider-specific values. New saves no longer write this legacy key.
+  const legacyMarkupMultiplier = parsePositiveNumber(
+    values.get(WEB_SEARCH_CREDIT_MULTIPLIER_SETTING_KEY),
+    3,
+    20
+  );
+
   return {
     accessMode: parseFeatureAccessMode(accessMode, "admin_only"),
     provider: parseProvider(values.get(WEB_SEARCH_PROVIDER_SETTING_KEY), DEFAULT_PROVIDER),
@@ -125,11 +139,23 @@ export function resolveWebSearchConfig(
     maxCalls: Math.round(
       parsePositiveNumber(values.get(WEB_SEARCH_MAX_CALLS_SETTING_KEY), 2, 10)
     ),
-    markupMultiplier: parsePositiveNumber(
-      values.get(WEB_SEARCH_CREDIT_MULTIPLIER_SETTING_KEY),
-      3,
-      20
-    ),
+    providerMarkupMultiplier: {
+      gemini_grounding: parsePositiveNumber(
+        values.get(WEB_SEARCH_GEMINI_MARKUP_MULTIPLIER_SETTING_KEY),
+        legacyMarkupMultiplier,
+        20
+      ),
+      openai_web_search: parsePositiveNumber(
+        values.get(WEB_SEARCH_OPENAI_MARKUP_MULTIPLIER_SETTING_KEY),
+        legacyMarkupMultiplier,
+        20
+      ),
+      serper: parsePositiveNumber(
+        values.get(WEB_SEARCH_SERPER_MARKUP_MULTIPLIER_SETTING_KEY),
+        legacyMarkupMultiplier,
+        20
+      ),
+    },
     providerCostPerCallUsd: {
       gemini_grounding: parseConfiguredPositiveNumber(
         values.get(WEB_SEARCH_GEMINI_COST_PER_CALL_USD_SETTING_KEY),
@@ -161,7 +187,7 @@ export function hasWebSearchProviderPricing(
 
 const loadCachedWebSearchSettings = unstable_cache(
   async () => getLiteAppSettingsByKeysUncached([...WEB_SEARCH_SETTING_KEYS]),
-  ["web-search-settings:v2"],
+  ["web-search-settings:v3"],
   {
     revalidate: 60,
     tags: [
