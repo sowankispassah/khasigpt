@@ -620,6 +620,7 @@ test.describe("web search grounding", () => {
       message,
       sources,
       nativeChat,
+      nativeProductNormalizer,
       nativeTypes,
       semanticRouter,
       productImageRoute,
@@ -634,6 +635,7 @@ test.describe("web search grounding", () => {
       readWorkspaceFile("components/message.tsx"),
       readWorkspaceFile("components/web-search-sources.tsx"),
       readWorkspaceFile("native/src/screens/ChatScreen.tsx"),
+      readWorkspaceFile("native/src/lib/web-search-products.ts"),
       readWorkspaceFile("native/src/api/types.ts"),
       readWorkspaceFile("lib/ai/tool-intent-classifier.ts"),
       readWorkspaceFile("app/api/web-search/product-image/route.ts"),
@@ -697,8 +699,11 @@ test.describe("web search grounding", () => {
     expect(nativeChat).toContain("getWebSearchCitationsFromMessage");
     expect(nativeChat).toContain("WebSearchVideoResults");
     expect(nativeChat).toContain("WebSearchProductResults");
-    expect(nativeChat).toContain("typeof data.imageUrl === \"string\"");
-    expect(nativeChat).toContain('data?.kind === "collection"');
+    expect(nativeChat).toContain("normalizeNativeWebSearchProduct");
+    expect(nativeProductNormalizer).toContain(
+      "new URL(value.trim(), baseUrl)"
+    );
+    expect(nativeProductNormalizer).toContain('data?.kind === "collection"');
     expect(nativeChat).toContain("getWebSearchVideosFromMessage");
     expect(nativeChat).toContain("expandedWebSourcesByMessageId");
     expect(nativeChat).toContain("getProviderOpaqueWebSourceDomain");
