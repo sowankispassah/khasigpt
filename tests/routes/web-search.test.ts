@@ -10,6 +10,7 @@ import {
 } from "@/lib/web-search/detection";
 import {
   getRequiredWebSearchCostProviders,
+  getWebSearchProviderBillingUnitCount,
   hasValidWebSearchProviderCosts,
 } from "@/lib/web-search/pricing";
 import { normalizeWebSearchProductForDisplay } from "@/lib/web-search/product-display";
@@ -32,6 +33,30 @@ async function readWorkspaceFile(relativePath: string) {
 }
 
 test.describe("web search grounding", () => {
+  test("separates provider billing units from actual search call count", () => {
+    expect(
+      getWebSearchProviderBillingUnitCount({
+        isShoppingSearch: true,
+        provider: "serper",
+        searchCallCount: 1,
+      })
+    ).toBe(2);
+    expect(
+      getWebSearchProviderBillingUnitCount({
+        isShoppingSearch: false,
+        provider: "serper",
+        searchCallCount: 1,
+      })
+    ).toBe(1);
+    expect(
+      getWebSearchProviderBillingUnitCount({
+        isShoppingSearch: true,
+        provider: "gemini_grounding",
+        searchCallCount: 1,
+      })
+    ).toBe(1);
+  });
+
   test("requires costs only for selected Web Search providers", () => {
     expect(
       getRequiredWebSearchCostProviders({
@@ -623,6 +648,7 @@ test.describe("web search grounding", () => {
     expect(service).toContain('case "serper"');
     expect(service).toContain("https://google.serper.dev/search");
     expect(service).toContain("searchCallCount: 1");
+    expect(service).toContain("providerBillingUnitCount");
     expect(route).toContain("retrieveRagContext");
     expect(route).toContain("webSearchService.answerWithSearch");
     expect(route).toContain("classifyToolIntent");
@@ -630,6 +656,7 @@ test.describe("web search grounding", () => {
     expect(route).toContain("resolveWebSearchQuery");
     expect(route).toContain("includeVideos: webSearchDecision.hasVideoIntent");
     expect(route).toContain("includeProducts: webSearchDecision.hasShoppingIntent");
+    expect(route).toContain("unitCount: webSearchAnswer.providerBillingUnitCount");
     expect(service).toContain("<khasigpt_products>");
     expect(service).toContain("enrichShoppingProducts");
     expect(service).toContain("buildGroundedShoppingFallbacks");
@@ -644,6 +671,7 @@ test.describe("web search grounding", () => {
     expect(exploreRoute).toContain(
       "config.providerMarkupMultiplier[searchProvider]"
     );
+    expect(exploreRoute).toContain("unitCount: answer.providerBillingUnitCount");
     expect(webSearchConfig).toContain("providerMarkupMultiplier");
     expect(webSearchConfig).toContain(
       "WEB_SEARCH_SERPER_MARKUP_MULTIPLIER_SETTING_KEY"

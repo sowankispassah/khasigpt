@@ -466,8 +466,8 @@ export function WebSearchPricingForm({
                 </th>
                 <th className="px-4 py-3 font-medium">
                   {translate(
-                    "admin.web_search.provider_cost_per_call",
-                    "Provider cost (USD / call)"
+                    "admin.web_search.provider_unit_cost",
+                    "Provider unit cost (USD)"
                   )}
                 </th>
                 <th className="px-4 py-3 font-medium">
@@ -630,17 +630,25 @@ export function WebSearchPricingForm({
             </tbody>
           </table>
         </div>
-        <p className="border-t bg-muted/20 px-4 py-3 text-muted-foreground text-xs">
-          {pricingContext?.basePlanName
-            ? translate(
-                "admin.pricing.preview.base_plan",
-                "Credit conversion: {plan}"
-              ).replace("{plan}", pricingContext.basePlanName)
-            : translate(
-                "admin.pricing.preview.unavailable",
-                "Add an active recharge plan to calculate customer charges and credits."
-              )}
-        </p>
+        <div className="space-y-1 border-t bg-muted/20 px-4 py-3 text-muted-foreground text-xs">
+          <p>
+            {translate(
+              "admin.web_search.serper_billing_units_note",
+              "The table previews one provider billing unit. Serper standard searches use 1 unit; Shopping searches use 2 units for one API call, so their displayed cost and credit charge are doubled."
+            )}
+          </p>
+          <p>
+            {pricingContext?.basePlanName
+              ? translate(
+                  "admin.pricing.preview.base_plan",
+                  "Credit conversion: {plan}"
+                ).replace("{plan}", pricingContext.basePlanName)
+              : translate(
+                  "admin.pricing.preview.unavailable",
+                  "Add an active recharge plan to calculate customer charges and credits."
+                )}
+          </p>
+        </div>
       </section>
 
       <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/30 p-3 text-muted-foreground text-xs">

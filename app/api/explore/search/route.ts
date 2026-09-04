@@ -391,10 +391,15 @@ export async function POST(request: Request) {
                       category: "web_search",
                       providerKey: searchProvider,
                       providerCostPerUnitUsd,
-                      unitCount: answer.searchCallCount,
+                      unitCount: answer.providerBillingUnitCount,
                       markupMultiplier:
                         config.providerMarkupMultiplier[searchProvider],
-                      metadata: { sourceCount: answer.sources.length },
+                      metadata: {
+                        providerBillingUnitCount:
+                          answer.providerBillingUnitCount,
+                        searchCallCount: answer.searchCallCount,
+                        sourceCount: answer.sources.length,
+                      },
                     },
                   ]
                 : [],

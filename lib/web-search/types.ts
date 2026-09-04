@@ -70,6 +70,7 @@ export type WebSearchAnswer = {
   searchQueries: string[];
   citations: WebSearchCitation[];
   searchCallCount: number;
+  providerBillingUnitCount: number;
   usage: WebSearchUsageMetadata;
 };
 

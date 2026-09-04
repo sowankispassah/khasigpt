@@ -1,6 +1,7 @@
 import "server-only";
 
 import { GoogleGenAI } from "@google/genai";
+import { getWebSearchProviderBillingUnitCount } from "./pricing";
 import { enrichShoppingProducts } from "./product-enrichment";
 import {
   buildGroundedShoppingFallbacks,
@@ -340,6 +341,11 @@ async function answerWithGeminiGrounding({
     searchQueries,
     citations,
     searchCallCount: searchQueries.length,
+    providerBillingUnitCount: getWebSearchProviderBillingUnitCount({
+      isShoppingSearch: false,
+      provider: "gemini_grounding",
+      searchCallCount: searchQueries.length,
+    }),
     usage: {
       inputTokens,
       outputTokens,
@@ -416,6 +422,11 @@ async function answerWithSerper({
     searchQueries: [userMessage.trim()],
     citations: [],
     searchCallCount: 1,
+    providerBillingUnitCount: getWebSearchProviderBillingUnitCount({
+      isShoppingSearch: includeProducts,
+      provider: "serper",
+      searchCallCount: 1,
+    }),
     usage: {
       inputTokens: 0,
       outputTokens: 0,

@@ -3361,6 +3361,8 @@ export async function POST(request: Request) {
           markupMultiplier: usageMarkupMultiplier,
           platform: webSearchPlatform,
           provider: usageProvider,
+          providerBillingUnitCount:
+            webSearchAnswer?.providerBillingUnitCount ?? 0,
           responseTimeMs,
           searchCallCount: webSearchAnswer?.searchCallCount ?? 0,
           sourceCount: webSearchAnswer?.sources.length ?? 0,
@@ -3670,12 +3672,17 @@ export async function POST(request: Request) {
                       category: "web_search",
                       providerKey: searchProvider,
                       providerCostPerUnitUsd: searchCostPerCallUsd,
-                      unitCount: webSearchAnswer.searchCallCount,
+                      unitCount: webSearchAnswer.providerBillingUnitCount,
                       markupMultiplier:
                         webSearchConfig.providerMarkupMultiplier[
                           searchProvider
                         ],
-                      metadata: { sourceCount: webSearchAnswer.sources.length },
+                      metadata: {
+                        providerBillingUnitCount:
+                          webSearchAnswer.providerBillingUnitCount,
+                        searchCallCount: webSearchAnswer.searchCallCount,
+                        sourceCount: webSearchAnswer.sources.length,
+                      },
                     },
                   ]
                 : [],
@@ -3691,6 +3698,8 @@ export async function POST(request: Request) {
               inputTokens,
               billableInputTokens,
               outputTokens,
+              providerBillingUnitCount:
+                webSearchAnswer.providerBillingUnitCount,
               searchCallCount: webSearchAnswer.searchCallCount,
             });
           }

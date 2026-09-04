@@ -2,6 +2,29 @@ import type { WebSearchProvider } from "./types";
 
 export type BillableWebSearchProvider = Exclude<WebSearchProvider, "disabled">;
 
+const SERPER_SHOPPING_BILLING_UNITS_PER_CALL = 2;
+
+export function getWebSearchProviderBillingUnitCount({
+  isShoppingSearch,
+  provider,
+  searchCallCount,
+}: {
+  isShoppingSearch: boolean;
+  provider: WebSearchProvider;
+  searchCallCount: number;
+}) {
+  const normalizedCallCount = Math.max(
+    0,
+    Math.round(Number.isFinite(searchCallCount) ? searchCallCount : 0)
+  );
+
+  if (provider === "serper" && isShoppingSearch) {
+    return normalizedCallCount * SERPER_SHOPPING_BILLING_UNITS_PER_CALL;
+  }
+
+  return normalizedCallCount;
+}
+
 export function getRequiredWebSearchCostProviders({
   fallbackProvider,
   provider,
