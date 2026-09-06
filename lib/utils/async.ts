@@ -9,7 +9,7 @@ export function withTimeout<T>(
 
   return new Promise<T>((resolve, reject) => {
     let settled = false;
-    const cancelable = promise as Promise<T> & { cancel?: () => void | Promise<unknown> };
+    const cancelable = promise as Promise<T> & { cancel?: () => unknown };
 
     const timer = setTimeout(() => {
       if (settled) {
