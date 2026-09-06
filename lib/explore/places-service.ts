@@ -108,7 +108,10 @@ async function getGooglePhoto(
   url.searchParams.set("maxWidthPx", "900");
   url.searchParams.set("maxHeightPx", "600");
   url.searchParams.set("skipHttpRedirect", "true");
-  const response = await fetch(url, { cache: "no-store" });
+  const response = await fetch(url, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+  });
   if (!response.ok) {
     return { imageUrl: null, attributions: [] as ExploreAttribution[] };
   }
@@ -196,7 +199,10 @@ async function searchGooglePlaces({
   const photos = await Promise.all(
     places.map((entry, index) =>
       index < 6
-        ? getGooglePhoto(key, entry.place.photos?.[0])
+        ? getGooglePhoto(key, entry.place.photos?.[0]).catch(() => ({
+            imageUrl: null,
+            attributions: [] as ExploreAttribution[],
+          }))
         : Promise.resolve({
             imageUrl: null,
             attributions: [] as ExploreAttribution[],

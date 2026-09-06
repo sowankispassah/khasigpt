@@ -120,14 +120,16 @@ function getLiteSqlClient() {
         process.env.POSTGRES_CONNECT_TIMEOUT ?? process.env.PGCONNECT_TIMEOUT,
         usesPooler ? 5 : 10
       ),
-      statement_timeout: parseOr(process.env.POSTGRES_STATEMENT_TIMEOUT, 20_000),
-      application_name:
-        process.env.POSTGRES_APPLICATION_NAME ??
-        `ai-chatbot-lite-${process.env.NODE_ENV ?? "development"}`,
+      connection: {
+        statement_timeout: parseOr(process.env.POSTGRES_STATEMENT_TIMEOUT, 20_000),
+        application_name:
+          process.env.POSTGRES_APPLICATION_NAME ??
+          `ai-chatbot-lite-${process.env.NODE_ENV ?? "development"}`,
+      },
       fetch_types: !usesPooler,
       max_pipeline: usesPooler ? 1 : 100,
       prepare: false,
-    };
+    } satisfies postgres.Options<Record<string, never>> & { max_pipeline: number };
     globalForLiteDb.__khasigptLitePostgresClient = postgres(
       postgresUrl,
       poolConfig

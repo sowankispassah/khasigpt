@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithResponseTimeout } from "@/lib/utils/async";
 import type { GeminiVoiceTokenResponse } from "@/lib/voice/live";
 import {
   VOICE_ACTIVITY_PREFIX_PADDING_MS,
@@ -263,18 +264,20 @@ async function requestVoiceToken({
   WebGeminiVoiceStartOptions,
   "tokenBody" | "tokenEndpoint" | "unavailableMessage"
 >) {
-  const response = await fetch(tokenEndpoint, {
+  const { response, data } = await fetchWithResponseTimeout(tokenEndpoint, {
     body: tokenBody ? JSON.stringify(tokenBody) : undefined,
     method: "POST",
     headers: {
       Accept: "application/json",
       ...(tokenBody ? { "Content-Type": "application/json" } : {}),
     },
-  });
-  const data = (await response.json().catch(() => null)) as
+  }, 15_000, async (response) => ({
+    response,
+    data: await response.json().catch(() => null) as
     | GeminiVoiceTokenResponse
     | { message?: string; reason?: string }
-    | null;
+    | null,
+  }));
   if (!response.ok) {
     const message =
       data && "message" in data ? data.message : unavailableMessage;
@@ -635,13 +638,15 @@ export async function startWebGeminiVoiceTurn({
             typeof call.args?.query === "string" ? call.args.query.trim() : "";
           const toolStartedAt = performance.now();
           try {
-            const response = await fetch("/api/rag/search", {
+            const { response, payload } = await fetchWithResponseTimeout("/api/rag/search", {
               method: "POST",
               credentials: "same-origin",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ query, scope: "default" }),
-            });
-            const payload = await response.json();
+            }, 15_000, async (response) => ({
+              response,
+              payload: await response.json(),
+            }));
             const toolRoundTripMs = Math.round(
               performance.now() - toolStartedAt,
             );

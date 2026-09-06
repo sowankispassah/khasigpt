@@ -14,6 +14,7 @@ import {
 import type { DBMessage, Document } from '@/lib/db/schema';
 import { ChatSDKError, type ErrorCode } from './errors';
 import type { ChatMessage, ChatTools, CustomUIDataTypes } from './types';
+import { fetchWithResponseTimeout } from './utils/async';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -37,8 +38,7 @@ function extractErrorPayload(body: any): { code: ErrorCode; details?: string } {
 }
 
 export const fetcher = async (url: string) => {
-  const response = await fetch(url);
-
+  return fetchWithResponseTimeout(url, undefined, 15_000, async (response) => {
   if (!response.ok) {
     let body: any = null;
     try {
@@ -50,7 +50,8 @@ export const fetcher = async (url: string) => {
     throw new ChatSDKError(code, details);
   }
 
-  return response.json();
+    return response.json();
+  });
 };
 
 export async function fetchWithErrorHandlers(

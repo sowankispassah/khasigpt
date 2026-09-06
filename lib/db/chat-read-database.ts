@@ -2,7 +2,7 @@ import "server-only";
 
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-
+import { DatabaseOperationQueue } from "@/lib/db/operation-queue";
 import { ChatSDKError } from "@/lib/errors";
 import { withTimeout } from "@/lib/utils/async";
 
@@ -13,6 +13,7 @@ type ChatReadDatabaseState = {
 
 type GlobalChatReadDatabaseState = typeof globalThis & {
   __khasigptChatReadDatabaseState?: ChatReadDatabaseState;
+  __khasigptChatReadOperationQueue?: DatabaseOperationQueue;
 };
 
 const globalChatReadDatabase = globalThis as GlobalChatReadDatabaseState;
@@ -153,7 +154,7 @@ function describeChatReadError(error: unknown) {
   };
 }
 
-export async function withChatReadDatabase<T>(
+async function runChatReadDatabase<T>(
   label: string,
   operation: (db: PostgresJsDatabase) => Promise<T>,
   options: { retry?: boolean } = {}
@@ -198,4 +199,16 @@ export async function withChatReadDatabase<T>(
   }
 
   throw new Error(`Chat database operation "${label}" failed.`);
+}
+
+export function withChatReadDatabase<T>(
+  label: string,
+  operation: (db: PostgresJsDatabase) => Promise<T>,
+  options: { retry?: boolean } = {}
+) {
+  globalChatReadDatabase.__khasigptChatReadOperationQueue ??= new DatabaseOperationQueue();
+  return globalChatReadDatabase.__khasigptChatReadOperationQueue.run(
+    () => runChatReadDatabase(label, operation, options),
+    parsePositiveInteger(process.env.POSTGRES_CHAT_READ_QUEUE_TIMEOUT_MS, 8000)
+  );
 }

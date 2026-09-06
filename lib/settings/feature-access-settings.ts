@@ -1,6 +1,5 @@
 import "server-only";
 
-import { unstable_cache } from "next/cache";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
@@ -186,18 +185,6 @@ function summarizeFeatureAccessValues(values: Map<string, unknown>) {
   );
 }
 
-const loadCachedFeatureAccessRows = unstable_cache(
-  async (cacheKey: string) => {
-    const keys = cacheKey.split("\n").filter(Boolean);
-    return getLiteAppSettingsByKeysUncached(keys);
-  },
-  ["feature-access-settings-by-keys"],
-  {
-    revalidate: 60 * 10,
-    tags: [FEATURE_ACCESS_SETTINGS_CACHE_TAG],
-  }
-);
-
 function buildMissingKeys(keys: readonly string[], values: Map<string, unknown>) {
   return normalizeKeys(keys).filter((key) => !values.has(key));
 }
@@ -311,23 +298,10 @@ export async function loadFeatureAccessSettingsByKeys(
       values,
     };
   } catch (error) {
-    let values = getLastKnownFeatureAccessValues(uniqueKeys);
-    let fallbackSource = "memory";
-    if (values.size === 0) {
-      try {
-        const cachedRows = await loadCachedFeatureAccessRows(
-          uniqueKeys.join("\n")
-        );
-        values = new Map(cachedRows.map((row) => [row.key, row.value]));
-        rememberFeatureAccessValues(values);
-        fallbackSource = "persistent-cache";
-      } catch (cacheError) {
-        console.error("[feature-settings/load:cache-error]", {
-          keys: uniqueKeys,
-          source,
-        }, cacheError);
-      }
-    }
+    // A cache miss must not start another unbounded query on the same failed
+    // dependency. This cache was only populated on failures, not healthy reads.
+    const values = getLastKnownFeatureAccessValues(uniqueKeys);
+    const fallbackSource = "memory";
     const durationMs = Date.now() - startedAt;
     const status: FeatureAccessReadStatus =
       values.size > 0 ? "stale" : "unavailable";

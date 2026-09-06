@@ -46,6 +46,7 @@ import {
 } from "@/lib/billing/cost-plus";
 import { withAdminDatabase } from "@/lib/db/admin-database";
 import { normalizeAppSettingValueForWrite } from "@/lib/db/app-setting-validation";
+import { lockUserWallet } from "@/lib/db/wallet-lock";
 import {
   assertFeatureSettingWriteAllowed,
   type FeatureSettingWriteContext,
@@ -526,13 +527,15 @@ const poolConfig = {
     process.env.POSTGRES_CONNECT_TIMEOUT ?? process.env.PGCONNECT_TIMEOUT,
     defaultConnectTimeout
   ),
-  statement_timeout: parseOr(
-    process.env.POSTGRES_STATEMENT_TIMEOUT,
-    defaultStatementTimeout
-  ),
-  application_name:
-    process.env.POSTGRES_APPLICATION_NAME ??
-    `ai-chatbot-${process.env.NODE_ENV ?? "development"}`,
+  connection: {
+    statement_timeout: parseOr(
+      process.env.POSTGRES_STATEMENT_TIMEOUT,
+      defaultStatementTimeout
+    ),
+    application_name:
+      process.env.POSTGRES_APPLICATION_NAME ??
+      `ai-chatbot-${process.env.NODE_ENV ?? "development"}`,
+  },
   fetch_types: !usesSupabasePooler,
   max_pipeline: usesSupabasePooler ? 1 : 100,
   prepare:
@@ -543,7 +546,7 @@ const poolConfig = {
         : process.env.NODE_ENV === "development"
           ? false
           : !usesSupabasePooler,
-};
+} satisfies postgres.Options<Record<string, never>> & { max_pipeline: number };
 
 // Dev setups sometimes intentionally use the direct Supabase endpoint.
 // Avoid spamming the console on every restart; connectivity issues will still
@@ -10176,7 +10179,8 @@ export async function completePaymentTransactionWithSubscription({
             eq(paymentTransaction.userId, userId)
           )
         )
-        .limit(1);
+        .limit(1)
+        .for("update");
 
       if (!transaction) {
         throw new ChatSDKError(
@@ -10854,6 +10858,8 @@ export async function recordTokenUsage({
       let walletUnitsPerInr = 0;
 
       if (deductCredits) {
+        subscription = await getActiveSubscriptionInternal(tx, userId, now);
+
         if (requestKey) {
           const [existingCharge] = await tx
             .select({ tokenUsageId: creditCharge.tokenUsageId })
@@ -10871,8 +10877,6 @@ export async function recordTokenUsage({
             }
           }
         }
-
-        subscription = await getActiveSubscriptionInternal(tx, userId, now);
 
         if (!subscription) {
           throw new ChatSDKError(
@@ -11366,6 +11370,8 @@ export async function deductImageCredits({
 
   try {
     await db.transaction(async (tx) => {
+      const subscription = await getActiveSubscriptionInternal(tx, userId, now);
+
       if (requestKey) {
         const [existing] = await tx
           .select({ id: creditCharge.id })
@@ -11376,8 +11382,6 @@ export async function deductImageCredits({
           return;
         }
       }
-      const subscription = await getActiveSubscriptionInternal(tx, userId, now);
-
       if (!subscription) {
         throw new ChatSDKError(
           "payment_required:credits",
@@ -11865,6 +11869,10 @@ async function getActiveSubscriptionInternal(
   userId: string,
   now: Date
 ): Promise<UserSubscription | null> {
+  // All callers are wallet-writing transactions. Lock before reading, including
+  // when no subscription exists; locking only a subscription row misses that case.
+  await lockUserWallet(executor, userId);
+
   // Ensure any expired subscriptions are marked before we attempt to read.
   await executor
     .update(userSubscription)

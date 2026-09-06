@@ -1,0 +1,118 @@
+KhasiGPT production-readiness audit — 6 September 2026
+
+**Assessment: substantially improved failure isolation, but not yet an unconditional public-launch sign-off.** The changes below are implemented and tested. Production-scale concurrency, real payment/generation settlement, and device lifecycle behavior still need a dedicated staging verification run. A whole-database outage remains a shared outage; separate pools and local recovery cannot make one physical database independently available to every feature.
+
+The audit covered the existing web checkout at commit 9860b61 and the separate native checkout at commit 6639361. It combined execution-path review, regression tests, a production web build, native checks, read-only Supabase inspection, and existing Vercel error evidence. It was not an exhaustive manual review of every line, a penetration test, or a measured public-load benchmark. No production data, schema, RLS policies, payments, or balances were changed.
+
+**1. What was investigated**
+
+| Area | Execution paths inspected and conclusion |
+| --- | --- |
+| Shared web shell and Home | Root layout, SiteShell/extras, persistent user menu, progress events, feature/model contexts, prompts, and optional hydration. Shared extras are already lazy; no second app-wide loader or provider refactor was justified. |
+| Authentication and launch gating | Auth callbacks, dedicated auth SQL client, mobile session recovery, startup/full bootstrap separation, middleware site-status and role checks. Preserve required identity/security checks. Found a middleware body-timeout gap and duplicated concurrent status reads. |
+| Admin | Layout, section loading/error boundaries, Users, Pricing, settings, feature access, query wrappers, shared pool recovery, action audit writes, scoped cache invalidation. Existing section boundaries are useful; recovery inside the shared pool was still unsafe. |
+| Chat and history | Web/native optimistic submission, server preflight, streaming, history pagination/keysets, sidebar cancellation, separate read pool, model/settings retrieval. Existing immediate message display and streaming are preserved. Found unsafe read-pool recycling and native cancellation gaps. |
+| Wallet, subscriptions and payments | Grants, plan activation, expiration, token/image deductions, request-key duplicate checks, payment finalization, free daily allowance, supporting indexes. Found concurrent wallet read/replace updates without a common lock. Free daily allowance already uses an atomic conditional upsert. |
+| Models, pricing and translations | Registry and last-known fallbacks, settings validation, read models, native merge logic, pricing/balance refresh. Found cross-domain bootstrap coupling; remaining fallback limitations are listed below. |
+| Forum/community, jobs and News | Domain services/routes, pagination/index migrations, request deadlines and reuse of chat infrastructure. No evidence that these own a global loading state. Did not benchmark large datasets, every ingestion provider, or every forum mutation. |
+| Voice, image generation and RAG | Voice startup/tool HTTP requests, socket timers/cleanup, shared retrieval, native request transport, image status/failure handling. Found unbounded web voice HTTP phases; no new retriever or provider-selection path was introduced. |
+| Explore Meghalaya | Location/place search, provider deadlines, optional photo lookup and fallbacks. One photo failure could reject the entire valid result set. |
+| Database and operations | Application SQL clients and driver startup options, migrations/indexes, locks/connections, settings sizes, Supabase advisors, Vercel error group. No custom public-table trigger or duplicated Supabase realtime subscription path was found in the inspected code/inventory. |
+
+Representative inspected files include app/layout.tsx, components/site-shell.tsx, components/site-shell-extras.tsx, components/page-user-menu.tsx, app/(admin)/admin/layout.tsx, app/(admin)/admin/pricing/page.tsx, app/(admin)/admin/users/page.tsx, app/(chat)/layout.tsx, app/(chat)/api/chat/route.ts, lib/db/auth-queries.ts, lib/admin/cache-invalidation.ts, lib/api/read-models.ts, lib/ai/models.ts, lib/ai/model-registry.ts, lib/forum/service.ts, lib/rag/retrieval.ts, and native/src/screens/ChatScreen.tsx. All paths in this report are relative to D:/Coding/ai-chatbot-main/ai-chatbot-main; native/ is a separate Git repository.
+
+**2–6. Confirmed risks, root causes, performance impact, exact changed files, and fixes**
+
+| Risk | Before → after | Exact changed files |
+| --- | --- | --- |
+| SQL could run beyond the intended application guardrail | statement_timeout and application_name were top-level Postgres.js options. The installed driver only transmits these through connection. Both clients now use correctly typed connection settings, so PostgreSQL actually receives the deadline. Existing limits were retained. | lib/db/queries.ts; lib/db/app-settings-lite.ts |
+| Pool recovery could cancel unrelated work | Admin and chat-history wrappers admitted concurrent operations into the same recoverable client. One timeout called client.end() on that shared client; health probes could also queue behind work and misdiagnose it. A bounded admission queue now surrounds each complete recoverable operation. Recycling occurs before the next operation is admitted. | lib/db/operation-queue.ts (new); lib/db/admin-database.ts; lib/db/chat-read-database.ts |
+| Expired queued work could continue later | The new queue refuses excess waiting work, expires waiting operations, and ensures an expired callback never starts. It has a maximum of 64 waiting callbacks and an 8-second default queue wait, separate from existing execution limits. This limits overload amplification; it does not create unlimited throughput. | lib/db/operation-queue.ts; lib/db/admin-database.ts; lib/db/chat-read-database.ts |
+| Concurrent wallet updates could lose a grant or deduction | Transactions read balances and wrote calculated replacement values without a common lock. All wallet-writing paths now acquire the same transaction-scoped advisory lock for that user before reading the wallet. This also covers the first subscription, where no row exists to lock. | lib/db/wallet-lock.ts (new); lib/db/queries.ts |
+| Concurrent duplicate settlement could pass the same pre-check | Token/image charge duplicate checks now run after the wallet lock. Payment finalization locks its payment row before checking/finalizing it. Existing unique request keys and credit calculations are retained. | lib/db/queries.ts |
+| Successful HTTP headers could hide a permanently stalled body | The shared web JSON fetcher had no complete response deadline. Some existing fetch deadlines ended as soon as headers arrived. A response-reading helper now keeps cancellation/deadline active through JSON/text consumption. Timeout cancellation failures are safely observed. | lib/utils/async.ts; lib/utils.ts |
+| Middleware status fan-out and stalled body could delay navigation | Simultaneous requests on a cold/expired instance each fetched the same site status; the old deadline ended before body parsing. Concurrent status reads now share an in-flight request per origin, and small middleware responses are consumed within their deadline. Existing cache/fallback/gating rules remain. | proxy.ts; lib/utils/async.ts |
+| A settings fallback retried the same failing dependency | On a cold failure, the supposed persistent-cache fallback could miss and start a second unbounded query against the same database. It was only populated on failure. Removed that fallback; use last-known memory values or explicit unavailable metadata. | lib/settings/feature-access-settings.ts |
+| Full native bootstrap accumulated optional wait times | Languages/features/models were grouped, then prompts, translation, pricing and billing ran sequentially; billing was not wrapped like the other sections. All seven independent domains now start together and settle through section-local fallback/deadline handling. Auth-only startup remains separate. | app/api/mobile/bootstrap/route.ts |
+| One bootstrap domain suppressed unrelated healthy data | A failed language refresh returned before applying fresh models/features/billing. Pricing and wallet balance also shared one preservation decision. Language now preserves the current dictionary while other data applies; pricing and balance merge independently. Cross-user and cross-role guards remain. | native/src/auth/AuthContext.tsx |
+| Cancelled native requests could retry or restore stale success | External cancellation could be treated as a retryable error. It now exits with AbortError, without fallback cache or origin replay. Unsafe mutations no longer switch to a second development origin after an ambiguous failure unless explicit unsafe retry is requested. | native/src/api/client.ts |
+| Native streaming could miss cancellation or wait indefinitely | Cancellation during secure-header loading could occur before the XHR abort listener existed. Check it before constructing/sending XHR. A stalled native XHR now times out at 90 seconds, allowing overhead beyond the server chat route's 60-second limit; it settles through the existing failure path. | native/src/api/client.ts |
+| Native fallback memory grew indefinitely and could overwrite good data with degraded data | The in-memory Map had no entry or age limit, despite disk cache having a 24-hour policy. Memory now has 100 entries and the same maximum age, preserving original disk timestamps. Responses explicitly marked degraded no longer replace healthy fallback snapshots. | native/src/api/client.ts |
+| Optional audit writes delayed successful Admin actions | Some action paths awaited a best-effort audit write for up to three seconds. Schedule those diagnostics through Next.js after(), so they run after the response with platform lifetime support and their own failure handling. Required payment/credit ledger work remains awaited. | app/(admin)/actions.ts |
+| Optional place photos could discard valid search results | Photo requests lacked a deadline and one rejected photo rejected the photos Promise.all. Photo lookups now have a provider deadline and individual failures return an empty image result, retaining places. | lib/explore/places-service.ts |
+| Voice could hang before its socket setup timer existed | Token acquisition and live-voice knowledge-tool JSON requests were plain fetch calls. Both now have a complete-response deadline. The existing tool-failure response allows the voice conversation to continue without retrieved context. | lib/voice/web-live-voice.ts; lib/utils/async.ts |
+
+These are specific verified code risks. The inspection does not establish that each one caused a previous production incident.
+
+**7. Refactoring and why it was necessary**
+
+Three targeted structural changes were justified: database operation admission before recoverable shared clients; per-wallet transaction locking across mutation paths; and independent bootstrap orchestration/merging. Local try/catch blocks could not fix shared-client termination, lost-update races, or the early return that discarded unrelated healthy bootstrap data.
+
+No replacement global provider, query framework, schema redesign, new dependency, UI shell, or alternate RAG implementation was introduced. The queue intentionally serializes whole operations within each recoverable domain, matching the default one-connection pools. A deployment configured with more than one connection in those pools may now have less parallelism; capacity must be measured before increasing admission concurrency.
+
+**8. Why this reduces cascading failure**
+
+A timed-out Admin operation cannot recycle a connection while another admitted Admin operation is using it. Chat history has its own queue/client. Expired waiting work is not executed later. Main/settings SQL deadlines now exist on the database side, rather than only abandoning a JavaScript wait. Optional bootstrap failures remain local to their section, and native applies the successful sections. Optional diagnostics/photo/tool failures no longer control their primary result.
+
+There are practical boundaries: a slow admitted operation can still delay peers until its bounded recovery completes; enough slow operations can produce explicit queue failures. Shared database CPU, locks, network and the project connection limit remain common dependencies. The changes reduce amplification and provide exit paths; they cannot guarantee availability during a complete Supabase outage.
+
+**9. Why this improves responsiveness**
+
+Full bootstrap latency now follows the slowest bounded domain instead of adding multiple independent domain waits. Successful Admin actions no longer add optional audit-write latency. A burst of middleware requests shares status work on each instance. Feature failures do not trigger the removed duplicate database query. Body deadlines release local loading/error paths, while native cancellation prevents obsolete requests from reapplying stale success. Native memory usage is bounded for this response cache.
+
+Existing optimistic chat submission, top progress feedback, server/client islands, section streaming and history pagination were preserved. No numerical end-user latency improvement is claimed: the audit did not collect comparable before/after browser or device timings. Build duration and a database probe are not customer-latency benchmarks.
+
+**10. Database/query/index results**
+
+Read-only inspection of the production Supabase project found an active healthy project and no blocking backlog at the snapshot. There were approximately eight connections, including platform/admin activity, against a PostgreSQL maximum of 60. Table sizes and row counts were small: roughly 27 users, 170 chats and 698 messages. This cannot establish public-launch capacity.
+
+The largest inspected AppSetting value was about 6.5 KB, not evidence of the previous oversized-settings problem recurring. Existing validation and migration safeguards were retained. Relevant history, messages, subscriptions, credit history, request-key and free-allowance indexes are already present. No new index or migration was justified by these small production tables and the observed query evidence.
+
+Supabase performance advisors reported 27 unindexed foreign-key findings, 77 unused-index findings and seven duplicate-index findings. These are candidates for workload-specific review, not instructions to blindly create/drop indexes. Security advisor findings inspected were informational RLS-enabled/no-policy notices, consistent with server-side Drizzle access; no permissive policies were added.
+
+The read-only guardrail script verifies the actual driver's SQL startup deadline, same-wallet exclusion, unrelated-wallet admission, release after transaction completion, statement cancellation and a succeeding query afterward. It does not execute financial mutations. PostgreSQL transaction advisory locks release with their transaction; this is why they work across application instances and separate SQL pools. See [PostgreSQL locking documentation](https://www.postgresql.org/docs/current/explicit-locking.html) and [Postgres.js connection options](https://github.com/porsager/postgres).
+
+**11. Assessment of previous fixes**
+
+The earlier separation of Admin/auth/chat reads, streaming section boundaries, scoped cache invalidation, keyset history queries, settings validation and auth-only native startup are meaningful fixes and were retained.
+
+Four important gaps remained: driver deadlines were configured in the wrong place; shared-client recovery was unsafe under concurrent use; the cold settings fallback queried the same failing dependency again; and native full-bootstrap sequencing/merge behavior still coupled otherwise separate sections. Adding more outer timeout wrappers alone would not have corrected those problems. Next.js after() was chosen for optional diagnostics because it is designed for post-response work, rather than relying on an untracked fire-and-forget promise. See [Next.js after documentation](https://nextjs.org/docs/app/api-reference/functions/after).
+
+Existing Vercel error evidence included a site-status timeout group with 69 occurrences and 43 affected users. The returned group's first/last timestamps spanned more than the requested 24-hour window, so those counts must not be interpreted as a daily rate. This corroborates that the status path has had failures, but it does not prove their exact cause or demonstrate the new code in production.
+
+**12. Verification and remaining launch work**
+
+| Check | Result and limit |
+| --- | --- |
+| Web pnpm typecheck | Passed. |
+| Native npm run typecheck | Passed. |
+| pnpm lint | Passed with one pre-existing unused-variable warning in native/src/screens/RechargeScreen.tsx:244. No new warnings remain. |
+| Web pnpm build | Passed. Final build compiled in 38.7 seconds, finished TypeScript in 46 seconds and generated 73 static pages. These are build timings. |
+| Native npm test | 40 passed, including four new bootstrap merge behavior tests. |
+| Isolated web regression run | 224 passed, one failed. Includes eight new production-isolation tests. |
+| Existing failed check | tests/routes/assistant-identity.test.ts expects the read-only general-prompt panel in Admin Settings. The panel/string is absent in the original HEAD too, and neither that test nor that page was changed by this audit. Reconcile the intended Admin model-prompt UI and its test before treating CI as fully green. The test was not disabled. |
+| Read-only live database probe | Passed: 5-second startup setting received; same random wallet lock excluded, another admitted; lock released; 100ms statement deadline cancelled pg_sleep; next query succeeded. Cancellation plus remote round trips measured 1126ms. No application rows were written. |
+| Android JS export | Passed: Expo generated the Android Hermes bundle (7.08 MB) and assets. An export is not a signed AAB or an installed-device test. |
+| Full pnpm test and customer E2E | Not run against the production database. Existing integration fixtures mutate shared settings/data. The separate audit config excludes those fixtures and starts no development webserver. Run the full suite with an isolated staging database and test users. |
+
+Added verification files: tests/audit.config.ts, tests/routes/production-isolation.test.ts, scripts/verify-db-guardrails.ts, and native/tests/bootstrap-isolation.test.mjs. The existing tests/routes/rag-surface-integration.test.ts now checks the bounded HTTP helper at the same shared RAG endpoint.
+
+Remaining risks and validation gaps:
+
+- **Paid concurrency:** Wallet settlement is serialized, but preflight checks do not reserve a generation's future charge. Multiple requests may start paid provider work before their final costs are known; settlement caps/insufficient-balance behavior can leave provider cost beyond collectible credits. A reservation policy or explicit per-wallet paid-generation admission design requires a staging billing test matrix and a deliberate product/accounting decision. This audit did not change charging semantics to guess that policy.
+- **End-to-end settlement:** Run simultaneous grants, token/image settlements, payment callbacks, duplicate keys, first-wallet creation, expiration and rollback tests against isolated accounts/database data. The live advisory-lock probe verifies the primitive and release behavior, not every financial transaction outcome.
+- **Capacity:** Load-test mixed Admin, login, history, chat and bootstrap traffic, including slow-query injection and concurrent serverless instances. Measure p95/p99, pool wait/rejection counts and the 60-connection budget. No high-traffic capacity guarantee is supported by the current tiny dataset.
+- **Residual settings/model coupling:** lib/api/read-models.ts still combines feature flags with image-generation/model/credit availability and has an availability fallback querying overlapping dependencies. Full bootstrap now bounds that domain, but an image dependency can still degrade the feature section. lib/ai/models.ts still synthesizes a display fallback on a cold failure, and loadModelConfigReadModel does not explicitly mark that synthetic result degraded. The native cache fix only recognizes explicit degradation metadata. These should be resolved with contract-level tests before promising that models/features always retain confirmed configuration during cold outages.
+- **Client cache limitations:** Existing fallback responses can be up to 24 hours old and are not uniformly labelled as stale in every UI. Persistent storage across many keys is not globally size-limited by this change. Server authorization and credit checks must remain authoritative.
+- **Device and streaming lifecycle:** Native XHR cancellation/deadline and pure bootstrap behavior were tested; airplane mode, rapid navigation, microphone permission prompts, background/resume and process termination were not exercised on an installed release. The Expo web streaming branch still relies on caller cancellation rather than the native XHR deadline.
+- **Optional response latency:** Explore retains its existing search/photo phase deadlines and sequential fallback-provider strategy; slow photos can still delay that one Explore response. Their failure no longer discards places. No provider load/latency benchmark was performed.
+- **Diagnostic durability:** Admin audit records are best effort after response; this is appropriate for the existing optional helper. It is not a durable compliance ledger. Other legacy fire-and-forget diagnostics and aggregate main-pool contention remain candidates for follow-up.
+- **Release verification:** No production deployment, signed Android release, live paid request, migration, policy change or customer-data mutation was performed in this audit. Verify the exact reviewed commits in staging, then perform post-deployment smoke tests and inspect new deployment-specific error evidence.
+
+**13. Production assessment**
+
+The known pool-recovery, wallet lost-update, bootstrap merge and HTTP-lifetime defects corrected here make the architecture more resilient. The existing shared shell, immediate chat submission, independent Admin sections and pagination provide a useful foundation.
+
+I would accept these changes for review and staging validation. I would not yet certify an unrestricted public launch: the non-green existing regression, financial concurrency policy/testing, residual model/feature fallback contracts, measured capacity and real-device lifecycle checks remain outstanding. “No remaining path can freeze the app” is not a claim supported by static inspection or a small production snapshot.
+
+Completion addendum: the web changes are on codex/instant-chat-submit and the separate native changes are on codex/web-native-parity-20260820. Review links and commit identifiers are recorded in the task completion response. Unrelated existing changes to next-env.d.ts and tsconfig.tsbuildinfo, local attachments, logs and generated bundles are excluded from the commits. No production deployment was requested or performed.

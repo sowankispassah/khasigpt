@@ -11,6 +11,7 @@ import {
   DEFAULT_ADMIN_ENTRY_PATH,
   normalizeAdminEntryPathSetting,
 } from "@/lib/settings/admin-entry";
+import { fetchWithResponseTimeout } from "@/lib/utils/async";
 
 const isProduction = process.env.NODE_ENV === "production";
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -167,18 +168,21 @@ async function fetchWithTimeout(
     return fetch(input, init);
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
   try {
-    return await fetch(input, { ...init, signal: controller.signal });
+    // All middleware dependencies return small JSON payloads. Keep the
+    // deadline active through body consumption, not just response headers.
+    return await fetchWithResponseTimeout(input, init, timeoutMs, async (response) =>
+      new Response(await response.text(), {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      })
+    );
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
+    if (error instanceof Error && (error.name === "AbortError" || error.message === "timeout")) {
       return null;
     }
     throw error;
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 
@@ -334,7 +338,20 @@ export function shouldBypassSiteStatusGate(pathname: string) {
   );
 }
 
-async function resolveSiteStatus(
+const siteStatusRequests = new Map<string, ReturnType<typeof fetchSiteStatus>>();
+
+async function resolveSiteStatus(request: NextRequest) {
+  const origin = request.nextUrl.origin;
+  const pending = siteStatusRequests.get(origin);
+  if (pending) return pending;
+  const result = fetchSiteStatus(request).finally(() => {
+    if (siteStatusRequests.get(origin) === result) siteStatusRequests.delete(origin);
+  });
+  siteStatusRequests.set(origin, result);
+  return result;
+}
+
+async function fetchSiteStatus(
   request: NextRequest
 ): Promise<{
   degraded: boolean;

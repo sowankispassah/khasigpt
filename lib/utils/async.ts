@@ -9,7 +9,7 @@ export function withTimeout<T>(
 
   return new Promise<T>((resolve, reject) => {
     let settled = false;
-    const cancelable = promise as Promise<T> & { cancel?: () => void };
+    const cancelable = promise as Promise<T> & { cancel?: () => void | Promise<unknown> };
 
     const timer = setTimeout(() => {
       if (settled) {
@@ -23,7 +23,7 @@ export function withTimeout<T>(
         // ignore errors inside timeout callback
       }
       try {
-        cancelable.cancel?.();
+        void Promise.resolve(cancelable.cancel?.()).catch(() => undefined);
       } catch {
         // ignore cancellation failures
       }
@@ -57,8 +57,19 @@ export async function fetchWithTimeout(
   init: RequestInit | undefined,
   timeoutMs: number
 ) {
+  return fetchWithResponseTimeout(input, init, timeoutMs, (response) => response);
+}
+
+// Keep the deadline and caller cancellation active while reading the body.
+// fetch() resolves at headers; a JSON body can still stall after that point.
+export async function fetchWithResponseTimeout<T>(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  timeoutMs: number,
+  read: (response: Response) => T | Promise<T>
+): Promise<T> {
   if (!(Number.isFinite(timeoutMs) && timeoutMs > 0)) {
-    return fetch(input, init);
+    return read(await fetch(input, init));
   }
 
   const controller = new AbortController();
@@ -76,7 +87,11 @@ export async function fetchWithTimeout(
   }
 
   try {
-    return await fetch(input, { ...init, signal: controller.signal });
+    return await withTimeout(
+      fetch(input, { ...init, signal: controller.signal }).then(read),
+      timeoutMs,
+      () => controller.abort()
+    );
   } finally {
     clearTimeout(timeoutId);
     if (externalSignal && abortListener) {

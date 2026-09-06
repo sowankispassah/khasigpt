@@ -2,6 +2,7 @@
 
 import { put } from "@vercel/blob";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 
 import { auth } from "@/app/(auth)/auth";
 import {
@@ -313,15 +314,16 @@ const FEATURE_ACCESS_SETTING_TIMEOUT_MS = 12000;
 async function createAuditLogEntrySafely(
   entry: Parameters<typeof createAuditLogEntry>[0]
 ) {
-  await withTimeout(
-    createAuditLogEntry(entry),
-    ADMIN_ACTION_AUDIT_TIMEOUT_MS
-  ).catch((error) => {
-    console.error(
-      `[admin/actions] Audit log write timed out or failed for action "${entry.action}".`,
-      error
-    );
-    return null;
+  after(async () => {
+    await withTimeout(
+      createAuditLogEntry(entry),
+      ADMIN_ACTION_AUDIT_TIMEOUT_MS
+    ).catch((error) => {
+      console.error(
+        `[admin/actions] Audit log write timed out or failed for action "${entry.action}".`,
+        error
+      );
+    });
   });
 }
 

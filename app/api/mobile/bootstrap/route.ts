@@ -288,14 +288,18 @@ export async function GET(request: Request) {
   // Keep startup bootstrap auth-only. Native applies a local authenticated
   // shell immediately, then full bootstrap hydrates optional data in the
   // background. This avoids language/settings/model DB reads delaying login.
-  // Keep full bootstrap compatible, but do not run all optional DB reads at
-  // once. In production the Supabase pooler has repeatedly left concurrent
-  // read batches idle on ClientRead while the request waited indefinitely.
+  // Optional domains have separate deadlines. Serializing them made the sum
+  // of their deadlines exceed the client's deadline, discarding healthy data.
+  // The database pools bound SQL concurrency; each domain can settle separately.
   if (session?.user && !isStartupPhase) {
     [
       languageSnapshotResult,
       featureSnapshotResult,
       modelConfigResult,
+      promptSnapshotResult,
+      translateResult,
+      pricingResult,
+      balanceResult,
     ] = await Promise.all([
       safeBootstrapSection({
         fallback: buildStartupLanguageSnapshot(preferredLanguage),
@@ -315,42 +319,36 @@ export async function GET(request: Request) {
         loader: loadModelConfigReadModel,
         phase,
       }),
+      safeBootstrapSection({
+        fallback: buildFallbackPromptSnapshot(preferredLanguage),
+        label: "mobile.bootstrap.prompts",
+        loader: () =>
+          loadPromptReadModel({
+            platform: "android",
+            preferredLanguage,
+            role: session.user.role,
+          }),
+        phase,
+      }),
+      safeBootstrapSection({
+        fallback: FALLBACK_TRANSLATE_SNAPSHOT,
+        label: "mobile.bootstrap.translate",
+        loader: () => loadTranslateReadModel({ includeLanguages: true }),
+        phase,
+      }),
+      safeBootstrapSection({
+        fallback: FALLBACK_PRICING_SNAPSHOT,
+        label: "mobile.bootstrap.pricing",
+        loader: loadPricingReadModel,
+        phase,
+      }),
+      safeBootstrapSection({
+        fallback: null,
+        label: "mobile.bootstrap.billing",
+        loader: () => loadBillingReadModel(session.user.id),
+        phase,
+      }),
     ]);
-
-    promptSnapshotResult = await safeBootstrapSection({
-      fallback: buildFallbackPromptSnapshot(preferredLanguage),
-      label: "mobile.bootstrap.prompts",
-      loader: () =>
-        loadPromptReadModel({
-          platform: "android",
-          preferredLanguage,
-          role: session.user.role,
-        }),
-      phase,
-    });
-
-    translateResult = await safeBootstrapSection({
-      fallback: FALLBACK_TRANSLATE_SNAPSHOT,
-      label: "mobile.bootstrap.translate",
-      loader: () => loadTranslateReadModel({ includeLanguages: true }),
-      phase,
-    });
-
-    pricingResult = await safeBootstrapSection({
-      fallback: FALLBACK_PRICING_SNAPSHOT,
-      label: "mobile.bootstrap.pricing",
-      loader: loadPricingReadModel,
-      phase,
-    });
-
-    balanceResult = await withApiTiming("mobile.bootstrap.billing", () =>
-      loadBillingReadModel(session.user.id)
-    )
-      .then((data) => ({ data, degraded: false }))
-      .catch((error) => {
-        console.error("[api/mobile/bootstrap] Failed to load billing.", error);
-        return { data: null, degraded: true };
-      });
   }
 
   const languageSnapshot = languageSnapshotResult.data;

@@ -30,7 +30,7 @@ test("web and native live voice return tool responses through shared RAG", async
     expect(client).toContain("tokenResponse.tools");
     expect(client).toContain("toolResponse: { functionResponses }");
   }
-  expect(webVoice).toContain('fetch("/api/rag/search"');
+  expect(webVoice).toContain('fetchWithResponseTimeout("/api/rag/search"');
   expect(nativeVoice).toContain("api.searchCustomKnowledge(query)");
   expect(nativeApi).toContain("json: { supportsRagTool: true }");
   expect(webToken).toContain("RAG_LIVE_TOOL");

@@ -2,7 +2,7 @@ import "server-only";
 
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-
+import { DatabaseOperationQueue } from "@/lib/db/operation-queue";
 import { ChatSDKError } from "@/lib/errors";
 import { withTimeout } from "@/lib/utils/async";
 
@@ -15,6 +15,7 @@ type AdminDatabaseState = {
 
 type GlobalAdminDatabaseState = typeof globalThis & {
   __khasigptAdminDatabaseState?: AdminDatabaseState;
+  __khasigptAdminOperationQueue?: DatabaseOperationQueue;
 };
 
 const globalAdminDatabase = globalThis as GlobalAdminDatabaseState;
@@ -261,9 +262,13 @@ export function withAdminDatabase<T>(
   ) => Promise<T>,
   options: { retry?: boolean } = {}
 ) {
-  return runAdminDatabaseOperation({
-    label,
-    operation,
-    retry: options.retry ?? true,
-  });
+  globalAdminDatabase.__khasigptAdminOperationQueue ??= new DatabaseOperationQueue();
+  return globalAdminDatabase.__khasigptAdminOperationQueue.run(
+    () => runAdminDatabaseOperation({
+      label,
+      operation,
+      retry: options.retry ?? true,
+    }),
+    parsePositiveInteger(process.env.POSTGRES_ADMIN_QUEUE_TIMEOUT_MS, 8000)
+  );
 }
