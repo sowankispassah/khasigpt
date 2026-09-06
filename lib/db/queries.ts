@@ -46,6 +46,7 @@ import {
 } from "@/lib/billing/cost-plus";
 import { withAdminDatabase } from "@/lib/db/admin-database";
 import { normalizeAppSettingValueForWrite } from "@/lib/db/app-setting-validation";
+import { claimPaidGeneration, releasePaidGeneration } from "@/lib/db/paid-generation-admission";
 import { lockUserWallet } from "@/lib/db/wallet-lock";
 import {
   assertFeatureSettingWriteAllowed,
@@ -10265,6 +10266,23 @@ export async function createUserSubscription({
       "Failed to create user subscription"
     );
   }
+}
+
+export async function acquirePaidGenerationForUser(userId: string, minimumBalance = 1) {
+  const claim = await db.transaction(async (tx) => {
+    const subscription = await getActiveSubscriptionInternal(tx, userId, new Date());
+    if (!subscription || subscription.tokenBalance < Math.max(1, minimumBalance)) {
+      throw new ChatSDKError("payment_required:credits");
+    }
+    return claimPaidGeneration(tx, userId);
+  });
+  return {
+    release: () => releasePaidGeneration(db, userId, claim.ownerId).catch((error) => {
+      // Retain admission until its expiry if cleanup fails; never admit a
+      // replacement by pretending the release succeeded.
+      console.error("[paid-generation] Lease release failed.", { userId, error });
+    }),
+  };
 }
 
 export async function grantUserCredits({

@@ -13,6 +13,7 @@ import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
 } from "@/lib/settings/feature-access-settings";
+import { restrictUnmeteredLiveAccess } from "@/lib/voice/launch-access";
 
 export const VOICE_CHAT_ACCESS_MODE_FALLBACK: FeatureAccessMode = "disabled";
 const VOICE_CHAT_FEATURE_ACCESS_TIMEOUT_MS = 2_000;
@@ -22,7 +23,7 @@ export type VoiceChatPlatform = "android" | "web";
 export function parseVoiceChatAccessModeSetting(
   value: unknown
 ): FeatureAccessMode {
-  return parseFeatureAccessMode(value, VOICE_CHAT_ACCESS_MODE_FALLBACK);
+  return restrictUnmeteredLiveAccess(parseFeatureAccessMode(value, VOICE_CHAT_ACCESS_MODE_FALLBACK));
 }
 
 export async function isVoiceChatEnabledForRole(role: FeatureAccessRole) {
@@ -58,7 +59,7 @@ export async function getVoiceChatAccessModeForPlatform(
     rawLegacyValue === undefined &&
     featureAccessSettings.status === "unavailable"
   ) {
-    return "enabled";
+    return "admin_only";
   }
 
   const resolved = resolvePlatformVoiceChatSetting({

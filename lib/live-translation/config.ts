@@ -14,6 +14,7 @@ import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
 } from "@/lib/settings/feature-access-settings";
+import { restrictUnmeteredLiveAccess } from "@/lib/voice/launch-access";
 
 export const LIVE_TRANSLATION_ACCESS_MODE_FALLBACK: FeatureAccessMode =
   "admin_only";
@@ -68,7 +69,7 @@ function normalizeLanguageName(value: unknown) {
 export function parseLiveTranslationAccessModeSetting(
   value: unknown
 ): FeatureAccessMode {
-  return parseFeatureAccessMode(value, LIVE_TRANSLATION_ACCESS_MODE_FALLBACK);
+  return restrictUnmeteredLiveAccess(parseFeatureAccessMode(value, LIVE_TRANSLATION_ACCESS_MODE_FALLBACK));
 }
 
 export function normalizeLiveTranslationLanguages(

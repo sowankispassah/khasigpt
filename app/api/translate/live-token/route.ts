@@ -178,6 +178,15 @@ export async function POST(request: Request) {
     );
   }
 
+  // This older translation entry point also mints direct live credentials.
+  // Preserve browser speech fallback while withholding unmetered sessions.
+  if (session.user.role !== "admin") {
+    return buildFallbackResponse(
+      "live-api-unavailable",
+      "Live translation is unavailable."
+    );
+  }
+
   const apiKey = process.env.GOOGLE_API_KEY?.trim();
   if (!apiKey) {
     return buildFallbackResponse(

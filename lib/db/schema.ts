@@ -718,6 +718,13 @@ export const userSubscription = pgTable(
 
 export type UserSubscription = InferSelectModel<typeof userSubscription>;
 
+// Short-lived admission ownership, separate from immutable financial records.
+export const paidGenerationLease = pgTable("PaidGenerationLease", {
+  userId: uuid("userId").primaryKey().references(() => user.id, { onDelete: "cascade" }),
+  ownerId: uuid("ownerId").notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+});
+
 export const appSetting = pgTable("AppSetting", {
   key: varchar("key", { length: 64 }).primaryKey(),
   value: jsonb("value").notNull(),

@@ -31,10 +31,10 @@ test("the product identity stays KhasiGPT across configurable prompts", () => {
   expect(instruction.endsWith(KHASIGPT_IDENTITY_FINAL_REMINDER)).toBe(true);
 });
 
-test("shows the hardcoded general prompt as read-only in admin model settings", async () => {
+test("shows the hardcoded general prompt as read-only alongside model pricing", async () => {
   const adminSettingsPath = path.join(
     process.cwd(),
-    "app/(admin)/admin/settings/page.tsx",
+    "app/(admin)/admin/pricing/page.tsx",
   );
   const adminSettings = await readFile(adminSettingsPath, "utf8");
 
@@ -48,5 +48,6 @@ test("shows the hardcoded general prompt as read-only in admin model settings", 
   expect(adminSettings).toContain('id="general-system-prompt"');
   expect(adminSettings).toContain("readOnly");
   expect(adminSettings).toContain("admin.models.general_prompt.title");
-  expect(adminSettings).toContain("admin.models.model_prompt.title");
+  const modelForm = await readFile(path.join(process.cwd(), "app/(admin)/admin/pricing/model-configuration-forms.tsx"), "utf8");
+  expect(modelForm).toContain("admin.models.model_prompt.title");
 });

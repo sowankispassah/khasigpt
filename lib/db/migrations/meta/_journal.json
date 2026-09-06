@@ -687,6 +687,13 @@
       "when": 1787443200006,
       "tag": "0095_drop_live_voice_legacy_multiplier",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1787443200007,
+      "tag": "0096_paid_generation_admission",
+      "breakpoints": true
     }
   ]
 }

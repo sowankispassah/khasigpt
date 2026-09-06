@@ -254,6 +254,7 @@ export async function getImageGenerationAccess({
         "[image-generation] Submit-time quote unavailable; image pricing remains unavailable.",
         error
       );
+      throw error;
     }
   }
   const { modelSummary, tokensPerImage } = buildModelSummary(
@@ -281,7 +282,7 @@ export async function getImageGenerationAccess({
       "[image-generation] Subscription read failed; keeping feature availability without credit confirmation.",
       error
     );
-    return null;
+    throw error;
   });
   if (!subscription) {
     return {

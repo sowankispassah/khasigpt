@@ -1,9 +1,7 @@
 import "server-only";
 
 import {
-  buildImageGenerationAccessFromAvailability,
   getImageGenerationAccess,
-  getImageGenerationAvailability,
   isImageGenerationEnabledForAllUsers,
 } from "@/lib/ai/image-generation";
 import { loadChatModels } from "@/lib/ai/models";
@@ -107,12 +105,23 @@ async function safeAppSetting<T>(key: string, fallback: T) {
   }
 }
 
+export async function loadImageGenerationReadModel(userId: string, role: UserRole) {
+  const access = await getImageGenerationAccess({ userId, userRole: role });
+  return {
+    enabled: access.enabled,
+    canGenerate: access.canGenerate,
+    requiresPaidCredits: access.requiresPaidCredits,
+  };
+}
+
 export async function loadFeatureAccessReadModel({
   role,
   userId,
+  includeImageAccess = true,
 }: {
   role: UserRole | null | undefined;
   userId?: string | null;
+  includeImageAccess?: boolean;
 }) {
   const [
     featureAccessSettings,
@@ -127,32 +136,22 @@ export async function loadFeatureAccessReadModel({
       CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
       null
     ),
-    userId
-      ? getImageGenerationAccess({
+    userId && includeImageAccess
+      ? withTimeout(getImageGenerationAccess({
           userId,
           userRole: role ?? "regular",
-        }).catch(async (error) => {
+        }), READ_TIMEOUT_MS).catch((error) => {
           console.error(
-            "[read-models] Image generation credit access failed; falling back to feature availability.",
+            "[read-models] Image generation credit access unavailable.",
             error
           );
-          return getImageGenerationAvailability({
-            userRole: role ?? "regular",
-          })
-            .then(buildImageGenerationAccessFromAvailability)
-            .catch((fallbackError) => {
-              console.error(
-                "[read-models] Image generation availability fallback failed.",
-                fallbackError
-              );
-              return null;
-            });
+          return null;
         })
       : Promise.resolve(null),
   ]);
   const featureAccessUnavailable =
     featureAccessSettings.status === "unavailable";
-  const imageGenerationAccessDegraded = Boolean(userId && !imageGenerationAccess);
+  const imageGenerationAccessDegraded = Boolean(includeImageAccess && userId && !imageGenerationAccess);
   const getFeatureSetting = (
     key: string,
     { failOpen = true }: { failOpen?: boolean } = {}
@@ -202,6 +201,7 @@ export async function loadFeatureAccessReadModel({
 
   return {
     meta: {
+      imageGenerationDegraded: imageGenerationAccessDegraded,
       degraded:
         featureAccessSettings.status !== "confirmed" ||
         imageGenerationAccessDegraded,
@@ -332,6 +332,7 @@ export async function loadModelConfigReadModel() {
   const modelConfig = await loadChatModels();
 
   return {
+    meta: { degraded: modelConfig.degraded === true },
     defaultModelId: modelConfig.defaultModel?.id ?? null,
     models: modelConfig.models.map((model) => ({
       id: model.id,

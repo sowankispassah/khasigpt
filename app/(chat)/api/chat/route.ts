@@ -55,6 +55,7 @@ import {
 } from "@/lib/constants";
 import { getLiveCurrentInfo, type LiveCurrentInfo } from "@/lib/current-info/service";
 import {
+  acquirePaidGenerationForUser,
   consumeFreeDailyChatAllowance,
   createStreamId,
   deleteChatById,
@@ -1133,6 +1134,8 @@ async function enforceChatRateLimit(
 }
 
 export async function POST(request: Request) {
+  let generationLease: Awaited<ReturnType<typeof acquirePaidGenerationForUser>> | null = null;
+  let streamingOwnsLease = false;
   const rateLimited = await enforceChatRateLimit(request);
 
   if (rateLimited) {
@@ -1252,6 +1255,9 @@ export async function POST(request: Request) {
 
     const activeTokenBalance = activeSubscription?.tokenBalance ?? 0;
     const hasActiveCredits = hasUsableChatCredits(activeTokenBalance);
+    if (hasActiveCredits) {
+      generationLease = await acquirePaidGenerationForUser(session.user.id);
+    }
     console.info("[chat.credit-decision]", {
       balanceConfirmed: true,
       hasUsableCredits: hasActiveCredits,
@@ -3586,6 +3592,8 @@ export async function POST(request: Request) {
         await usageReady;
       } catch (error) {
         console.warn("Usage tracking did not complete", { chatId: id }, error);
+      } finally {
+        await generationLease?.release();
       }
     });
 
@@ -4153,6 +4161,7 @@ export async function POST(request: Request) {
       headers: responseHeaders,
     });
 
+    streamingOwnsLease = true;
     return streamResponse;
   } catch (error) {
     const vercelId = request.headers.get("x-vercel-id");
@@ -4173,6 +4182,8 @@ export async function POST(request: Request) {
 
     console.error("Unhandled error in chat API:", error, { vercelId });
     return new ChatSDKError("offline:chat").toResponse();
+  } finally {
+    if (!streamingOwnsLease) await generationLease?.release();
   }
 }
 

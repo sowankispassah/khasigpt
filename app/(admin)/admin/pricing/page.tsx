@@ -1,6 +1,5 @@
 import { unstable_cache } from "next/cache";
 import { type ReactNode, Suspense } from "react";
-
 import {
   createPricingPlanAction,
   hardDeletePricingPlanAction,
@@ -22,6 +21,7 @@ import {
   adminQueryResult,
   getAdminQueryTimeoutMs,
 } from "@/lib/admin/safe-query";
+import { KHASIGPT_GENERAL_SYSTEM_PROMPT } from "@/lib/ai/identity";
 import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
 import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import {
@@ -1032,6 +1032,21 @@ export default async function AdminPricingPage({
             />
           </p>
         </div>
+        <details className="rounded-lg border p-4">
+          <summary className="cursor-pointer font-medium text-sm" id="general-system-prompt-label">
+            <EditableTranslation
+              defaultText="General system prompt (read-only)"
+              translationKey="admin.models.general_prompt.title"
+            />
+          </summary>
+          <textarea
+            aria-labelledby="general-system-prompt-label"
+            className="mt-3 min-h-64 w-full rounded-md border bg-muted p-3 text-sm"
+            id="general-system-prompt"
+            readOnly
+            value={KHASIGPT_GENERAL_SYSTEM_PROMPT}
+          />
+        </details>
         <Suspense fallback={<ModelPricingLoading activePlans={activePlans} />}>
           <ModelPricingContent
             activePlans={activePlans}

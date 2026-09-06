@@ -6,6 +6,7 @@ import { withApiTiming } from "@/lib/api/observability";
 import {
   loadBillingReadModel,
   loadFeatureAccessReadModel,
+  loadImageGenerationReadModel,
   loadLanguageReadModel,
   loadModelConfigReadModel,
   loadPricingReadModel,
@@ -30,6 +31,7 @@ type PricingSnapshot = Awaited<ReturnType<typeof loadPricingReadModel>>;
 type BootstrapSection =
   | "billing"
   | "features"
+  | "imageGeneration"
   | "i18n"
   | "modelConfig"
   | "pricing"
@@ -118,6 +120,7 @@ function buildStartupLanguageSnapshot(
 const FALLBACK_FEATURE_SNAPSHOT: FeatureSnapshot = {
   meta: {
     degraded: true,
+    imageGenerationDegraded: true,
     featureAccessStatus: "unavailable",
     missingFeatureKeys: [],
   },
@@ -148,6 +151,7 @@ const FALLBACK_FEATURE_SNAPSHOT: FeatureSnapshot = {
 };
 
 const FALLBACK_MODEL_CONFIG: ModelConfigSnapshot = {
+  meta: { degraded: true },
   defaultModelId: null,
   models: [],
 };
@@ -284,6 +288,10 @@ export async function GET(request: Request) {
   let balanceResult: BootstrapSectionResult<
     Awaited<ReturnType<typeof loadBillingReadModel>> | null
   > = { data: null, degraded: false };
+  let imageAccessResult: BootstrapSectionResult<Awaited<ReturnType<typeof loadImageGenerationReadModel>>> = {
+    data: FALLBACK_FEATURE_SNAPSHOT.imageGeneration,
+    degraded: false,
+  };
 
   // Keep startup bootstrap auth-only. Native applies a local authenticated
   // shell immediately, then full bootstrap hydrates optional data in the
@@ -300,6 +308,7 @@ export async function GET(request: Request) {
       translateResult,
       pricingResult,
       balanceResult,
+      imageAccessResult,
     ] = await Promise.all([
       safeBootstrapSection({
         fallback: buildStartupLanguageSnapshot(preferredLanguage),
@@ -310,7 +319,7 @@ export async function GET(request: Request) {
       safeBootstrapSection({
         fallback: FALLBACK_FEATURE_SNAPSHOT,
         label: "mobile.bootstrap.features",
-        loader: () => loadFeatureAccessReadModel({ role, userId }),
+        loader: () => loadFeatureAccessReadModel({ role, userId, includeImageAccess: false }),
         phase,
       }),
       safeBootstrapSection({
@@ -348,6 +357,12 @@ export async function GET(request: Request) {
         loader: () => loadBillingReadModel(session.user.id),
         phase,
       }),
+      safeBootstrapSection({
+        fallback: FALLBACK_FEATURE_SNAPSHOT.imageGeneration,
+        label: "mobile.bootstrap.image-generation",
+        loader: () => loadImageGenerationReadModel(session.user.id, session.user.role),
+        phase,
+      }),
     ]);
   }
 
@@ -363,7 +378,8 @@ export async function GET(request: Request) {
     featureSnapshotResult.degraded || featureSnapshot.meta.degraded
       ? "features"
       : null,
-    modelConfigResult.degraded ? "modelConfig" : null,
+    modelConfigResult.degraded || modelConfig.meta.degraded ? "modelConfig" : null,
+    imageAccessResult.degraded ? "imageGeneration" : null,
     promptSnapshotResult.degraded || promptSnapshot.meta.degraded
       ? "prompts"
       : null,
@@ -375,6 +391,7 @@ export async function GET(request: Request) {
     ? [
         "billing",
         "features",
+        "imageGeneration",
         "i18n",
         "modelConfig",
         "pricing",
@@ -416,7 +433,7 @@ export async function GET(request: Request) {
         languages: languageSnapshot.chatLanguages,
         suggestedPrompts: promptSnapshot.suggestedPrompts,
         iconPromptActions: promptSnapshot.iconPromptActions,
-        imageGeneration: featureSnapshot.imageGeneration,
+        imageGeneration: imageAccessResult.data,
       },
       translate,
       billing: {

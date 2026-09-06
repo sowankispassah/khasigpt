@@ -13,6 +13,7 @@ import {
 export type ChatModel = ModelSummary;
 
 type ChatModelsResult = {
+  degraded?: boolean;
   models: ModelSummary[];
   defaultModel: ModelSummary | null;
 };
@@ -117,10 +118,10 @@ export async function loadChatModels() {
           console.warn(
             "[models] Using last successful model list after transient load failure."
           );
-          return chatModelsCacheState.lastSuccessfulResult;
+          return { ...chatModelsCacheState.lastSuccessfulResult, degraded: true };
         }
 
-        console.error("Failed to load chat models, using fallback model.", {
+        console.error("Failed to confirm chat model configuration.", {
           registryError,
           directError,
         });
@@ -129,33 +130,17 @@ export async function loadChatModels() {
       console.warn(
         "[models] Using last successful model list after registry timeout."
       );
-      return chatModelsCacheState.lastSuccessfulResult;
+      return { ...chatModelsCacheState.lastSuccessfulResult, degraded: true };
     } else {
       console.warn(
-        "[models] Registry model load timed out. Using fallback model without a second blocking DB attempt."
+        "[models] Registry model load timed out. Returning unconfirmed configuration without a second blocking DB attempt."
       );
     }
 
-    const fallbackModel: ModelSummary = {
-      id: "fallback-openai-gpt-4o-mini",
-      key: "openai-gpt-4o-mini",
-      provider: "openai",
-      providerModelId: "gpt-4o-mini",
-      name: "GPT-4o mini",
-      description: "Fallback configuration when database access is unavailable.",
-      supportsReasoning: false,
-      reasoningTag: null,
-      systemPrompt:
-        "You are a helpful AI assistant. Offer concise, accurate, and friendly responses.",
-      codeTemplate: null,
-      inputProviderCostPerMillion: 0,
-      outputProviderCostPerMillion: 0,
-      freeMessagesPerDay: 3,
-    };
-
     return {
-      models: [fallbackModel],
-      defaultModel: fallbackModel,
+      degraded: true,
+      models: [],
+      defaultModel: null,
     };
   }
 }

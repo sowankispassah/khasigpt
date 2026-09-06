@@ -23,6 +23,7 @@ import { classifyImageIntent } from "@/lib/ai/image-intent-classifier";
 import { verifyImageIntentToken } from "@/lib/ai/image-intent-token";
 import { IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY } from "@/lib/constants";
 import {
+  acquirePaidGenerationForUser,
   deductImageCredits,
   getAppSetting,
   getChatById,
@@ -506,41 +507,49 @@ export async function POST(request: Request) {
     },
   ];
 
-  await saveChatAndMessages({
-    chatInput: existingChat
-      ? null
-      : {
-          id: chatId,
-          userId: session.user.id,
-          title: buildFallbackTitle(displayText),
-          visibility: visibility as VisibilityType,
-          status: "pending",
-          statusReason: "Image generation is pending.",
-        },
-    messages: [
-      {
-        chatId,
-        id: resolvedUserMessageId,
-        role: "user",
-        parts: userParts,
-        attachments: [],
-        createdAt: now,
-      },
-      {
-        chatId,
-        id: assistantMessageId,
-        role: "assistant",
-        parts: buildImageGenerationStatusParts({
-          prompt: displayText,
-          status: "pending",
-        }),
-        attachments: [],
-        createdAt: assistantCreatedAt,
-      },
-    ],
-  });
+  let generationLease: Awaited<ReturnType<typeof acquirePaidGenerationForUser>>;
+  try {
+    generationLease = await acquirePaidGenerationForUser(session.user.id, access.tokensPerImage);
+  } catch (error) {
+    if (error instanceof ChatSDKError) return error.toResponse();
+    return new ChatSDKError("offline:chat").toResponse();
+  }
 
   try {
+    await saveChatAndMessages({
+      chatInput: existingChat
+        ? null
+        : {
+            id: chatId,
+            userId: session.user.id,
+            title: buildFallbackTitle(displayText),
+            visibility: visibility as VisibilityType,
+            status: "pending",
+            statusReason: "Image generation is pending.",
+          },
+      messages: [
+        {
+          chatId,
+          id: resolvedUserMessageId,
+          role: "user",
+          parts: userParts,
+          attachments: [],
+          createdAt: now,
+        },
+        {
+          chatId,
+          id: assistantMessageId,
+          role: "assistant",
+          parts: buildImageGenerationStatusParts({
+            prompt: displayText,
+            status: "pending",
+          }),
+          attachments: [],
+          createdAt: assistantCreatedAt,
+        },
+      ],
+    });
+
     const generationRequest = await buildGenerationRequest({
       prompt,
       sourceImages,
@@ -708,5 +717,7 @@ export async function POST(request: Request) {
         status: 400,
       }
     );
+  } finally {
+    await generationLease?.release();
   }
 }

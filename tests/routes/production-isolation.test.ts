@@ -6,7 +6,9 @@ import { expect, test } from "@playwright/test";
 import postgres from "postgres";
 import ts from "typescript";
 import { DatabaseOperationQueue } from "@/lib/db/operation-queue";
+import * as featureAccess from "@/lib/feature-access";
 import { fetchWithResponseTimeout, withTimeout } from "@/lib/utils/async";
+import { restrictUnmeteredLiveAccess } from "@/lib/voice/launch-access";
 
 const requireModule = createRequire(path.join(process.cwd(), "package.json"));
 
@@ -28,6 +30,55 @@ function deferred<T>() {
   const promise = new Promise<T>((done) => { resolve = done; });
   return { promise, resolve };
 }
+
+test("unmetered live settings and cold failures never admit a non-admin", async () => {
+  const mocks = {
+    "server-only": {},
+    "@/lib/feature-access": featureAccess,
+    "@/lib/voice/launch-access": { restrictUnmeteredLiveAccess },
+    "@/lib/settings/feature-access-settings": {
+      loadFeatureAccessSettingsByKeys: async () => ({ status: "unavailable" }),
+      getFeatureAccessModeSettingValue: () => undefined,
+    },
+  };
+  const voice = loadModule("lib/voice/config.ts", mocks);
+  const translation = loadModule("lib/live-translation/config.ts", mocks);
+  for (const parse of [voice.parseVoiceChatAccessModeSetting, translation.parseLiveTranslationAccessModeSetting]) {
+    for (const value of ["enabled", true, "admin_only", "disabled", null]) {
+      const mode = parse(value);
+      for (const role of ["regular", "creator", null, undefined] as const) {
+        expect(featureAccess.isFeatureEnabledForRole(mode, role)).toBe(false);
+      }
+      if (value === "disabled") expect(featureAccess.isFeatureEnabledForRole(mode, "admin")).toBe(false);
+      if (value === "enabled") expect(featureAccess.isFeatureEnabledForRole(mode, "admin")).toBe(true);
+    }
+  }
+  for (const platform of ["web", "android"]) {
+    expect(await voice.getVoiceChatAccessModeForPlatform(platform)).toBe("admin_only");
+    expect(await translation.getLiveTranslationAccessModeForPlatform(platform)).toBe("admin_only");
+  }
+});
+
+test("legacy translation token route withholds live credentials from regular users", async () => {
+  let tokensCreated = 0;
+  const route = loadModule("app/api/translate/live-token/route.ts", {
+    "@google/genai": { GoogleGenAI: class { constructor() { tokensCreated += 1; } } },
+    "@/app/(auth)/auth": { auth: async () => ({ user: { id: "user", role: "regular" } }) },
+    "@/lib/db/queries": {
+      getLastKnownAppSetting: () => "enabled",
+      getTranslationFeatureLanguageByCodeRaw: async () => ({ isActive: true, speechModelConfigId: "model" }),
+      getModelConfigById: async () => ({ isEnabled: true }),
+    },
+    "@/lib/security/rate-limit": { incrementRateLimit: async () => ({ allowed: true }) },
+    "@/lib/security/request-helpers": { getClientKeyFromHeaders: () => "test" },
+    "@/lib/settings/feature-access-settings": { loadFeatureAccessSettingsByKeys: async () => ({ status: "confirmed", values: new Map() }) },
+    "@/lib/translate/config": { parseTranslateAccessModeSetting: () => "enabled" },
+    "@/lib/translate/live": { isGoogleLiveTranslationModel: () => true },
+  });
+  const response = await route.POST(new Request("https://audit.invalid/api/translate/live-token", { method: "POST", body: JSON.stringify({ targetLanguageCode: "en" }) }));
+  expect(await response.json()).toMatchObject({ liveSupported: false, reason: "live-api-unavailable" });
+  expect(tokensCreated).toBe(0);
+});
 
 test("HTTP deadline includes a body stalled after successful headers", async () => {
   const originalFetch = globalThis.fetch;
@@ -190,4 +241,57 @@ test("wallet writes acquire the same per-user transaction lock before idempotenc
   }
   const internal = source.slice(source.indexOf("async function getActiveSubscriptionInternal("));
   expect(internal.indexOf("await lockUserWallet(executor, userId)")).toBeLessThan(internal.indexOf(".update(userSubscription)"));
+});
+
+test("model failures are explicitly unconfirmed and never invent a configured model", async () => {
+  let healthy = false;
+  const configured = { id: "saved-model", isDefault: true };
+  const module = loadModule("lib/ai/models.ts", {
+    "server-only": {},
+    "@/lib/db/queries": { listModelConfigs: async () => { throw new Error("database unavailable"); } },
+    "@/lib/utils/async": { withTimeout },
+    "./model-registry": {
+      MODEL_REGISTRY_CACHE_TAG: "models",
+      mapToModelSummary: (value: unknown) => value,
+      getModelRegistry: async () => {
+        if (!healthy) throw new Error("database unavailable");
+        return { configs: [configured], defaultConfig: configured };
+      },
+    },
+  }, { Error });
+  expect(await module.loadChatModels()).toMatchObject({ degraded: true, models: [], defaultModel: null });
+  healthy = true;
+  expect((await module.loadChatModels()).models[0].id).toBe("saved-model");
+  healthy = false;
+  expect(await module.loadChatModels()).toMatchObject({ degraded: true, models: [{ id: "saved-model" }] });
+});
+
+test("bootstrap feature reads do not invoke image credits and full feature reads expose partial failure", async () => {
+  const source = ts.createSourceFile("read-models.ts", readFileSync("lib/api/read-models.ts", "utf8"), ts.ScriptTarget.Latest, true);
+  const fn = source.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "loadFeatureAccessReadModel");
+  if (!fn) throw new Error("Feature read model declaration is missing");
+  let imageCalls = 0;
+  const context: Record<string, any> = {
+    exports: {}, console, Boolean,
+    READ_TIMEOUT_MS: 50,
+    withTimeout,
+    safeAppSetting: async () => "true",
+    parseBooleanSetting: (value: string) => value === "true",
+    getImageGenerationAccess: async () => { imageCalls += 1; throw new Error("credits unavailable"); },
+    loadFeatureAccessSettingsByKeys: async () => ({ status: "confirmed", missingKeys: [], values: new Map() }),
+    getFeatureAccessModeSettingValue: () => "enabled",
+    isFeatureEnabledForRole: (value: string) => value === "enabled",
+    resolvePlatformVoiceChatSetting: () => ({ android: "enabled", web: "enabled" }),
+  };
+  for (const match of fn.getText(source).matchAll(/\b[A-Z][A-Z_]+\b/g)) context[match[0]] ??= match[0];
+  for (const match of fn.getText(source).matchAll(/\bparse\w+/g)) context[match[0]] ??= (value: unknown) => value;
+  vm.runInNewContext(ts.transpileModule(fn.getText(source), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, context);
+  const load = context.exports.loadFeatureAccessReadModel;
+  const flags = await load({ userId: "user", role: "regular", includeImageAccess: false });
+  expect(imageCalls).toBe(0);
+  expect(flags.meta.degraded).toBe(false);
+  const full = await load({ userId: "user", role: "regular" });
+  expect(imageCalls).toBe(1);
+  expect(full.calculator).toBe(true);
+  expect(full.meta).toMatchObject({ featureAccessStatus: "confirmed", imageGenerationDegraded: true, degraded: true });
 });
