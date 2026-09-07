@@ -6,6 +6,8 @@ The local wallet tests verify correctness under concurrent SQL writes. They do n
 
 Use a separate staging deployment and database with the production schema, indexes, connection limits, region placement and comparable plan sizes. Seed synthetic users, realistic chat/history sizes and jobs. Keep production credentials, customer content, payment webhooks and email sending out of this environment. The local `tests/support/jobs-service.cjs` is a narrow HTTP fixture for route tests; staging must use real Supabase/PostgREST.
 
+The verified production topology on 7 September places functions in hnd1 beside the database's observed ap-northeast-1 address. Confirm placement before each run; the earlier San Francisco function placement reproduced cold database deadlines and is not the intended baseline.
+
 Create 50 synthetic users and obtain one mobile bearer token per user through the staging login flow. The bootstrap endpoint does not accept cookie authentication. Keep tokens in an ignored local file, such as `tmp/staging-load.json`:
 
 ```json
