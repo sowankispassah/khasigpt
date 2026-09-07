@@ -9,9 +9,9 @@ import { verifyAdminEntryPassToken } from "@/lib/security/admin-entry-pass";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import {
   DEFAULT_ADMIN_ENTRY_PATH,
-  normalizeAdminEntryPathSetting,
 } from "@/lib/settings/admin-entry";
-import { fetchWithResponseTimeout } from "@/lib/utils/async";
+import { readSiteAvailability } from "@/lib/settings/site-availability-reader";
+import { fetchWithResponseTimeout, withTimeout } from "@/lib/utils/async";
 
 const isProduction = process.env.NODE_ENV === "production";
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -63,7 +63,6 @@ const SESSION_COOKIE_PREFIXES = [
   "__Secure-next-auth.session-token",
   "next-auth.session-token",
 ];
-const SITE_STATUS_API_PATH = "/api/public/site-launch";
 const SITE_INVITE_ACCESS_API_PATH = "/api/public/invite-access";
 const SITE_SESSION_ROLE_API_PATH = "/api/public/session-role";
 const SITE_COMING_SOON_PATH = "/coming-soon";
@@ -344,16 +343,14 @@ async function resolveSiteStatus(request: NextRequest) {
   const origin = request.nextUrl.origin;
   const pending = siteStatusRequests.get(origin);
   if (pending) return pending;
-  const result = fetchSiteStatus(request).finally(() => {
+  const result = fetchSiteStatus().finally(() => {
     if (siteStatusRequests.get(origin) === result) siteStatusRequests.delete(origin);
   });
   siteStatusRequests.set(origin, result);
   return result;
 }
 
-async function fetchSiteStatus(
-  request: NextRequest
-): Promise<{
+async function fetchSiteStatus(): Promise<{
   degraded: boolean;
   publicLaunched: boolean;
   underMaintenance: boolean;
@@ -387,70 +384,26 @@ async function fetchSiteStatus(
   const staleStatusAllowed =
     siteStatusCache !== null &&
     now - siteStatusCache.fetchedAt < SITE_STATUS_STALE_GRACE_MS;
-  const statusUrl = request.nextUrl.clone();
-  statusUrl.pathname = SITE_STATUS_API_PATH;
-  statusUrl.search = "";
+  const startedAt = Date.now();
 
   try {
-    const response = await fetchWithTimeout(
-      statusUrl.toString(),
-      {
-        method: "GET",
-        headers: {
-          accept: "application/json",
-        },
-        cache: "no-store",
-      },
+    // Proxy runs in Node.js. Reading the six indexed settings here avoids a
+    // second function cold start and an HTTP round trip through our own proxy.
+    const body = await withTimeout(
+      readSiteAvailability(),
       INTERNAL_STATUS_FETCH_TIMEOUT_MS
     );
-
-    if (!response || !response.ok) {
-      const fallbackState = getSafeSiteStatusFallback();
-      if (staleStatusAllowed && siteStatusCache) {
-        return {
-          degraded: false,
-          publicLaunched: siteStatusCache.publicLaunched,
-          underMaintenance: siteStatusCache.underMaintenance,
-          inviteOnlyPrelaunch: siteStatusCache.inviteOnlyPrelaunch,
-          adminAccessEnabled: siteStatusCache.adminAccessEnabled,
-          adminEntryPath: siteStatusCache.adminEntryPath,
-        };
-      }
-
-      if (response?.ok === false) {
-        console.error(
-          `[middleware] Failed to fetch site status. Status=${response.status}. Falling back to safe defaults.`
-        );
-      } else {
-        console.error(
-          "[middleware] Site status internal fetch timed out. Falling back to safe defaults."
-        );
-      }
-
-      return fallbackState;
+    const { publicLaunched, underMaintenance, inviteOnlyPrelaunch,
+      adminAccessEnabled, adminEntryPath } = body;
+    const degraded = false;
+    const durationMs = Date.now() - startedAt;
+    if (durationMs > 400) {
+      console.info("[middleware] Site status database read completed.", { durationMs });
     }
-
-    const body = (await response.json()) as
-      | {
-          publicLaunched?: unknown;
-          underMaintenance?: unknown;
-          inviteOnlyPrelaunch?: unknown;
-          adminAccessEnabled?: unknown;
-          adminEntryPath?: unknown;
-          degraded?: unknown;
-          confirmed?: unknown;
-        }
-      | null;
-    const publicLaunched = body?.publicLaunched !==false;
-    const underMaintenance = body?.underMaintenance === true;
-    const inviteOnlyPrelaunch = body?.inviteOnlyPrelaunch === true;
-    const adminAccessEnabled = body?.adminAccessEnabled === true;
-    const adminEntryPath = normalizeAdminEntryPathSetting(body?.adminEntryPath);
-    const degraded = body?.degraded === true || body?.confirmed === false;
 
     if (!degraded) {
       siteStatusCache = {
-        fetchedAt: now,
+        fetchedAt: Date.now(),
         publicLaunched,
         underMaintenance,
         inviteOnlyPrelaunch,
@@ -481,8 +434,8 @@ async function fetchSiteStatus(
     }
 
     console.error(
-      "[middleware] Site status internal fetch failed. Falling back to safe defaults.",
-      error
+      "[middleware] Site status database read failed. Falling back to safe defaults.",
+      { durationMs: Date.now() - startedAt, reason: error instanceof Error && error.message === "timeout" ? "deadline" : "database_unavailable" }
     );
 
     return fallbackState;
