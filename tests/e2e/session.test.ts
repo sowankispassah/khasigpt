@@ -26,8 +26,8 @@ test.describe
       }
 
       expect(chain).toEqual([
-        "http://localhost:3000/",
-        "http://localhost:3000/login?callbackUrl=%2Fchat",
+        new URL("/", response.url()).href,
+        new URL("/login?callbackUrl=%2Fchat", response.url()).href,
       ]);
     });
 
@@ -70,8 +70,8 @@ test.describe
       }
 
       expect(chain).toEqual([
-        "http://localhost:3000/",
-        "http://localhost:3000/chat",
+        new URL("/", response.url()).href,
+        new URL("/chat", response.url()).href,
       ]);
     });
 

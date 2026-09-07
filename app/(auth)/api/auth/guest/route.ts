@@ -15,7 +15,8 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const redirectUrl = sanitizeRedirectPath(
     searchParams.get("redirectUrl"),
-    new URL(request.url).origin
+    new URL(request.url).origin,
+    "/chat"
   );
 
   if (
@@ -56,7 +57,7 @@ export async function GET(request: Request) {
   const session = await auth();
 
   if (session) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL(redirectUrl, request.url));
   }
 
   return signIn("guest", { redirect: true, redirectTo: redirectUrl });

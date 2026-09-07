@@ -1,5 +1,6 @@
 import { createUIMessageStream, JsonToSseTransformStream } from "ai";
 import { differenceInSeconds } from "date-fns";
+import { getStreamContext } from "@/lib/chat/stream-context";
 import {
   getChatById,
   getMessagesByChatIdPage,
@@ -11,7 +12,6 @@ import { getAuthenticatedSession } from "@/lib/mobile-auth-session";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import type { ChatMessage } from "@/lib/types";
-import { getStreamContext } from "../../route";
 
 const STREAM_HEADERS: HeadersInit = {
   "Content-Type": "text/event-stream",

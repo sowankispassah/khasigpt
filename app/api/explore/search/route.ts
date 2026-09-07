@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getModelRegistry } from "@/lib/ai/model-registry";
 import { getAuthenticatedUser } from "@/lib/api/auth";
 import { noStoreHeaders } from "@/lib/api/cache";
+import { searchCreditAllowance } from "@/lib/billing/search-budget";
 import {
   hasUsableChatCredits,
   isFreeDailyChatLimitBypassedForTest,
@@ -11,10 +12,12 @@ import {
 } from "@/lib/chat/free-daily-limit";
 import { DEFAULT_FREE_MESSAGES_PER_DAY } from "@/lib/constants";
 import {
+  acquirePaidGenerationForUser,
   consumeFreeDailyChatAllowance,
   getActiveSubscriptionForUser,
   getChatById,
   getMessageCountByUserId,
+  getTextGenerationPricing,
   recordTokenUsage,
   recordWebSearchUsage,
   saveChat,
@@ -157,6 +160,7 @@ function errorResponse(error: unknown) {
 }
 
 export async function POST(request: Request) {
+  let generationLease: Awaited<ReturnType<typeof acquirePaidGenerationForUser>> | null = null;
   try {
     const auth = await getAuthenticatedUser(request);
     if (!auth?.user) {
@@ -333,9 +337,21 @@ export async function POST(request: Request) {
           : "Explore Meghalaya natural-language discovery.",
         `The selected location context is ${locationContextKey}. Previous result sets from other locations are not relevant.`,
       ].join("\n\n");
+      generationLease = hasCredits ? await acquirePaidGenerationForUser(auth.user.id) : null;
+      const generationPricing = generationLease ? await getTextGenerationPricing(model.id) : undefined;
+      let reservedCredits = 0;
+      const reserveSearch = (provider: typeof config.provider) => {
+        if (!generationLease || !generationPricing) return;
+        if (provider === "disabled") throw new ChatSDKError("bad_request:configuration");
+        const required = searchCreditAllowance({ provider, costPerCallUsd: config.providerCostPerCallUsd[provider],
+          markup: config.providerMarkupMultiplier[provider], pricing: generationPricing });
+        if (reservedCredits + required > generationLease.balance) throw new ChatSDKError("payment_required:credits");
+        reservedCredits += required;
+      };
       let attemptedProvider = config.provider;
       let providerError: unknown = null;
       try {
+        reserveSearch(config.provider);
         answer = await webSearchService.answerWithSearch({
           conversationContext,
           maxSearches: config.maxCalls,
@@ -352,6 +368,7 @@ export async function POST(request: Request) {
         ) {
           attemptedProvider = config.fallbackProvider;
           try {
+            reserveSearch(config.fallbackProvider);
             answer = await webSearchService.answerWithSearch({
               conversationContext,
               maxSearches: config.maxCalls,
@@ -383,6 +400,7 @@ export async function POST(request: Request) {
             inputTokens: answer.usage.inputTokens,
             outputTokens: answer.usage.outputTokens,
             deductCredits: hasCredits,
+            generationPricing,
             billTokenUsage: false,
             additionalCharges:
               searchProvider !== "disabled"
@@ -531,5 +549,7 @@ export async function POST(request: Request) {
     return NextResponse.json(response, { headers: noStoreHeaders() });
   } catch (error) {
     return errorResponse(error);
+  } finally {
+    await generationLease?.release();
   }
 }

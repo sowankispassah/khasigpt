@@ -23,6 +23,7 @@ const baseURL = `http://localhost:${PORT}`;
  * See https://playwright.dev/docs/test-configuration.
  */
 export default defineConfig({
+  outputDir: process.env.ISOLATED_TEST_RUN === "1" ? "./tmp/isolated-test-results" : "./test-results",
   testDir: "./tests",
   /* Run tests in files in parallel */
   fullyParallel: true,
@@ -99,10 +100,14 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: "npm run dev",
+    // Match the production build's Turbopack pipeline. Next 16's Webpack dev
+    // manifest writer can expose a partially written JSON file on Windows.
+    command: process.env.ISOLATED_TEST_RUN === "1"
+      ? "node node_modules/next/dist/bin/next dev --turbopack"
+      : "npm run dev",
     url: `${baseURL}`,
     timeout: 120 * 1000,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !process.env.CI && process.env.ISOLATED_TEST_RUN !== "1",
     env: {
       PORT: String(PORT),
       SKIP_APP_SETTING_CACHE: "1",

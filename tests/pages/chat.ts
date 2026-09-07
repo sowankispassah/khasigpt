@@ -57,25 +57,12 @@ export class ChatPage {
   }
 
   async isGenerationComplete() {
-    const response = await this.page
-      .waitForResponse(
-        (currentResponse) => currentResponse.url().includes("/api/chat"),
-        { timeout: 30_000 }
-      )
-      .catch(() => null);
-
-    await response?.finished().catch(() => undefined);
-    await expect(this.sendButton).toBeVisible();
+    // The response may already have arrived by the time this helper runs.
+    // Observe persistent UI state instead of waiting for an event in the past.
     const assistantMessage = this.page.getByTestId("message-assistant").last();
-    try {
-      await expect(assistantMessage).toBeVisible({ timeout: 5000 });
-    } catch {
-      const recentChatLink = this.page.locator('a[href^="/chat/"]').first();
-      if ((await recentChatLink.count()) > 0) {
-        await recentChatLink.click();
-      }
-      await expect(assistantMessage).toBeVisible();
-    }
+    await expect(assistantMessage).toBeVisible();
+    await expect(this.stopButton).not.toBeVisible();
+    await expect(this.sendButton).toBeVisible();
   }
 
   async isVoteComplete() {
@@ -105,7 +92,10 @@ export class ChatPage {
   }
 
   async addImageAttachment() {
-    this.page.on("filechooser", async (fileChooser) => {
+    const chooserPromise = this.page.waitForEvent("filechooser");
+    const uploadPromise = this.page.waitForResponse(response => response.url().endsWith("/api/files/upload") && response.request().method() === "POST");
+    await this.page.getByTestId("attachments-button").click();
+    const fileChooser = await chooserPromise;
       const filePath = path.join(
         process.cwd(),
         "public",
@@ -119,9 +109,10 @@ export class ChatPage {
         mimeType: "image/jpeg",
         buffer: imageBuffer,
       });
-    });
-
-    await this.page.getByTestId("attachments-button").click();
+    const upload = await uploadPromise;
+    expect(upload.status()).toBe(200);
+    await upload.finished();
+    await expect(this.page.getByRole("button", { name: "Remove attachment", exact: true })).toBeVisible();
     this.expectedNextUserMessageAttachmentCount = 1;
   }
 

@@ -724,6 +724,7 @@ async function requestNanoBananaImage({
 
   return generateText({
     model: client.languageModel(modelId ?? NANO_BANANA_MODEL_ID),
+    maxRetries: 0,
     messages: [
       {
         role: "user",
@@ -819,32 +820,6 @@ async function generateNanoBananaImageFromResolvedPrompt({
 
   if (!result.files.length) {
     const diagnostics = extractNanoBananaDiagnostics(result);
-    const shouldRetry =
-      !diagnostics.blockReason &&
-      diagnostics.finishReason !== "content-filter" &&
-      diagnostics.finishReason !== "safety";
-
-    if (shouldRetry) {
-      const retryResult = await requestNanoBananaImage({
-        prompt,
-        images,
-        abortSignal,
-        modelId,
-      });
-      if (!retryResult.files.length) {
-        const retryDiagnostics = extractNanoBananaDiagnostics(retryResult);
-        throw new ChatSDKError(
-          "bad_request:api",
-          buildNoImageErrorDetails(retryDiagnostics, true)
-        );
-      }
-
-      return retryResult.files.map((file) => ({
-        base64: file.base64,
-        mediaType: file.mediaType,
-      }));
-    }
-
     throw new ChatSDKError(
       "bad_request:api",
       buildNoImageErrorDetails(diagnostics, false)

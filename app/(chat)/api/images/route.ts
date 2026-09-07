@@ -27,6 +27,7 @@ import {
   deductImageCredits,
   getAppSetting,
   getChatById,
+  getImageGenerationChargeQuote,
   saveChatAndMessages,
   updateChatStatusById,
   updateMessagePartsById,
@@ -508,8 +509,10 @@ export async function POST(request: Request) {
   ];
 
   let generationLease: Awaited<ReturnType<typeof acquirePaidGenerationForUser>>;
+  let generationQuote: Awaited<ReturnType<typeof getImageGenerationChargeQuote>>;
   try {
-    generationLease = await acquirePaidGenerationForUser(session.user.id, access.tokensPerImage);
+    generationQuote = await getImageGenerationChargeQuote(access.model.id);
+    generationLease = await acquirePaidGenerationForUser(session.user.id, generationQuote.costPlusQuote.creditUnits);
   } catch (error) {
     if (error instanceof ChatSDKError) return error.toResponse();
     return new ChatSDKError("offline:chat").toResponse();
@@ -570,7 +573,9 @@ export async function POST(request: Request) {
     });
 
     const assistantParts = await Promise.all(
-      images.map(async (image, index) => {
+      // One submission quotes and delivers one image. Additional provider files
+      // must not silently turn a single-image purchase into multiple charges.
+      images.slice(0, 1).map(async (image, index) => {
         const extension = image.mediaType.includes("png") ? "png" : "jpg";
         const filename = `${imageFilenamePrefix}-${index + 1}`;
         const blob = await put(
@@ -596,7 +601,8 @@ export async function POST(request: Request) {
       chatId,
       allowManualCredits: true,
       imageModelConfigId: access.model.id,
-      outputCount: images.length,
+      outputCount: 1,
+      generationQuote,
       requestKey: `image:${assistantMessageId}`,
     });
 

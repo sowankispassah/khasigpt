@@ -117,7 +117,7 @@ test.describe("Chat activity", () => {
     await chatPage.addImageAttachment();
 
     await chatPage.isElementVisible("attachments-preview");
-    await chatPage.isElementVisible("input-attachment-loader");
+    // A cached/local upload may finish before the preview is observed.
     await chatPage.isElementNotVisible("input-attachment-loader");
 
     await chatPage.sendUserMessage("Who painted this?");

@@ -106,6 +106,17 @@ async function main() {
   assert.equal(expirationRows.filter(row => row.status === 'expired').length, 1);
   console.info("PASS: expired wallet was not resurrected by a new grant");
 
+  const textQuote = await exports.getTextGenerationPricing(modelId);
+  const imageQuote = await exports.getImageGenerationChargeQuote(imageModelId);
+  const [beforeQuoteSettlement] = await client`select "tokenBalance" from "UserSubscription" where "userId"=${userId} and status='active'`;
+  await client`update "ModelConfig" set "inputProviderCostPerMillion"=10,"outputProviderCostPerMillion"=10 where id=${modelId}`;
+  await client`update "ImageModelConfig" set "providerCostPerOutputUsd"=0.01 where id=${imageModelId}`;
+  await exports.recordTokenUsage({ userId, chatId, modelConfigId: modelId, inputTokens: 1000, outputTokens: 1000, generationPricing: textQuote, requestKey: `audit-frozen-text-${userId}` });
+  await exports.deductImageCredits({ userId, chatId, imageModelConfigId: imageModelId, generationQuote: imageQuote, requestKey: `audit-frozen-image-${userId}` });
+  const [afterQuoteSettlement] = await client`select "tokenBalance" from "UserSubscription" where "userId"=${userId} and status='active'`;
+  assert.equal(beforeQuoteSettlement.tokenBalance - afterQuoteSettlement.tokenBalance, 30);
+  console.info("PASS: text and image settlement preserve preflight quotes when admin prices increase tenfold during generation");
+
   // Synthetic SQL load, not a claim about Vercel or provider throughput.
   await client`insert into "Chat" (id,"userId",title,"createdAt") select gen_random_uuid(),${userId},'audit history',now()-g*interval '1 minute' from generate_series(1,10000) g`;
   await client`analyze "Chat"`;

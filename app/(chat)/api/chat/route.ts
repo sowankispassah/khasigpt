@@ -12,16 +12,13 @@ import {
 } from "ai";
 import { unstable_cache } from "next/cache";
 import { after } from "next/server";
-import {
-  createResumableStreamContext,
-  type ResumableStreamContext,
-} from "resumable-stream";
 import type { ModelCatalog } from "tokenlens/core";
 import { fetchModels } from "tokenlens/fetch";
 import { getUsage } from "tokenlens/helpers";
 import { z } from "zod";
 import type { UserRole } from "@/app/(auth)/auth";
 import type { VisibilityType } from "@/components/visibility-selector";
+import { budgetedModel } from "@/lib/ai/budgeted-model";
 import { entitlementsByUserRole } from "@/lib/ai/entitlements";
 import { KHASIGPT_IDENTITY_FINAL_REMINDER } from "@/lib/ai/identity";
 import { getModelRegistry } from "@/lib/ai/model-registry";
@@ -33,6 +30,7 @@ import {
   calculateBillableInputTokens,
   estimateTokenCountFromText,
 } from "@/lib/billing/cost-plus";
+import { searchCreditAllowance } from "@/lib/billing/search-budget";
 import {
   getConversationalAcknowledgementReply,
   sanitizeAssistantDisplayText,
@@ -64,6 +62,7 @@ import {
   getLanguageByCodeRaw,
   getMessageCountByUserId,
   getMessagesByChatIdPage,
+  getTextGenerationPricing,
   recordTokenUsage,
   recordWebSearchUsage,
   saveChat,
@@ -191,33 +190,6 @@ const CHAT_API_FEATURE_ACCESS_KEYS = [
   NEWS_FEATURE_FLAG_KEY,
 ] as const;
 
-let globalStreamContext: ResumableStreamContext | null = null;
-let streamContextDisabled = false;
-
-const shouldUseRemoteRedis =
-  process.env.DISABLE_REMOTE_REDIS === "1"
-    ? false
-    : process.env.NODE_ENV === "development"
-      ? process.env.ENABLE_REMOTE_REDIS_IN_DEV === "1"
-      : true;
-const rawRedisUrl = shouldUseRemoteRedis
-  ? process.env.REDIS_URL ?? process.env.KV_URL ?? null
-  : null;
-const redisUrl = (() => {
-  if (!rawRedisUrl) {
-    return null;
-  }
-  try {
-    new URL(rawRedisUrl);
-    return rawRedisUrl;
-  } catch {
-    if (typeof process !== "undefined" && process.env.NODE_ENV === "development") {
-      console.warn("[chat-stream] Ignoring invalid Redis URL");
-    }
-    return null;
-  }
-})();
-
 const DEFAULT_CHAT_TITLE = "New Chat";
 const STREAM_HEADERS: HeadersInit = {
   "Content-Type": "text/event-stream",
@@ -300,37 +272,6 @@ const getLanguageConfigByCodeCached = unstable_cache(
   ["chat-language-config"],
   { tags: ["languages"] }
 );
-
-function hasRedisConnection() {
-  return Boolean(redisUrl);
-}
-
-export function getStreamContext() {
-  if (streamContextDisabled || !hasRedisConnection()) {
-    if (!streamContextDisabled) {
-      console.log(
-        " > Resumable streams are disabled due to missing REDIS_URL/KV_URL"
-      );
-      streamContextDisabled = true;
-    }
-    return null;
-  }
-
-  if (!globalStreamContext) {
-    try {
-      globalStreamContext = createResumableStreamContext({
-        waitUntil: after,
-      });
-    } catch (error) {
-      console.error(error);
-      streamContextDisabled = true;
-      globalStreamContext = null;
-      return null;
-    }
-  }
-
-  return globalStreamContext;
-}
 
 const IST_OFFSET_MINUTES = 5.5 * 60;
 
@@ -1295,6 +1236,16 @@ export async function POST(request: Request) {
       ).toResponse();
     }
 
+    const generationPricing = generationLease
+      ? await getTextGenerationPricing(modelConfig.id)
+      : undefined;
+    let reservedSearchCredits = 0;
+    const paidLanguageModel = generationPricing && generationLease
+      ? budgetedModel({ model: resolveLanguageModel(modelConfig), provider: modelConfig.provider,
+          modelId: modelConfig.providerModelId, pricing: generationPricing,
+          balance: () => (generationLease?.balance ?? 0) - reservedSearchCredits })
+      : resolveLanguageModel(modelConfig);
+
     const perModelAllowance = Math.max(
       0,
       modelConfig.freeMessagesPerDay ?? DEFAULT_FREE_MESSAGES_PER_DAY
@@ -2106,8 +2057,8 @@ export async function POST(request: Request) {
           "Always answer in the user's selected language unless the user explicitly asks for a different one.",
         ].join("\n");
         const metaConversationResult = await generateText({
-          model: resolveLanguageModel(modelConfig),
-          ...(modelConfig.provider === "google" ? { maxRetries: 0 } : {}),
+          model: paidLanguageModel,
+          maxRetries: 0,
           system: metaConversationSystemPrompt,
           messages: convertToModelMessages([
             ...jobsHistoryMessages,
@@ -2149,6 +2100,7 @@ export async function POST(request: Request) {
             }),
             outputTokens: metaOutputTokens,
             deductCredits: hasActiveCredits,
+            generationPricing,
           }).catch((tokenError) => {
             console.warn("[jobs-chat] failed to record meta conversation usage", {
               chatId: id,
@@ -2219,8 +2171,8 @@ export async function POST(request: Request) {
           "Do not invent salary, location, or eligibility details.",
         ].join("\n");
         const listingSummaryResult = await generateText({
-          model: resolveLanguageModel(modelConfig),
-          ...(modelConfig.provider === "google" ? { maxRetries: 0 } : {}),
+          model: paidLanguageModel,
+          maxRetries: 0,
           system: listingSummarySystemPrompt,
           messages: convertToModelMessages([
             ...jobsHistoryMessages,
@@ -2272,6 +2224,7 @@ export async function POST(request: Request) {
             }),
             outputTokens: listingOutputTokens,
             deductCredits: hasActiveCredits,
+            generationPricing,
           }).catch((tokenError) => {
             console.warn("[jobs-chat] failed to record listing summary usage", {
               chatId: id,
@@ -2328,8 +2281,8 @@ export async function POST(request: Request) {
           "Always answer in the user's selected language unless the user explicitly asks for a different one.",
         ].join("\n");
         const followUpResult = await generateText({
-          model: resolveLanguageModel(modelConfig),
-          ...(modelConfig.provider === "google" ? { maxRetries: 0 } : {}),
+          model: paidLanguageModel,
+          maxRetries: 0,
           system: followUpSystemPrompt,
           messages: convertToModelMessages([
             ...jobsHistoryMessages,
@@ -2368,6 +2321,7 @@ export async function POST(request: Request) {
             }),
             outputTokens: followUpOutputTokens,
             deductCredits: hasActiveCredits,
+            generationPricing,
           }).catch((tokenError) => {
             console.warn("[jobs-chat] failed to record retrieval follow-up usage", {
               chatId: id,
@@ -3292,9 +3246,19 @@ export async function POST(request: Request) {
         ]
           .filter(Boolean)
           .join("\n\n");
+        const reserveSearch = (provider: typeof webSearchConfig.provider) => {
+          if (!generationPricing || !generationLease) return;
+          if (provider === "disabled") throw new ChatSDKError("bad_request:configuration");
+          const required = searchCreditAllowance({ provider, shopping: webSearchDecision.hasShoppingIntent,
+            costPerCallUsd: webSearchConfig.providerCostPerCallUsd[provider],
+            markup: webSearchConfig.providerMarkupMultiplier[provider], pricing: generationPricing });
+          if (reservedSearchCredits + required >= generationLease.balance) throw new ChatSDKError("payment_required:credits");
+          reservedSearchCredits += required;
+        };
         let attemptedProvider = webSearchConfig.provider;
 
         try {
+          reserveSearch(attemptedProvider);
           webSearchAnswer = await webSearchService.answerWithSearch({
             conversationContext,
             includeNews: resolvedChatMode === NEWS_CHAT_MODE,
@@ -3318,6 +3282,7 @@ export async function POST(request: Request) {
           ) {
             attemptedProvider = fallbackProvider;
             try {
+              reserveSearch(fallbackProvider);
               webSearchAnswer = await webSearchService.answerWithSearch({
                 conversationContext,
                 includeNews: resolvedChatMode === NEWS_CHAT_MODE,
@@ -3455,7 +3420,7 @@ export async function POST(request: Request) {
       systemInstructionParts.length > 0
         ? systemInstructionParts.join("\n\n")
         : null;
-    const languageModel = resolveLanguageModel(modelConfig);
+    const languageModel = paidLanguageModel;
 
     const shouldAttachStudyContext = Boolean(studyContextText);
     const shouldAttachJobsContext = Boolean(jobsContextText);
@@ -3673,6 +3638,7 @@ export async function POST(request: Request) {
             billableInputTokens,
             outputTokens,
             deductCredits: hasActiveCredits,
+            generationPricing,
             additionalCharges:
               webSearchAnswer && searchProvider && searchProvider !== "disabled"
                 ? [
@@ -3939,7 +3905,7 @@ export async function POST(request: Request) {
     const result = streamText({
       model: languageModel,
       ...(systemInstruction ? { system: systemInstruction } : {}),
-      ...(modelConfig.provider === "google" ? { maxRetries: 0 } : {}),
+      maxRetries: 0,
       messages: convertToModelMessages(uiMessagesForModel),
       experimental_transform: smoothStream({ chunking: "word" }),
       experimental_telemetry: {

@@ -8,7 +8,7 @@ import {
 import { expect, test } from "../fixtures";
 
 loadEnv({ path: ".env" });
-loadEnv({ path: ".env.local", override: true });
+loadEnv({ path: ".env.local", override: process.env.ISOLATED_TEST_RUN !== "1" });
 
 const postgresUrl = process.env.POSTGRES_URL;
 if (!postgresUrl) {

@@ -18,10 +18,10 @@ const LOGIN_PATH = "/login";
 
 export async function GET(
   request: Request,
-  { params }: { params: { token: string } }
+  { params }: { params: Promise<{ token: string }> }
 ) {
   const url = new URL(request.url);
-  const token = params.token?.trim() ?? "";
+  const token = (await params).token?.trim() ?? "";
   const callbackParam = url.searchParams.get("callbackUrl") ?? DEFAULT_CALLBACK_PATH;
   const safeCallbackPath = sanitizeRedirectPath(
     callbackParam,

@@ -22,6 +22,7 @@
     "db:check": "drizzle-kit check",
     "db:up": "drizzle-kit up",
     "test": "pnpm exec playwright install chromium && pnpm dlx cross-env PLAYWRIGHT=true PORT=3000 pnpm exec playwright test",
+    "test:isolated": "node scripts/test-isolated.cjs",
     "check": "pnpm lint && pnpm typecheck && pnpm test"
   },
   "dependencies": {

@@ -44,6 +44,7 @@ import {
   selectBaseCreditPlan,
   type UnpricedCostPlusLineItem,
 } from "@/lib/billing/cost-plus";
+import type { GenerationPricing } from "@/lib/billing/generation-budget";
 import { withAdminDatabase } from "@/lib/db/admin-database";
 import { normalizeAppSettingValueForWrite } from "@/lib/db/app-setting-validation";
 import { claimPaidGeneration, releasePaidGeneration } from "@/lib/db/paid-generation-admission";
@@ -10269,14 +10270,16 @@ export async function createUserSubscription({
 }
 
 export async function acquirePaidGenerationForUser(userId: string, minimumBalance = 1) {
+  if (!Number.isSafeInteger(minimumBalance) || minimumBalance < 1) throw new ChatSDKError("bad_request:configuration");
   const claim = await db.transaction(async (tx) => {
     const subscription = await getActiveSubscriptionInternal(tx, userId, new Date());
     if (!subscription || subscription.tokenBalance < Math.max(1, minimumBalance)) {
       throw new ChatSDKError("payment_required:credits");
     }
-    return claimPaidGeneration(tx, userId);
+    return { ...await claimPaidGeneration(tx, userId), balance: subscription.tokenBalance };
   });
   return {
+    balance: claim.balance,
     release: () => releasePaidGeneration(db, userId, claim.ownerId).catch((error) => {
       // Retain admission until its expiry if cleanup fails; never admit a
       // replacement by pretending the release succeeded.
@@ -10755,6 +10758,16 @@ async function getTokenCostPlusSnapshot({
   return null;
 }
 
+export async function getTextGenerationPricing(modelConfigId: string): Promise<GenerationPricing> {
+  const pricing = await getTokenCostPlusSnapshot({ modelConfigId, liveVoiceModelConfigId: null });
+  if (!pricing || pricing.inputCostPerMillionUsd <= 0 || pricing.outputCostPerMillionUsd <= 0) {
+    throw new ChatSDKError("bad_request:configuration");
+  }
+  const quote = await getCostPlusCreditQuote({ providerCostUsd: 1, markupMultiplier: pricing.markupMultiplier });
+  if (!quote) throw new ChatSDKError("bad_request:configuration");
+  return { ...pricing, usdToInr: quote.usdToInr, walletUnitsPerInr: quote.walletUnitsPerInr, pricingReferencePlanId: quote.pricingReferencePlanId };
+}
+
 export async function recordTokenUsage({
   userId,
   chatId,
@@ -10767,6 +10780,7 @@ export async function recordTokenUsage({
   additionalCharges = [],
   requestKey = null,
   billTokenUsage = true,
+  generationPricing,
 }: {
   userId: string;
   chatId: string;
@@ -10786,6 +10800,7 @@ export async function recordTokenUsage({
   additionalCharges?: AdditionalUsageCharge[];
   requestKey?: string | null;
   billTokenUsage?: boolean;
+  generationPricing?: GenerationPricing;
 }): Promise<TokenUsage> {
   const totalTokens = Math.max(0, Math.round(inputTokens + outputTokens));
   const resolvedBillableInputTokens =
@@ -10852,12 +10867,19 @@ export async function recordTokenUsage({
       usdToInr = getFallbackUsdToInrRate();
     }
 
-    tokenCostPlusSnapshot = billTokenUsage
+    tokenCostPlusSnapshot = billTokenUsage && generationPricing
+      ? { category: "chat", ...generationPricing }
+      : billTokenUsage
       ? await getTokenCostPlusSnapshot({
           liveVoiceModelConfigId,
           modelConfigId,
         })
       : null;
+
+    if (generationPricing) {
+      if (tokenCostPlusSnapshot) tokenCostPlusSnapshot = { ...tokenCostPlusSnapshot, ...generationPricing };
+      usdToInr = generationPricing.usdToInr;
+    }
 
   }
 
@@ -10939,6 +10961,10 @@ export async function recordTokenUsage({
           walletUnitsPerInr = calculateWalletUnitsPerInr(
             resolvedReferencePlan
           );
+        }
+        if (generationPricing) {
+          pricingReferencePlanId = generationPricing.pricingReferencePlanId;
+          walletUnitsPerInr = generationPricing.walletUnitsPerInr;
         }
 
         const shouldPriceTokenUsage =
@@ -11319,21 +11345,7 @@ export async function getCostPlusCreditQuote({
   };
 }
 
-export async function deductImageCredits({
-  userId,
-  chatId,
-  allowManualCredits = true,
-  imageModelConfigId = null,
-  outputCount = 1,
-  requestKey = null,
-}: {
-  userId: string;
-  chatId: string;
-  allowManualCredits?: boolean;
-  imageModelConfigId?: string | null;
-  outputCount?: number;
-  requestKey?: string | null;
-}): Promise<void> {
+export async function getImageGenerationChargeQuote(imageModelConfigId: string | null, outputCount = 1) {
   const normalizedOutputCount = Math.max(1, Math.round(outputCount));
   const [imagePricing] = imageModelConfigId
     ? await db
@@ -11375,6 +11387,29 @@ export async function deductImageCredits({
       "Image generation pricing is unavailable"
     );
   }
+  return { imagePricing, costPlusQuote, outputCount: normalizedOutputCount, imageModelConfigId };
+}
+
+export async function deductImageCredits({
+  userId,
+  chatId,
+  allowManualCredits = true,
+  imageModelConfigId = null,
+  outputCount = 1,
+  requestKey = null,
+  generationQuote,
+}: {
+  userId: string;
+  chatId: string;
+  allowManualCredits?: boolean;
+  imageModelConfigId?: string | null;
+  outputCount?: number;
+  requestKey?: string | null;
+  generationQuote?: Awaited<ReturnType<typeof getImageGenerationChargeQuote>>;
+}): Promise<void> {
+  const quote = generationQuote ?? await getImageGenerationChargeQuote(imageModelConfigId, outputCount);
+  if (quote.imageModelConfigId !== imageModelConfigId || quote.outputCount !== outputCount) throw new ChatSDKError("bad_request:configuration");
+  const { imagePricing, costPlusQuote, outputCount: normalizedOutputCount } = quote;
   const resolvedTokens = costPlusQuote.creditUnits;
 
   if (resolvedTokens <= 0) {

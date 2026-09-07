@@ -12,7 +12,7 @@ import { config as loadEnv } from "dotenv";
 import postgres from "postgres";
 
 loadEnv({ path: ".env" });
-loadEnv({ path: ".env.local", override: true });
+loadEnv({ path: ".env.local", override: process.env.ISOLATED_TEST_RUN !== "1" });
 
 const postgresUrl = process.env.POSTGRES_URL;
 

@@ -62,6 +62,7 @@ native/.expo/
 
 # Playwright
 /test-results/
+/.next-isolated-tests/
 /playwright-report/
 /blob-report/
 /playwright/*
