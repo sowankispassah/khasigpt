@@ -1,7 +1,7 @@
 "use client";
 
 import { subMonths, subWeeks } from "date-fns";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { User } from "next-auth";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -228,15 +228,12 @@ export function SidebarHistory({
   showNewsHistory?: boolean;
 }) {
   const { setOpenMobile } = useSidebar();
-  const params = useParams();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
-  const idParam = params?.id;
-  const activePathChatId =
-    typeof idParam === "string"
-      ? idParam
-      : Array.isArray(idParam)
-        ? (idParam[0] ?? null)
-        : null;
+  // A retained layout can keep the previous dynamic segment's params when
+  // navigating back to /chat. The URL is the source of truth for highlighting
+  // and duplicate-click suppression, including cached route transitions.
+  const activePathChatId = pathname.match(/^\/chat\/([^/]+)\/?$/)?.[1] ?? null;
   const queryChatId = (() => {
     const candidate = searchParams.get("chatId");
     return candidate && candidate.trim().length > 0 ? candidate.trim() : null;
