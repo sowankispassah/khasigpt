@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { parse } = require('dotenv');
 const postgres = require('postgres');
@@ -10,7 +11,19 @@ async function main() {
   if (!['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname) || !parsed.pathname.startsWith('/khasigpt_audit_')) {
     throw new Error('AUDIT_DATABASE_URL must name a disposable local khasigpt_audit_ database with the application schema applied');
   }
+  // A reused Next 16 development cache can serve 404s for existing auth route
+  // handlers on a subsequent isolated run. Rebuild only our disposable output.
+  const repoRoot = path.resolve(__dirname, '..');
+  const testOutput = path.join(repoRoot, '.next-isolated-tests');
+  const reuseProductionBuild = process.env.AUDIT_PRODUCTION_BUILD === 'reuse';
+  if (!reuseProductionBuild && fs.existsSync(testOutput)) {
+    if (fs.realpathSync(testOutput) !== testOutput) {
+      throw new Error('Refusing to remove redirected isolated test output');
+    }
+    fs.rmSync(testOutput, { recursive: true, force: true });
+  }
   const env = { ...process.env };
+  const productionBuild = process.env.AUDIT_PRODUCTION_BUILD === '1' || reuseProductionBuild;
   for (const key of Object.keys(env)) {
     if (/(?:KEY|TOKEN|SECRET|DATABASE|POSTGRES|REDIS)/i.test(key)) env[key] = '';
   }
@@ -31,6 +44,8 @@ async function main() {
     NEXT_PUBLIC_APP_URL: `http://localhost:${port}`, PLAYWRIGHT: 'true', PORT: port,
     NEXT_DIST_DIR: '.next-isolated-tests', SKIP_APP_SETTING_CACHE: '1', SKIP_TRANSLATION_CACHE: '1',
     BYPASS_SITE_STATUS_GATE_IN_DEV: 'true', SUPABASE_URL: jobs.url, SUPABASE_SERVICE_ROLE_KEY: fixtureKey,
+    ISOLATED_TEST_SERVER: productionBuild ? 'production' : 'development',
+    ENABLE_GUEST_LOGIN: 'true',
   });
   try {
     // public.jobs is intentionally maintained by SQL migrations, outside the
@@ -39,6 +54,15 @@ async function main() {
       await sql.unsafe(fs.readFileSync(`lib/db/migrations/${migration}`, 'utf8'));
     }
     await sql`insert into language (code,name,"isDefault","isActive","syncUiLanguage") values ('en','English',true,true,true),('kha','Khasi',false,true,true) on conflict (code) do nothing`;
+    if (productionBuild) {
+      // Exercise the real production gate against explicit local fixture data.
+      await sql`insert into "AppSetting" (key,value,"updatedAt") values ('site.publicLaunched','true'::json,now()) on conflict (key) do update set value = excluded.value, "updatedAt" = excluded."updatedAt"`;
+      if (!reuseProductionBuild) {
+        const build = spawn(process.execPath, ['scripts/next-build.cjs'], { env, stdio: 'inherit', windowsHide: true });
+        const code = await new Promise((resolve, reject) => { build.once('error', reject); build.once('exit', code => resolve(code ?? 1)); });
+        if (code !== 0) throw new Error(`Isolated production build failed (${code})`);
+      }
+    }
     const child = spawn(process.execPath, ['node_modules/@playwright/test/cli.js', 'test', ...process.argv.slice(2)], { env, stdio: 'inherit', windowsHide: true });
     process.exitCode = await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', code => resolve(code ?? 1)); });
   } finally {

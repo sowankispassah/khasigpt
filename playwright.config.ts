@@ -103,7 +103,9 @@ export default defineConfig({
     // Match the production build's Turbopack pipeline. Next 16's Webpack dev
     // manifest writer can expose a partially written JSON file on Windows.
     command: process.env.ISOLATED_TEST_RUN === "1"
-      ? "node node_modules/next/dist/bin/next dev --turbopack"
+      ? process.env.ISOLATED_TEST_SERVER === "production"
+        ? "node tests/support/production-server.cjs"
+        : "node node_modules/next/dist/bin/next dev --turbopack"
       : "npm run dev",
     url: `${baseURL}`,
     timeout: 120 * 1000,
