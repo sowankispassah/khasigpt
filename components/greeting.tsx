@@ -34,6 +34,7 @@ export const Greeting = ({
     <div
       className="mx-auto flex w-full max-w-3xl flex-col items-center justify-center gap-2 px-4 text-center sm:gap-3"
       key="overview"
+      data-testid="chat-greeting"
     >
       <div
         className="font-semibold text-xl md:text-2xl"

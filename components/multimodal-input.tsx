@@ -362,6 +362,11 @@ function PureMultimodalInput({
 }) {
   const { models, defaultModelId } = useModelConfig();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
   const { width } = useWindowSize();
   const { translate } = useTranslation();
   const inputPlaceholder = useEditableTranslation(
@@ -426,7 +431,7 @@ function PureMultimodalInput({
   }, [adjustHeight]);
 
   useEffect(() => {
-    if (!autoFocus || !textareaRef.current) {
+    if (!isHydrated || !autoFocus || !textareaRef.current) {
       return;
     }
     if (width && width <= 768) {
@@ -434,7 +439,7 @@ function PureMultimodalInput({
     }
 
     textareaRef.current.focus();
-  }, [autoFocus, width]);
+  }, [autoFocus, isHydrated, width]);
 
   const resetHeight = useCallback(() => {
     if (textareaRef.current) {
@@ -644,6 +649,7 @@ function PureMultimodalInput({
   const isResponsePending =
     status === "submitted" || status === "streaming";
   const isBusy =
+    !isHydrated ||
     (status !== "ready" && status !== "error") ||
     isGeneratingImage ||
     isResolvingIntent;
@@ -1173,6 +1179,7 @@ function PureMultimodalInput({
           <PromptInputTextarea
             className="grow resize-none border-0! border-none! bg-transparent p-2 text-sm outline-none ring-0 [-ms-overflow-style:none] [scrollbar-width:none] placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 [&::-webkit-scrollbar]:hidden"
             data-testid="multimodal-input"
+            disabled={!isHydrated}
             disableAutoResize={true}
             maxHeight={200}
             minHeight={44}
