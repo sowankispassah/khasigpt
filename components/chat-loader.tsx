@@ -1,7 +1,7 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import type { ComponentType } from "react";
+import dynamic from "next/dynamic";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { ChatPageLoaderPayload } from "@/lib/chat/page-payload";
 import { doneGlobalProgress } from "@/lib/ui/global-progress";
@@ -23,49 +23,24 @@ const ChatSkeleton = () => (
 
 export type ChatLoaderProps = ChatPageLoaderPayload;
 
-let resolvedChatClient: ComponentType<ChatLoaderProps> | null = null;
-let chatModulePromise: Promise<typeof import("./chat")> | null = null;
-
-function loadChatModule() {
-  if (!chatModulePromise) {
-    // If a chunk fails to load (deploy mismatch / transient network), don't
-    // cache the rejected promise forever. Allow retries.
-    chatModulePromise = import("./chat")
-      .then((module) => {
-        resolvedChatClient = module.Chat;
-        return module;
-      })
-      .catch((error) => {
-        chatModulePromise = null;
-        resolvedChatClient = null;
-        throw error;
-      });
-  }
-  return chatModulePromise;
-}
-
-function resetChatModule() {
-  chatModulePromise = null;
-  resolvedChatClient = null;
-}
+// Keep chat split from other routes while letting Next preload its chunk and
+// render the greeting/composer in the server response, before hydration.
+const ChatClient = dynamic<ChatLoaderProps>(
+  () => import("./chat").then((module) => module.Chat),
+  { loading: ChatSkeleton }
+);
 
 export function preloadChat() {
-  if (typeof window === "undefined") {
-    return;
+  if (typeof window !== "undefined") {
+    void import("./chat").catch((error) => {
+      console.warn("Chat module preload failed", error);
+    });
   }
-  loadChatModule().catch((error) => {
-    console.warn("Chat module preload failed", error);
-  });
 }
 
 export function ChatLoader(props: ChatLoaderProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const [_attempt, setAttempt] = useState(0);
-  const [loadError, setLoadError] = useState<unknown>(null);
-  const [ChatClient, setChatClient] =
-    useState<ComponentType<ChatLoaderProps> | null>(null);
   const [optimisticSession, setOptimisticSession] = useState<{
     chatMode: ChatLoaderProps["chatMode"];
     id: string;
@@ -137,91 +112,6 @@ export function ChatLoader(props: ChatLoaderProps) {
   useEffect(() => {
     doneGlobalProgress();
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoadError(null);
-
-    if (resolvedChatClient) {
-      setChatClient(() => resolvedChatClient);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    loadChatModule()
-      .then((module) => {
-        if (cancelled) {
-          return;
-        }
-        setChatClient(() => module.Chat);
-      })
-      .catch((error) => {
-        if (cancelled) {
-          return;
-        }
-        setChatClient(null);
-        setLoadError(error);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (loadError) {
-    const message =
-      loadError instanceof Error ? loadError.message : "Failed to load chat UI";
-
-    return (
-      <div className="flex h-dvh flex-col items-center justify-center gap-3 px-6 text-center">
-        <div className="max-w-md rounded-lg border bg-card p-5 shadow-sm">
-          <div className="font-medium text-base">Chat failed to load</div>
-          <div className="mt-2 text-muted-foreground text-sm">
-            {message.includes("chunk") || message.includes("ChunkLoadError")
-              ? "A new version may have been deployed. Reloading usually fixes this."
-              : "Please retry. If it keeps happening, reload the page."}
-          </div>
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-            <button
-              className="inline-flex h-9 items-center justify-center rounded-md border bg-background px-3 text-sm hover:bg-muted"
-              onClick={() => {
-                resetChatModule();
-                setAttempt((v) => v + 1);
-              }}
-              type="button"
-            >
-              Retry
-            </button>
-            <button
-              className="inline-flex h-9 items-center justify-center rounded-md border bg-background px-3 text-sm hover:bg-muted"
-              onClick={() => {
-                if (typeof window !== "undefined") {
-                  window.location.reload();
-                }
-              }}
-              type="button"
-            >
-              Reload
-            </button>
-            <button
-              className="inline-flex h-9 items-center justify-center rounded-md border bg-background px-3 text-sm hover:bg-muted"
-              onClick={() => {
-                router.refresh();
-              }}
-              type="button"
-            >
-              Refresh
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!ChatClient) {
-    return <ChatSkeleton />;
-  }
 
   return <ChatClient key={`${activeProps.id}:${activeProps.chatMode}`} {...activeProps} />;
 }
