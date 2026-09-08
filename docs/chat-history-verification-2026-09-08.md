@@ -43,4 +43,14 @@ Reviewed `native/src/screens/ChatScreen.tsx`: `openChat` always selects the requ
 
 The existing native artifact remains 0.1.166/v166. ADB reported no connected devices during this check; native history timing and device behavior are not claimed verified here.
 
+### Subsequent USB verification of 0.1.166
+
+The user subsequently connected the M2007J20CI Android phone and installed the update. ADB confirmed `khasigpt.com` versionName `0.1.166`, versionCode `166`. An earlier attempt to update the installed 0.1.164 via the locally signed APK was rejected for a signing-certificate mismatch; no uninstall or app-data clearing was performed. The user completed installation before the following checks.
+
+On the real device, opening an existing shopping conversation from history displayed its product cards and composer by **1.476 seconds**. Returning to blank chat with the header's New Chat action and selecting the same conversation again displayed them by **1.383 seconds**. Both taps closed the drawer; no ignored-click or stuck-loading behavior was observed. Focusing the composer showed it above the keyboard once the keyboard transition settled. Backgrounding and returning to the app retained the conversation and usable focused composer. No message was sent or product link opened. A bounded logcat check for the current app process found no matching fatal exception, ANR, or ReactNativeJS error signatures.
+
+Timing method: host monotonic clock immediately before `adb shell input tap`, then consecutive binary-safe `screencap` captures, with capture-start and received timestamps recorded. The values above are conservative upper bounds from the first visibly complete screenshot, including USB capture overhead; they are not frame-accurate render times. First frames still showed the drawer transition. Existing persistent caches were preserved, so neither sample proves an uncached first load. This small device check does not validate large histories, poor networks or traffic capacity.
+
+Evidence is local under `tmp/native166-history-first-timing.json`, `tmp/native166-history-reopen-timing.json`, corresponding numbered screenshots, `tmp/native166-history-keyboard-settled.png` and `tmp/native166-history-logcat.txt`. The earlier no-device limitation is superseded for these specific flows only. No application source change was needed.
+
 Unrelated root changes (`next-env.d.ts`, `tsconfig.tsbuildinfo`, `.codex-remote-attachments/`, `remotion/`) remain excluded from the application commit.
