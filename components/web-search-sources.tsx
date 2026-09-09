@@ -37,21 +37,21 @@ function getActiveStatusCopy(
   context: WebSearchStatusData["context"],
   elapsedMs: number
 ) {
-  if (elapsedMs >= 12000) {
+  if (elapsedMs >= 8000) {
     return {
       defaultText: "Finalizing results",
       description: "Status shown while KhasiGPT finalizes a grounded Web Search answer.",
       key: "chat.web_search.finalizing_results",
     };
   }
-  if (elapsedMs >= 8000) {
+  if (elapsedMs >= 5000) {
     return {
       defaultText: "Reviewing search results",
       description: "Status shown while KhasiGPT reviews grounded Web Search results.",
       key: "chat.web_search.reviewing_results",
     };
   }
-  if (elapsedMs >= 4000) {
+  if (elapsedMs >= 2000) {
     return {
       defaultText: "Gathering more information",
       description: "Status shown while KhasiGPT gathers more grounded Web Search information.",
@@ -500,30 +500,31 @@ export function WebSearchSources({
   return (
     <div className="w-full space-y-3">
       <WebSearchProducts products={safeProducts} />
-      {hasSourceDetails ? <details
-        className="group w-full rounded-xl border border-border/60 bg-muted/20 text-left"
-        data-testid="web-search-sources"
-      >
-      <summary
-        aria-label={translate(
-          "chat.web_search.sources_count",
-          `Sources (${safeSources.length})`
-        )}
-        className="flex cursor-pointer list-none items-center gap-2 px-2 py-1.5 text-sm [&::-webkit-details-marker]:hidden group-open:px-3 group-open:py-2.5"
-      >
-        <Info className="size-4 shrink-0 text-primary" />
-        <span className="hidden min-w-0 flex-1 font-medium text-foreground group-open:inline-flex">
-          <EditableTranslation
-            defaultText="Sources ({count})"
-            description="Expandable heading above links returned by grounded Web Search."
-            translationKey="chat.web_search.sources_count"
-            values={{ count: safeSources.length }}
-          />
-        </span>
-        <ChevronDown className="hidden size-4 shrink-0 text-muted-foreground transition-transform group-open:inline-flex group-open:rotate-180" />
-      </summary>
+      {hasSourceDetails ? (
+        <details
+          className="group ml-auto w-fit text-left group-open:ml-0 group-open:w-full group-open:rounded-xl group-open:border group-open:border-border/60 group-open:bg-muted/20"
+          data-testid="web-search-sources"
+        >
+          <summary
+            aria-label={translate(
+              "chat.web_search.sources_count",
+              `Sources (${safeSources.length})`
+            )}
+            className="ml-auto flex w-fit cursor-pointer list-none items-center justify-end gap-2 rounded-full px-2 py-1.5 text-sm transition-colors hover:bg-muted/50 [&::-webkit-details-marker]:hidden group-open:ml-0 group-open:w-full group-open:justify-between group-open:rounded-none group-open:px-3 group-open:py-2.5"
+          >
+            <Info className="size-4 shrink-0 text-primary" />
+            <span className="hidden min-w-0 flex-1 font-medium text-foreground group-open:inline-flex">
+              <EditableTranslation
+                defaultText="Sources ({count})"
+                description="Expandable heading above links returned by grounded Web Search."
+                translationKey="chat.web_search.sources_count"
+                values={{ count: safeSources.length }}
+              />
+            </span>
+            <ChevronDown className="hidden size-4 shrink-0 text-muted-foreground transition-transform group-open:inline-flex group-open:rotate-180" />
+          </summary>
 
-      <div className="space-y-3 border-border/60 border-t px-3 py-3">
+          <div className="space-y-3 border-border/60 border-t px-3 py-3">
         {safeVideos.length > 0 ? <WebSearchVideos videos={safeVideos} /> : null}
         {safeSources.length > 0 ? (
           <div className="grid gap-2 sm:grid-cols-2">
@@ -637,8 +638,9 @@ export function WebSearchSources({
             </div>
           </div>
         ) : null}
-      </div>
-      </details> : null}
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }

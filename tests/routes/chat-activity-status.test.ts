@@ -32,12 +32,13 @@ test("web chat uses stable accessible animated text instead of thinking spinners
 });
 
 test("search and news progress use one minimal context-aware activity status", async () => {
-  const [sources, chat, route, types, nativeChat, nativeStatus, nativeTypes] =
+  const [sources, chat, route, types, message, nativeChat, nativeStatus, nativeTypes] =
     await Promise.all([
       readWorkspaceFile("components/web-search-sources.tsx"),
       readWorkspaceFile("components/chat.tsx"),
       readWorkspaceFile("app/(chat)/api/chat/route.ts"),
       readWorkspaceFile("lib/web-search/types.ts"),
+      readWorkspaceFile("components/message.tsx"),
       readWorkspaceFile("native/src/screens/ChatScreen.tsx"),
       readWorkspaceFile("native/src/components/AnimatedStatusText.tsx"),
       readWorkspaceFile("native/src/api/types.ts"),
@@ -48,12 +49,21 @@ test("search and news progress use one minimal context-aware activity status", a
   expect(sources).toContain("Gathering more information");
   expect(sources).toContain("Reviewing search results");
   expect(sources).toContain("Finalizing results");
+  expect(sources).toContain("elapsedMs >= 2000");
+  expect(sources).toContain("elapsedMs >= 5000");
+  expect(sources).toContain("elapsedMs >= 8000");
   expect(sources).toContain("<Info");
+  expect(sources).toContain("group-open:w-full");
+  expect(sources).toContain("group ml-auto w-fit");
+  expect(sources).toContain("ml-auto flex w-fit");
   expect(sources).toContain("<AnimatedStatus");
   expect(sources).not.toContain("Searching the web...");
   expect(types).toContain('context?: "web" | "news"');
   expect(route).toContain(
     'resolvedChatMode === NEWS_CHAT_MODE ? "news" : "web"'
+  );
+  expect(message).toContain(
+    "(hasWebSearchAnswer && part.data.status !== \"failed\")"
   );
   expect(chat).toContain("contextOverride");
   expect(chat).toContain("const stopChat = useCallback");
@@ -67,7 +77,12 @@ test("search and news progress use one minimal context-aware activity status", a
   expect(nativeChat).toContain("Gathering more information");
   expect(nativeChat).toContain("Reviewing search results");
   expect(nativeChat).toContain("Finalizing results");
+  expect(nativeChat).toContain("elapsedMs >= 2000");
+  expect(nativeChat).toContain("elapsedMs >= 5000");
+  expect(nativeChat).toContain("elapsedMs >= 8000");
   expect(nativeChat).toContain("<Info");
+  expect(nativeChat).toContain("styles.webSourcesCollapsedHeader");
+  expect(nativeChat).toContain('alignSelf: "flex-end"');
   expect(nativeChat).toContain("<AnimatedStatusText");
   expect(nativeChat).not.toContain("function ThinkingText");
   expect(nativeChat).toContain("context: webSearchContext");
