@@ -61,9 +61,10 @@ import {
   SITE_COMING_SOON_CONTENT_SETTING_KEY,
   SITE_COMING_SOON_TIMER_SETTING_KEY,
   SITE_LEGACY_LAUNCH_MODE_SETTING_KEY,
+  SITE_MOBILE_APP_LAUNCHED_SETTING_KEY,
   SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
-  SITE_PUBLIC_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
+  SITE_WEB_LAUNCHED_SETTING_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
@@ -148,7 +149,8 @@ const SETTINGS_SNAPSHOT_KEYS = [
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   SITE_COMING_SOON_CONTENT_SETTING_KEY,
   SITE_COMING_SOON_TIMER_SETTING_KEY,
-  SITE_PUBLIC_LAUNCHED_SETTING_KEY,
+  SITE_WEB_LAUNCHED_SETTING_KEY,
+  SITE_MOBILE_APP_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
   SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
@@ -176,7 +178,8 @@ const SETTINGS_SNAPSHOT_KEYS = [
   FREE_MESSAGE_SETTINGS_KEY,
 ] as const;
 const ESSENTIAL_FALLBACK_SETTING_KEYS = [
-  SITE_PUBLIC_LAUNCHED_SETTING_KEY,
+  SITE_WEB_LAUNCHED_SETTING_KEY,
+  SITE_MOBILE_APP_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
   SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
@@ -499,8 +502,11 @@ async function loadAdminSettingsData() {
   const suggestedPromptsByLanguageSetting = getStoredSetting<
     Record<string, string[]>
   >("suggestedPromptsByLanguage");
-  const sitePublicLaunchedSetting = getStoredSetting<string | boolean>(
-    SITE_PUBLIC_LAUNCHED_SETTING_KEY
+  const siteWebLaunchedSetting = getStoredSetting<string | boolean>(
+    SITE_WEB_LAUNCHED_SETTING_KEY
+  );
+  const siteMobileAppLaunchedSetting = getStoredSetting<string | boolean>(
+    SITE_MOBILE_APP_LAUNCHED_SETTING_KEY
   );
   const siteUnderMaintenanceSetting = getStoredSetting<string | boolean>(
     SITE_UNDER_MAINTENANCE_SETTING_KEY
@@ -576,7 +582,8 @@ async function loadAdminSettingsData() {
     translationFeatureLanguages: translationFeatureLanguagesState.value,
     translationFeatureLanguagesLoadFailed: translationFeatureLanguagesState.failed,
     freeMessageSettings,
-    sitePublicLaunchedSetting,
+    siteWebLaunchedSetting,
+    siteMobileAppLaunchedSetting,
     siteUnderMaintenanceSetting,
     sitePrelaunchInviteOnlySetting,
     siteAdminEntryEnabledSetting,
@@ -622,7 +629,8 @@ function buildFallbackAdminSettingsData() {
     translationFeatureLanguagesLoadFailed: true,
     freeMessageSettings: normalizeFreeMessageSettings(null),
     calculatorEnabledSetting: null,
-    sitePublicLaunchedSetting: null,
+    siteWebLaunchedSetting: null,
+    siteMobileAppLaunchedSetting: null,
     siteUnderMaintenanceSetting: null,
     sitePrelaunchInviteOnlySetting: null,
     siteAdminEntryEnabledSetting: null,
@@ -720,9 +728,12 @@ export default async function AdminSettingsPage({
       settingsData = {
         ...settingsData,
         appSettingReadSource: "essential-db",
-        sitePublicLaunchedSetting:
-          getEssential<string | boolean>(SITE_PUBLIC_LAUNCHED_SETTING_KEY) ??
-          settingsData.sitePublicLaunchedSetting,
+        siteWebLaunchedSetting:
+          getEssential<string | boolean>(SITE_WEB_LAUNCHED_SETTING_KEY) ??
+          settingsData.siteWebLaunchedSetting,
+        siteMobileAppLaunchedSetting:
+          getEssential<string | boolean>(SITE_MOBILE_APP_LAUNCHED_SETTING_KEY) ??
+          settingsData.siteMobileAppLaunchedSetting,
         siteUnderMaintenanceSetting:
           getEssential<string | boolean>(SITE_UNDER_MAINTENANCE_SETTING_KEY) ??
           settingsData.siteUnderMaintenanceSetting,
@@ -788,7 +799,8 @@ export default async function AdminSettingsPage({
     translationFeatureLanguages,
     translationFeatureLanguagesLoadFailed,
     freeMessageSettings,
-    sitePublicLaunchedSetting,
+    siteWebLaunchedSetting,
+    siteMobileAppLaunchedSetting,
     siteUnderMaintenanceSetting,
     sitePrelaunchInviteOnlySetting,
     siteAdminEntryEnabledSetting,
@@ -975,11 +987,15 @@ export default async function AdminSettingsPage({
   const siteLegacyLaunchMode = parseLegacySiteLaunchMode(
     siteLegacyLaunchModeSetting
   );
-  const sitePublicLaunched = resolvePublicLaunchedSetting({
+  const siteWebLaunched = resolvePublicLaunchedSetting({
     fallback: true,
     legacyMode: siteLegacyLaunchMode,
-    value: sitePublicLaunchedSetting,
+    value: siteWebLaunchedSetting,
   });
+  const siteMobileAppLaunched = parseBooleanSetting(
+    siteMobileAppLaunchedSetting,
+    false
+  );
   const siteUnderMaintenance = parseBooleanSetting(
     siteUnderMaintenanceSetting,
     false
@@ -1219,7 +1235,8 @@ export default async function AdminSettingsPage({
           <div className="flex flex-col gap-6">
             <SiteAccessSettingsPanel
               initialState={{
-                publicLaunched: sitePublicLaunched,
+                webLaunched: siteWebLaunched,
+                mobileAppLaunched: siteMobileAppLaunched,
                 underMaintenance: siteUnderMaintenance,
                 inviteOnlyPrelaunch: sitePrelaunchInviteOnly,
                 adminAccessEnabled: siteAdminEntryEnabled,

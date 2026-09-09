@@ -116,7 +116,7 @@ type RateLimitBucket = { count: number; resetAt: number };
 const buckets = new Map<string, RateLimitBucket>();
 let siteStatusCache: {
   fetchedAt: number;
-  publicLaunched: boolean;
+  webLaunched: boolean;
   underMaintenance: boolean;
   inviteOnlyPrelaunch: boolean;
   adminAccessEnabled: boolean;
@@ -140,7 +140,7 @@ function getSafeSiteStatusFallback() {
   if (process.env.NODE_ENV === "production") {
     return {
       degraded: true,
-      publicLaunched: false,
+      webLaunched: false,
       underMaintenance: false,
       inviteOnlyPrelaunch: false,
       adminAccessEnabled: false,
@@ -150,7 +150,7 @@ function getSafeSiteStatusFallback() {
 
   return {
     degraded: true,
-    publicLaunched: true,
+    webLaunched: true,
     underMaintenance: false,
     inviteOnlyPrelaunch: false,
     adminAccessEnabled: false,
@@ -352,7 +352,7 @@ async function resolveSiteStatus(request: NextRequest) {
 
 async function fetchSiteStatus(): Promise<{
   degraded: boolean;
-  publicLaunched: boolean;
+  webLaunched: boolean;
   underMaintenance: boolean;
   inviteOnlyPrelaunch: boolean;
   adminAccessEnabled: boolean;
@@ -361,7 +361,7 @@ async function fetchSiteStatus(): Promise<{
   if (BYPASS_SITE_STATUS_GATE_IN_DEV) {
     return {
       degraded: false,
-      publicLaunched: true,
+      webLaunched: true,
       underMaintenance: false,
       inviteOnlyPrelaunch: false,
       adminAccessEnabled: false,
@@ -373,7 +373,7 @@ async function fetchSiteStatus(): Promise<{
   if (siteStatusCache && now - siteStatusCache.fetchedAt < SITE_STATUS_CACHE_WINDOW_MS) {
     return {
       degraded: false,
-      publicLaunched: siteStatusCache.publicLaunched,
+      webLaunched: siteStatusCache.webLaunched,
       underMaintenance: siteStatusCache.underMaintenance,
       inviteOnlyPrelaunch: siteStatusCache.inviteOnlyPrelaunch,
       adminAccessEnabled: siteStatusCache.adminAccessEnabled,
@@ -393,7 +393,7 @@ async function fetchSiteStatus(): Promise<{
       readSiteAvailability(),
       INTERNAL_STATUS_FETCH_TIMEOUT_MS
     );
-    const { publicLaunched, underMaintenance, inviteOnlyPrelaunch,
+    const { webLaunched, underMaintenance, inviteOnlyPrelaunch,
       adminAccessEnabled, adminEntryPath } = body;
     const degraded = false;
     const durationMs = Date.now() - startedAt;
@@ -404,7 +404,7 @@ async function fetchSiteStatus(): Promise<{
     if (!degraded) {
       siteStatusCache = {
         fetchedAt: Date.now(),
-        publicLaunched,
+        webLaunched,
         underMaintenance,
         inviteOnlyPrelaunch,
         adminAccessEnabled,
@@ -414,7 +414,7 @@ async function fetchSiteStatus(): Promise<{
 
     return {
       degraded,
-      publicLaunched,
+      webLaunched,
       underMaintenance,
       inviteOnlyPrelaunch,
       adminAccessEnabled,
@@ -425,7 +425,7 @@ async function fetchSiteStatus(): Promise<{
     if (staleStatusAllowed && siteStatusCache) {
       return {
         degraded: false,
-        publicLaunched: siteStatusCache.publicLaunched,
+        webLaunched: siteStatusCache.webLaunched,
         underMaintenance: siteStatusCache.underMaintenance,
         inviteOnlyPrelaunch: siteStatusCache.inviteOnlyPrelaunch,
         adminAccessEnabled: siteStatusCache.adminAccessEnabled,
@@ -646,7 +646,7 @@ export async function proxy(request: NextRequest) {
       );
     } else {
       const shouldResolveAdminForSiteGate =
-        siteStatus.underMaintenance || !siteStatus.publicLaunched;
+        siteStatus.underMaintenance || !siteStatus.webLaunched;
       const isAdmin = shouldResolveAdminForSiteGate
         ? await resolveIsAdmin(request)
         : false;
@@ -680,7 +680,7 @@ export async function proxy(request: NextRequest) {
             landingUrl.search = "";
             return NextResponse.redirect(landingUrl);
           }
-        } else if (!siteStatus.publicLaunched) {
+        } else if (!siteStatus.webLaunched) {
           if (!allowAdminReentry && pathname !== SITE_COMING_SOON_PATH) {
             if (!siteStatus.inviteOnlyPrelaunch) {
               const landingUrl = request.nextUrl.clone();

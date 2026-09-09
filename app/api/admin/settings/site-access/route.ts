@@ -5,9 +5,10 @@ import {
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
   SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
   SITE_LEGACY_LAUNCH_MODE_SETTING_KEY,
+  SITE_MOBILE_APP_LAUNCHED_SETTING_KEY,
   SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
-  SITE_PUBLIC_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
+  SITE_WEB_LAUNCHED_SETTING_KEY,
 } from "@/lib/constants";
 import {
   appSettingCacheTagForKey,
@@ -37,7 +38,8 @@ const AUDIT_TIMEOUT_MS = 3_000;
 const WRITE_TIMEOUT_MS = 12_000;
 
 const SITE_SETTING_KEYS = [
-  SITE_PUBLIC_LAUNCHED_SETTING_KEY,
+  SITE_WEB_LAUNCHED_SETTING_KEY,
+  SITE_MOBILE_APP_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
   SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
@@ -47,14 +49,16 @@ const SITE_SETTING_KEYS = [
 ] as const;
 
 const TOGGLE_FIELD_MAP: Record<string, string> = {
-  publicLaunched: SITE_PUBLIC_LAUNCHED_SETTING_KEY,
+  webLaunched: SITE_WEB_LAUNCHED_SETTING_KEY,
+  mobileAppLaunched: SITE_MOBILE_APP_LAUNCHED_SETTING_KEY,
   underMaintenance: SITE_UNDER_MAINTENANCE_SETTING_KEY,
   inviteOnlyPrelaunch: SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
   adminAccessEnabled: SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
 };
 
 type SiteAccessState = {
-  publicLaunched: boolean;
+  webLaunched: boolean;
+  mobileAppLaunched: boolean;
   underMaintenance: boolean;
   inviteOnlyPrelaunch: boolean;
   adminAccessEnabled: boolean;
@@ -90,11 +94,15 @@ async function loadSiteAccessState(): Promise<SiteAccessState> {
     map.get(SITE_LEGACY_LAUNCH_MODE_SETTING_KEY)
   );
 
-  const publicLaunched = resolvePublicLaunchedSetting({
+  const webLaunched = resolvePublicLaunchedSetting({
     fallback: true,
     legacyMode: legacyLaunchMode,
-    value: map.get(SITE_PUBLIC_LAUNCHED_SETTING_KEY),
+    value: map.get(SITE_WEB_LAUNCHED_SETTING_KEY),
   });
+  const mobileAppLaunched = parseBooleanSetting(
+    map.get(SITE_MOBILE_APP_LAUNCHED_SETTING_KEY),
+    false
+  );
   const underMaintenance = parseBooleanSetting(
     map.get(SITE_UNDER_MAINTENANCE_SETTING_KEY),
     false
@@ -116,7 +124,8 @@ async function loadSiteAccessState(): Promise<SiteAccessState> {
     typeof adminEntryCodeHash === "string" && adminEntryCodeHash.trim().length > 0;
 
   return {
-    publicLaunched,
+    webLaunched,
+    mobileAppLaunched,
     underMaintenance,
     inviteOnlyPrelaunch,
     adminAccessEnabled,

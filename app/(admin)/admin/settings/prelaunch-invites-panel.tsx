@@ -5,6 +5,7 @@ import { Eye } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -308,9 +309,11 @@ export function PrelaunchInvitesPanel({
       <div className="space-y-1">
         <h3 className="font-semibold text-sm">Prelaunch invites</h3>
         <p className="text-muted-foreground text-xs">
-          Generate invite links for prelaunch access with a custom redemption
-          limit. Invite-only prelaunch only applies when Public launched is off
-          and Under maintenance is off.
+          <EditableTranslation
+            defaultText="Generate invite links for prelaunch access with a custom redemption limit. Invite-only prelaunch applies to each platform while its launch setting is off and maintenance is off."
+            description="Explanation of how prelaunch invites interact with independent web and mobile launch settings."
+            translationKey="admin.settings.site_access.prelaunch_invites.description"
+          />
         </p>
       </div>
 

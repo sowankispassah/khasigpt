@@ -2,9 +2,10 @@ import { type NextRequest, NextResponse } from "next/server";
 import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
 import {
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
+  SITE_MOBILE_APP_LAUNCHED_SETTING_KEY,
   SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
-  SITE_PUBLIC_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
+  SITE_WEB_LAUNCHED_SETTING_KEY,
 } from "@/lib/constants";
 import {
   appSettingCacheTagForKey,
@@ -23,9 +24,13 @@ const MAINTENANCE_TIMEOUT_MS = 10_000;
 const MAINTENANCE_AUDIT_TIMEOUT_MS = 3_000;
 
 const MAINTENANCE_FIELD_CONFIG: Record<string, MaintenanceFieldConfig> = {
-  publicLaunched: {
-    settingKey: SITE_PUBLIC_LAUNCHED_SETTING_KEY,
+  webLaunched: {
+    settingKey: SITE_WEB_LAUNCHED_SETTING_KEY,
     auditAction: "site.public_launch.toggle",
+  },
+  mobileAppLaunched: {
+    settingKey: SITE_MOBILE_APP_LAUNCHED_SETTING_KEY,
+    auditAction: "site.mobile_app_launch.toggle",
   },
   underMaintenance: {
     settingKey: SITE_UNDER_MAINTENANCE_SETTING_KEY,

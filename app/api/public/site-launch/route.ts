@@ -125,10 +125,14 @@ async function loadSiteLaunchSettingsMap() {
 export async function GET() {
   try {
     const { degraded, map: settingsMap } = await loadSiteLaunchSettingsMap();
+    const availability = parseSiteAvailability(settingsMap);
     const payload = {
       confirmed: !degraded,
       degraded,
-      ...parseSiteAvailability(settingsMap),
+      ...availability,
+      // Older native releases read this field. Point it at the mobile gate so
+      // installed Android clients honor the new setting immediately.
+      publicLaunched: availability.mobileAppLaunched,
     };
 
     return NextResponse.json(
@@ -149,6 +153,7 @@ export async function GET() {
     return NextResponse.json(
       {
         ...fallbackState,
+        publicLaunched: fallbackState.mobileAppLaunched,
         confirmed: false,
         degraded: true,
       },

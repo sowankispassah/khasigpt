@@ -3,13 +3,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 
 const SITE_ACCESS_API_ENDPOINT = "/api/admin/settings/site-access";
 const REQUEST_TIMEOUT_MS = 45_000;
 
 type SiteAccessState = {
-  publicLaunched: boolean;
+  webLaunched: boolean;
+  mobileAppLaunched: boolean;
   underMaintenance: boolean;
   inviteOnlyPrelaunch: boolean;
   adminAccessEnabled: boolean;
@@ -24,39 +26,59 @@ type SiteAccessMutationResponse = {
 };
 
 type ToggleField =
-  | "publicLaunched"
+  | "webLaunched"
+  | "mobileAppLaunched"
   | "underMaintenance"
   | "inviteOnlyPrelaunch"
   | "adminAccessEnabled";
 
 const TOGGLE_ROWS: Array<{
   field: ToggleField;
+  descriptionKey: string;
   title: string;
+  titleKey: string;
   description: string;
 }> = [
   {
-    field: "publicLaunched",
-    title: "Public launched",
+    field: "webLaunched",
+    title: "Web launched",
+    titleKey: "admin.settings.site_access.web_launched.title",
     description:
-      "When off, non-admin visitors can only access the coming-soon page.",
+      "When off, non-admin web visitors can only access the coming-soon page.",
+    descriptionKey: "admin.settings.site_access.web_launched.description",
+  },
+  {
+    field: "mobileAppLaunched",
+    title: "Mobile app launched",
+    titleKey: "admin.settings.site_access.mobile_app_launched.title",
+    description:
+      "Controls public access to the native Android app independently of the web launch.",
+    descriptionKey:
+      "admin.settings.site_access.mobile_app_launched.description",
   },
   {
     field: "underMaintenance",
     title: "Under maintenance",
+    titleKey: "admin.settings.site_access.under_maintenance.title",
     description:
       "When on, non-admin visitors can only access the maintenance page.",
+    descriptionKey: "admin.settings.site_access.under_maintenance.description",
   },
   {
     field: "adminAccessEnabled",
     title: "Admin entry code",
+    titleKey: "admin.settings.site_access.admin_entry.title",
     description:
       "When on and site access is restricted, admins can unlock /login from your custom hidden admin-entry path using a code.",
+    descriptionKey: "admin.settings.site_access.admin_entry.description",
   },
   {
     field: "inviteOnlyPrelaunch",
     title: "Invite-only prelaunch",
+    titleKey: "admin.settings.site_access.invite_only.title",
     description:
-      "When enabled and Public launched is off, only invited users can access the app after redeeming an invite link.",
+      "When enabled, invited users can access a platform while its launch setting is off.",
+    descriptionKey: "admin.settings.site_access.invite_only.description",
   },
 ];
 
@@ -326,14 +348,27 @@ export function SiteAccessSettingsPanel({
           >
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <span className="font-medium text-sm">{row.title}</span>
+                <span className="font-medium text-sm">
+                  <EditableTranslation
+                    defaultText={row.title}
+                    description={`${row.title} setting label in Admin Maintenance settings.`}
+                    translationKey={row.titleKey}
+                  />
+                </span>
                 <EnabledBadge enabled={enabled} />
               </div>
-              <p className="text-muted-foreground text-xs">{row.description}</p>
+              <p className="text-muted-foreground text-xs">
+                <EditableTranslation
+                  defaultText={row.description}
+                  description={`${row.title} setting description in Admin Maintenance settings.`}
+                  translationKey={row.descriptionKey}
+                />
+              </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
               <Button
+                className="cursor-pointer"
                 disabled={isLoading || Boolean(savingField)}
                 onClick={() => {
                   void saveToggle(row.field, false);
@@ -353,6 +388,7 @@ export function SiteAccessSettingsPanel({
                 )}
               </Button>
               <Button
+                className="cursor-pointer"
                 disabled={isLoading || Boolean(savingField)}
                 onClick={() => {
                   void saveToggle(row.field, true);

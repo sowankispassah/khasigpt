@@ -6,8 +6,8 @@ import {
   SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
   SITE_LEGACY_LAUNCH_MODE_SETTING_KEY,
-  SITE_PUBLIC_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
+  SITE_WEB_LAUNCHED_SETTING_KEY,
 } from "@/lib/constants";
 import {
   getAppSetting,
@@ -34,7 +34,7 @@ const ADMIN_ENTRY_RATE_LIMIT_MAX = 10;
 const ADMIN_ENTRY_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 const ADMIN_ENTRY_SETTINGS_TIMEOUT_MS = 2_000;
 const ADMIN_ENTRY_GATE_SETTING_KEYS = [
-  SITE_PUBLIC_LAUNCHED_SETTING_KEY,
+  SITE_WEB_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
   SITE_LEGACY_LAUNCH_MODE_SETTING_KEY,
@@ -124,7 +124,7 @@ export async function POST(request: Request) {
   }
 
   const gateSettings = await loadAdminEntryGateSettings();
-  const publicLaunchedSetting = gateSettings.get(SITE_PUBLIC_LAUNCHED_SETTING_KEY);
+  const webLaunchedSetting = gateSettings.get(SITE_WEB_LAUNCHED_SETTING_KEY);
   const underMaintenanceSetting = gateSettings.get(SITE_UNDER_MAINTENANCE_SETTING_KEY);
   const adminAccessEnabledSetting = gateSettings.get(
     SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY
@@ -133,10 +133,10 @@ export async function POST(request: Request) {
     gateSettings.get(SITE_LEGACY_LAUNCH_MODE_SETTING_KEY)
   );
 
-  const publicLaunched = resolvePublicLaunchedSetting({
+  const webLaunched = resolvePublicLaunchedSetting({
     fallback: true,
     legacyMode: legacyLaunchMode,
-    value: publicLaunchedSetting,
+    value: webLaunchedSetting,
   });
   const underMaintenance = parseBooleanSetting(underMaintenanceSetting, false);
   const adminAccessEnabled = resolveAdminAccessEnabledSetting({
@@ -160,7 +160,7 @@ export async function POST(request: Request) {
     );
   }
 
-  if (publicLaunched && !underMaintenance) {
+  if (webLaunched && !underMaintenance) {
     return NextResponse.json(
       {
         error: "not_required",
