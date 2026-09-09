@@ -35,6 +35,56 @@ test.describe("admin model config database resilience", () => {
     );
     expect(setActiveSource).toContain("{ retry: true }");
     expect(setActiveSource).toContain(".returning({ id: imageModelConfig.id })");
+    expect(setActiveSource).toContain("return activated.id");
+  });
+
+  test("loads admin image models through the isolated retrying database pool", async () => {
+    const source = await readWorkspaceFile("lib/db/queries.ts");
+    const listSource = extractFunctionSource(source, "listImageModelConfigs");
+    const activeIdSource = extractFunctionSource(
+      source,
+      "getAdminActiveImageModelConfigId"
+    );
+
+    expect(listSource).toContain('"image-models.list"');
+    expect(listSource).toContain("withAdminDatabase(");
+    expect(listSource).toContain("{ retry: true }");
+    expect(activeIdSource).toContain('"image-models.active-id"');
+    expect(activeIdSource).toContain("withAdminDatabase(");
+  });
+
+  test("activates image models without refreshing the full settings page", async () => {
+    const pageSource = await readWorkspaceFile(
+      "app/(admin)/admin/settings/page.tsx"
+    );
+    const controlSource = await readWorkspaceFile(
+      "app/(admin)/admin/settings/image-model-activation-control.tsx"
+    );
+    const routeSource = await readWorkspaceFile(
+      "app/api/admin/settings/image-models/active/route.ts"
+    );
+
+    expect(pageSource).toContain("<ImageModelActivationProvider");
+    expect(pageSource).toContain("<ImageModelActivationButton");
+    expect(pageSource).not.toContain(
+      "<form action={setActiveImageModelConfigAction}>"
+    );
+    expect(controlSource).toContain("disabled={activationInProgress}");
+    expect(controlSource).toContain("RECONCILIATION_TIMEOUT_MS");
+    expect(controlSource).not.toContain("router.refresh");
+    expect(routeSource).toContain("requireAdminApiUser(request)");
+    expect(routeSource).toContain("setActiveImageModelConfig(imageModelId)");
+    expect(routeSource).toContain('"Cache-Control": "no-store"');
+  });
+
+  test("does not serialize the isolated image-model read behind other settings lists", async () => {
+    const pageSource = await readWorkspaceFile(
+      "app/(admin)/admin/settings/page.tsx"
+    );
+
+    expect(pageSource).toContain("const imageModelConfigsStatePromise");
+    expect(pageSource).toContain("imageModelConfigsStatePromise,");
+    expect(pageSource).toContain("await Promise.all([");
   });
 
   test("creates active image models atomically instead of partial-saving then failing", async () => {

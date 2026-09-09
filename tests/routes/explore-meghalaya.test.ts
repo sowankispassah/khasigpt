@@ -17,6 +17,11 @@ import {
   shouldEnrichExploreSearch,
 } from "@/lib/explore/types";
 import { exploreSearchInputSchema } from "@/lib/explore/validation";
+import {
+  extractWikidataImageFileName,
+  normalizeCommonsFileName,
+  normalizeWikidataId,
+} from "@/lib/explore/wikimedia-images";
 
 const repoRoot = process.cwd();
 const readWorkspaceFile = (relativePath: string) =>
@@ -164,6 +169,30 @@ test.describe("Explore Meghalaya", () => {
     expect(shangpungToShillong).toBeGreaterThan(10);
   });
 
+  test("resolves only explicit Wikimedia and Wikidata image references", () => {
+    expect(normalizeWikidataId(" q12345 ")).toBe("Q12345");
+    expect(normalizeWikidataId("Shangpung")).toBeNull();
+    expect(normalizeCommonsFileName("File:Nartiang_Monoliths.jpg")).toBe(
+      "Nartiang Monoliths.jpg",
+    );
+    expect(
+      normalizeCommonsFileName("Category:Restaurants in Meghalaya"),
+    ).toBeNull();
+    expect(
+      extractWikidataImageFileName({
+        claims: {
+          P18: [
+            {
+              mainsnak: {
+                datavalue: { value: "Nartiang Monoliths Meghalaya.jpg" },
+              },
+            },
+          ],
+        },
+      }),
+    ).toBe("Nartiang Monoliths Meghalaya.jpg");
+  });
+
   test("recovers the exact saved Explore center for contextual chat", () => {
     const parsed = parseExploreChatContext([chatContext]);
 
@@ -244,6 +273,7 @@ test.describe("Explore Meghalaya", () => {
     expect(placesService).toContain("getRadiusBoundingBox");
     expect(placesService).toContain("filterExploreResultsWithinRadius");
     expect(placesService).toContain("const MAX_RESULTS = 48");
+    expect(placesService).toContain("resolveWikimediaImages");
     expect(searchRoute).toContain("searchExplorePlaces");
     expect(searchRoute).toContain(
       "if (shouldEnrichExploreSearch(parsed.data.searchMode))",

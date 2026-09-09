@@ -4,6 +4,29 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   { key: "common.updating", defaultText: "Updating...", description: "Generic pending label while an update is being saved." },
   { key: "common.deleting", defaultText: "Deleting...", description: "Generic pending label while an item is being deleted." },
   {
+    key: "admin.settings.image_model.active",
+    defaultText: "Active",
+    description: "Badge shown on the active image generation model.",
+  },
+  {
+    key: "admin.settings.image_model.activate",
+    defaultText: "Set as active",
+    description:
+      "Button used by an admin to activate an image generation model.",
+  },
+  {
+    key: "admin.settings.image_model.activating",
+    defaultText: "Updating...",
+    description:
+      "Pending label while an image generation model is being activated.",
+  },
+  {
+    key: "admin.settings.image_model.activated",
+    defaultText: "Active image model updated.",
+    description:
+      "Success toast shown after an image generation model is activated.",
+  },
+  {
     key: "admin.settings.image_model.activate_error",
     defaultText:
       "The active image model could not be updated. Please refresh and try again.",

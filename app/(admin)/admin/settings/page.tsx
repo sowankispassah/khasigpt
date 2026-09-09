@@ -46,6 +46,7 @@ import {
   ICON_PROMPTS_SETTING_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
+  IMAGE_WEB_REFERENCES_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_DEFAULT_LANGUAGE_A_SETTING_KEY,
@@ -74,6 +75,7 @@ import {
 import {
   getAppSettingsByKeys,
   getLastKnownAppSettingsByKeys,
+  listImageModelConfigs,
   listLanguagesWithSettings,
   listModelConfigs,
   listTranslationFeatureLanguages,
@@ -117,6 +119,11 @@ import { isGoogleLiveTranslationModel } from "@/lib/translate/live";
 import { withTimeout } from "@/lib/utils/async";
 import { FeatureAccessModeControl } from "./feature-access-mode-control";
 import { IconPromptSettingsForm } from "./icon-prompt-settings-form";
+import {
+  ImageModelActivationButton,
+  ImageModelActivationProvider,
+  ImageModelActiveBadge,
+} from "./image-model-activation-control";
 import { LanguageContentForm } from "./language-content-form";
 import { LanguagePromptsForm } from "./language-prompts-form";
 import { AdminSettingsNotice } from "./notice";
@@ -215,6 +222,14 @@ const listAdminModelConfigsCached = unstable_cache(
   {
     revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
     tags: [ADMIN_SETTINGS_MODELS_CACHE_TAG, MODEL_REGISTRY_CACHE_TAG],
+  }
+);
+const listAdminImageModelConfigsCached = unstable_cache(
+  () => listImageModelConfigs({ includeDisabled: true }),
+  ["admin-settings-image-models:v1"],
+  {
+    revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
+    tags: [ADMIN_SETTINGS_MODELS_CACHE_TAG],
   }
 );
 const listAdminLanguagesCached = unstable_cache(
@@ -409,25 +424,32 @@ async function loadAdminSettingsData() {
     dedicatedFeatureAccessStatePromise,
     appSettingStatePromise,
   ]);
+  const imageModelConfigsStatePromise = settingsQueryState(
+    "image model configs",
+    () => listAdminImageModelConfigsCached(),
+    []
+  );
   const [
-    modelsState,
-    languagesState,
-    translationFeatureLanguagesState,
-  ] = await resolveAdminDbReadGroup([
-    () =>
-      settingsQueryState(
-        "model configs",
-        () => listAdminModelConfigsCached(),
-        []
-      ),
-    () =>
-      settingsQueryState("languages", () => listAdminLanguagesCached(), []),
-    () =>
-      settingsQueryState(
-        "translation feature languages",
-        () => listAdminTranslationFeatureLanguagesCached(),
-        []
-      ),
+    [modelsState, languagesState, translationFeatureLanguagesState],
+    imageModelConfigsState,
+  ] = await Promise.all([
+    resolveAdminDbReadGroup([
+      () =>
+        settingsQueryState(
+          "model configs",
+          () => listAdminModelConfigsCached(),
+          []
+        ),
+      () =>
+        settingsQueryState("languages", () => listAdminLanguagesCached(), []),
+      () =>
+        settingsQueryState(
+          "translation feature languages",
+          () => listAdminTranslationFeatureLanguagesCached(),
+          []
+        ),
+    ]),
+    imageModelConfigsStatePromise,
   ]);
   const appSettingValuesByKey = appSettingState.values;
   const dbBackedAppSettingValues =
@@ -539,6 +561,8 @@ async function loadAdminSettingsData() {
     featureAccessState,
     modelsRaw: modelsState.value,
     modelConfigsLoadFailed: modelsState.failed,
+    imageModels: imageModelConfigsState.value,
+    imageModelConfigsLoadFailed: imageModelConfigsState.failed,
     privacyPolicySetting,
     termsOfServiceSetting,
     aboutUsSetting,
@@ -581,6 +605,8 @@ function buildFallbackAdminSettingsData() {
     }),
     modelsRaw: [],
     modelConfigsLoadFailed: true,
+    imageModels: [],
+    imageModelConfigsLoadFailed: true,
     privacyPolicySetting: null,
     termsOfServiceSetting: null,
     aboutUsSetting: null,
@@ -744,6 +770,8 @@ export default async function AdminSettingsPage({
     featureAccessState,
     modelsRaw,
     modelConfigsLoadFailed,
+    imageModels,
+    imageModelConfigsLoadFailed,
     privacyPolicySetting,
     termsOfServiceSetting,
     aboutUsSetting,
@@ -805,6 +833,7 @@ export default async function AdminSettingsPage({
   const featureSettingsReadConfirmed = featureAccessState.status === "confirmed";
   const degradedSettingsSections = [
     modelConfigsLoadFailed ? "model configs" : null,
+    imageModelConfigsLoadFailed ? "image model configs" : null,
     languagesLoadFailed ? "languages" : null,
     translationFeatureLanguagesLoadFailed
       ? "translation feature languages"
@@ -812,6 +841,7 @@ export default async function AdminSettingsPage({
   ].filter((section): section is string => Boolean(section));
 
   const activeModels = modelsRaw.filter((model) => !model.deletedAt);
+  const activeImageModels = imageModels.filter((model) => !model.deletedAt);
   const enabledModels = activeModels.filter((model) => model.isEnabled);
   const enabledLiveSpeechModels = enabledModels.filter((model) =>
     isGoogleLiveTranslationModel(model)
@@ -1011,6 +1041,12 @@ export default async function AdminSettingsPage({
       settingKey: IMAGE_GENERATION_FEATURE_FLAG_KEY,
       snapshot: featureAccessState,
     });
+  const imageWebReferencesAccessState =
+    featureAccessControlStateByField.get("imageWebReferencesAccessMode") ??
+    resolveFeatureAccessControlState({
+      settingKey: IMAGE_WEB_REFERENCES_FEATURE_FLAG_KEY,
+      snapshot: featureAccessState,
+    });
   const documentUploadsAccessState =
     featureAccessControlStateByField.get("documentUploadsAccessMode") ??
     resolveFeatureAccessControlState({
@@ -1054,6 +1090,7 @@ export default async function AdminSettingsPage({
   const jobsAccessMode = jobsAccessState.mode;
   const newsAccessMode = newsAccessState.mode;
   const imageGenerationAccessMode = imageGenerationAccessState.mode;
+  const imageWebReferencesAccessMode = imageWebReferencesAccessState.mode;
   const documentUploadsAccessMode = documentUploadsAccessState.mode;
   const exploreMeghalayaAccessMode = exploreMeghalayaAccessState.mode;
   const voiceChatAndroidAccessMode =
@@ -1366,6 +1403,15 @@ export default async function AdminSettingsPage({
             />
 
             <FeatureAccessModeControl
+              currentMode={imageWebReferencesAccessMode}
+              description="Allow image generation to find temporary web visual references for specific real-world places and landmarks. Person identity continues to use Admin character references only."
+              fieldName="imageWebReferencesAccessMode"
+              readState={imageWebReferencesAccessState.readState}
+              successMessage="Automatic web visual reference availability updated."
+              title="Automatic web visual references"
+            />
+
+            <FeatureAccessModeControl
               currentMode={documentUploadsAccessMode}
               description="Allow users to upload PDF and DOCX files in chat."
               fieldName="documentUploadsAccessMode"
@@ -1420,6 +1466,43 @@ export default async function AdminSettingsPage({
             />
 
           </div>
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          description="Choose which enabled image model handles new generations. Detailed pricing and model editing stay in Admin Pricing."
+          title="Active image model"
+        >
+          <ImageModelActivationProvider
+            initialActiveId={
+              activeImageModels.find((model) => model.isActive)?.id ?? null
+            }
+          >
+            <div className="space-y-3">
+              {activeImageModels.length === 0 ? (
+                <p className="text-muted-foreground text-sm">
+                  No image models are configured yet.
+                </p>
+              ) : (
+                activeImageModels.map((model) => (
+                  <div
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-background p-3"
+                    key={model.id}
+                  >
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <span className="font-medium text-sm">
+                        {model.displayName}
+                      </span>
+                      <span className="font-mono text-muted-foreground text-xs">
+                        {model.providerModelId}
+                      </span>
+                      <ImageModelActiveBadge modelId={model.id} />
+                    </div>
+                    <ImageModelActivationButton modelId={model.id} />
+                  </div>
+                ))
+              )}
+            </div>
+          </ImageModelActivationProvider>
         </CollapsibleSection>
 
         <CollapsibleSection
