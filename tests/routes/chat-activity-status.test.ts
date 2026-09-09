@@ -55,6 +55,8 @@ test("search and news progress use one minimal context-aware activity status", a
   expect(sources).toContain("<Info");
   expect(sources).toContain("({safeSources.length})");
   expect(sources).toContain("overlay?: boolean");
+  expect(sources).toContain("onExpandedChange?: (expanded: boolean) => void");
+  expect(sources).toContain("onToggle={(event) => onExpandedChange?.(event.currentTarget.open)}");
   expect(sources).toContain("group-open:w-[min(36rem,calc(100vw-2rem))]");
   expect(sources).toContain("group-open:w-full");
   expect(sources).toContain("ml-auto w-fit group-open:ml-0");
@@ -69,6 +71,8 @@ test("search and news progress use one minimal context-aware activity status", a
     "(hasWebSearchAnswer && part.data.status !== \"failed\")"
   );
   expect(message).toContain("pointer-events-none absolute right-3 top-1/2");
+  expect(message).toContain('? "mt-2 w-full"');
+  expect(message).toContain("overlay={!webSearchSourcesExpanded}");
   expect(message).toContain("<WebSearchProducts products={webSearchData.products} />");
   expect(chat).toContain("contextOverride");
   expect(chat).toContain("const stopChat = useCallback");
@@ -91,6 +95,7 @@ test("search and news progress use one minimal context-aware activity status", a
   expect(nativeChat).toContain('position: "absolute"');
   expect(nativeChat).toContain('position: "relative"');
   expect(nativeChat).toContain('width: "100%"');
+  expect(nativeChat).toContain("webSourcesExpanded");
   expect(nativeChat).toContain("styles.webSourcesCollapsedHeader");
   expect(nativeChat).toContain('alignSelf: "flex-end"');
   expect(nativeChat).toContain("<AnimatedStatusText");

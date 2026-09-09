@@ -445,6 +445,8 @@ export function WebSearchSources({
   sources,
   videos = [],
   overlay = false,
+  onExpandedChange,
+  showProducts = true,
 }: {
   citations?: WebSearchCitation[];
   products?: WebSearchProduct[];
@@ -452,6 +454,8 @@ export function WebSearchSources({
   sources: WebSearchSource[];
   videos?: WebSearchVideo[];
   overlay?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
+  showProducts?: boolean;
 }) {
   const { translate } = useTranslation();
   const safeSources = sources
@@ -503,7 +507,7 @@ export function WebSearchSources({
 
   return (
     <div className={cn(overlay ? "w-auto space-y-0" : "w-full space-y-3")}>
-      {overlay ? null : <WebSearchProducts products={safeProducts} />}
+      {!overlay && showProducts ? <WebSearchProducts products={safeProducts} /> : null}
       {hasSourceDetails ? (
         <details
           className={cn(
@@ -513,6 +517,7 @@ export function WebSearchSources({
               : "ml-auto w-fit group-open:ml-0 group-open:w-full group-open:rounded-xl group-open:border group-open:border-border/60 group-open:bg-muted/20"
           )}
           data-testid="web-search-sources"
+          onToggle={(event) => onExpandedChange?.(event.currentTarget.open)}
         >
           <summary
             aria-label={translate(

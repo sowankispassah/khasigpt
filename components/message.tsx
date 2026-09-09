@@ -100,6 +100,8 @@ const PurePreviewMessage = ({
   onRetryWebSearch?: (userMessageId?: string) => Promise<void> | void;
 }) => {
   const [mode, setMode] = useState<"view" | "edit">("view");
+  const [webSearchSourcesExpanded, setWebSearchSourcesExpanded] =
+    useState(false);
   const { translate } = useTranslation();
 
   const attachmentsFromMessage = message.parts.filter(
@@ -495,13 +497,25 @@ const PurePreviewMessage = ({
                 />
               ) : null}
               {hasWebSearchSourceDetails && webSearchData ? (
-                <div className="pointer-events-none absolute right-3 top-1/2 z-20 -translate-y-1/2 md:right-4">
-                  <div className="pointer-events-auto">
+                <div
+                  className={cn(
+                    webSearchSourcesExpanded
+                      ? "mt-2 w-full"
+                      : "pointer-events-none absolute right-3 top-1/2 z-20 -translate-y-1/2 md:right-4"
+                  )}
+                >
+                  <div
+                    className={cn(
+                      webSearchSourcesExpanded ? "w-full" : "pointer-events-auto"
+                    )}
+                  >
                     <WebSearchSources
                       citations={webSearchData.citations}
-                      overlay
+                      onExpandedChange={setWebSearchSourcesExpanded}
+                      overlay={!webSearchSourcesExpanded}
                       products={webSearchData.products}
                       searchQueries={webSearchData.searchQueries}
+                      showProducts={false}
                       sources={webSearchData.sources}
                       videos={webSearchData.videos}
                     />
