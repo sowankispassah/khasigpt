@@ -170,7 +170,7 @@ export function AdminUserFeatureAccessDialog({
 
   return (
     <Dialog onOpenChange={(next) => !saving && onOpenChange(next)} open={open}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-hidden p-0">
+      <DialogContent className="grid h-[90dvh] max-h-[52rem] w-[calc(100vw-1.5rem)] max-w-4xl grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0">
         <DialogHeader className="border-b px-6 pb-4 pt-6">
           <DialogTitle>
             <EditableTranslation
@@ -187,7 +187,7 @@ export function AdminUserFeatureAccessDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 overflow-y-auto px-6 py-4">
+        <div className="min-h-0 touch-pan-y overflow-y-auto overscroll-contain px-6 py-4">
           {loading && (
             <div className="flex min-h-48 items-center justify-center gap-2 text-muted-foreground text-sm">
               <Loader2 className="h-4 w-4 animate-spin" />

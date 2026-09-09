@@ -49,6 +49,8 @@ test.describe("per-user feature access", () => {
     expect(dialog).toContain('["allow", true, "Allow"]');
     expect(dialog).toContain('["block", false, "Block"]');
     expect(dialog).toContain("disabled={!data || !changed || loading || saving}");
+    expect(dialog).toContain("grid-rows-[auto_minmax(0,1fr)_auto]");
+    expect(dialog).toContain("touch-pan-y overflow-y-auto overscroll-contain");
     expect(route).toContain("replaceUserFeatureAccessOverrides");
     expect(route).not.toContain("revalidateTag");
     expect(schema).toContain('"UserFeatureAccessOverride"');
