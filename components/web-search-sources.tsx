@@ -266,12 +266,14 @@ function ProductThumbnail({ imageUrl, title }: { imageUrl?: string | null; title
   );
 }
 
-function WebSearchProducts({
+export function WebSearchProducts({
   products,
 }: {
-  products: DisplayWebSearchProduct[];
+  products: WebSearchProduct[];
 }) {
   const safeProducts = products
+    .map(normalizeWebSearchProductForDisplay)
+    .filter((product): product is DisplayWebSearchProduct => Boolean(product))
     .filter(
       (product, index, all) =>
         all.findIndex((candidate) => candidate.url === product.url) === index
@@ -442,12 +444,14 @@ export function WebSearchSources({
   searchQueries = [],
   sources,
   videos = [],
+  overlay = false,
 }: {
   citations?: WebSearchCitation[];
   products?: WebSearchProduct[];
   searchQueries?: string[];
   sources: WebSearchSource[];
   videos?: WebSearchVideo[];
+  overlay?: boolean;
 }) {
   const { translate } = useTranslation();
   const safeSources = sources
@@ -498,11 +502,16 @@ export function WebSearchSources({
     safeVideos.length > 0;
 
   return (
-    <div className="w-full space-y-3">
-      <WebSearchProducts products={safeProducts} />
+    <div className={cn(overlay ? "w-auto space-y-0" : "w-full space-y-3")}>
+      {overlay ? null : <WebSearchProducts products={safeProducts} />}
       {hasSourceDetails ? (
         <details
-          className="group ml-auto w-fit text-left group-open:ml-0 group-open:w-full group-open:rounded-xl group-open:border group-open:border-border/60 group-open:bg-muted/20"
+          className={cn(
+            "group text-left",
+            overlay
+              ? "relative w-fit group-open:w-[min(36rem,calc(100vw-2rem))] group-open:rounded-xl group-open:border group-open:border-border/60 group-open:bg-muted/20"
+              : "ml-auto w-fit group-open:ml-0 group-open:w-full group-open:rounded-xl group-open:border group-open:border-border/60 group-open:bg-muted/20"
+          )}
           data-testid="web-search-sources"
         >
           <summary
@@ -510,9 +519,12 @@ export function WebSearchSources({
               "chat.web_search.sources_count",
               `Sources (${safeSources.length})`
             )}
-            className="ml-auto flex w-fit cursor-pointer list-none items-center justify-end gap-2 rounded-full px-2 py-1.5 text-sm transition-colors hover:bg-muted/50 [&::-webkit-details-marker]:hidden group-open:ml-0 group-open:w-full group-open:justify-between group-open:rounded-none group-open:px-3 group-open:py-2.5"
+            className="ml-auto flex w-fit cursor-pointer list-none items-center justify-end gap-1.5 rounded-full px-2 py-1.5 text-sm transition-colors hover:bg-muted/50 [&::-webkit-details-marker]:hidden group-open:ml-0 group-open:w-full group-open:justify-between group-open:rounded-none group-open:px-3 group-open:py-2.5"
           >
             <Info className="size-4 shrink-0 text-primary" />
+            <span className="font-medium text-foreground group-open:hidden">
+              ({safeSources.length})
+            </span>
             <span className="hidden min-w-0 flex-1 font-medium text-foreground group-open:inline-flex">
               <EditableTranslation
                 defaultText="Sources ({count})"

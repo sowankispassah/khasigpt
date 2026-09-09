@@ -53,8 +53,11 @@ test("search and news progress use one minimal context-aware activity status", a
   expect(sources).toContain("elapsedMs >= 5000");
   expect(sources).toContain("elapsedMs >= 8000");
   expect(sources).toContain("<Info");
+  expect(sources).toContain("({safeSources.length})");
+  expect(sources).toContain("overlay?: boolean");
+  expect(sources).toContain("group-open:w-[min(36rem,calc(100vw-2rem))]");
   expect(sources).toContain("group-open:w-full");
-  expect(sources).toContain("group ml-auto w-fit");
+  expect(sources).toContain("ml-auto w-fit group-open:ml-0");
   expect(sources).toContain("ml-auto flex w-fit");
   expect(sources).toContain("<AnimatedStatus");
   expect(sources).not.toContain("Searching the web...");
@@ -65,6 +68,8 @@ test("search and news progress use one minimal context-aware activity status", a
   expect(message).toContain(
     "(hasWebSearchAnswer && part.data.status !== \"failed\")"
   );
+  expect(message).toContain("pointer-events-none absolute right-3 top-1/2");
+  expect(message).toContain("<WebSearchProducts products={webSearchData.products} />");
   expect(chat).toContain("contextOverride");
   expect(chat).toContain("const stopChat = useCallback");
   expect(chat).toContain("message.id !== pendingWebSearch.placeholderId");
@@ -81,6 +86,11 @@ test("search and news progress use one minimal context-aware activity status", a
   expect(nativeChat).toContain("elapsedMs >= 5000");
   expect(nativeChat).toContain("elapsedMs >= 8000");
   expect(nativeChat).toContain("<Info");
+  expect(nativeChat).toContain("webSourcesCollapsedContent");
+  expect(nativeChat).toContain("webSourcesCount");
+  expect(nativeChat).toContain('position: "absolute"');
+  expect(nativeChat).toContain('position: "relative"');
+  expect(nativeChat).toContain('width: "100%"');
   expect(nativeChat).toContain("styles.webSourcesCollapsedHeader");
   expect(nativeChat).toContain('alignSelf: "flex-end"');
   expect(nativeChat).toContain("<AnimatedStatusText");

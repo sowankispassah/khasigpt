@@ -46,6 +46,14 @@ const WebSearchSources = dynamic(
   { loading: () => null }
 );
 
+const WebSearchProducts = dynamic(
+  () =>
+    import("./web-search-sources").then(
+      (module) => module.WebSearchProducts
+    ),
+  { loading: () => null }
+);
+
 const WebSearchStatus = dynamic(
   () =>
     import("./web-search-sources").then(
@@ -461,27 +469,41 @@ const PurePreviewMessage = ({
               </div>
             )}
 
-          {isAssistantMessage && webSearchData && assistantText.length > 0 ? (
-            <div className="w-full pl-2 pr-3 md:pl-4 md:pr-4">
-              <WebSearchSources
-                citations={webSearchData.citations}
-                products={webSearchData.products}
-                searchQueries={webSearchData.searchQueries}
-                sources={webSearchData.sources}
-                videos={webSearchData.videos}
-              />
-            </div>
+          {isAssistantMessage && webSearchData?.products?.length ? (
+            <WebSearchProducts products={webSearchData.products} />
           ) : null}
 
           {!isReadonly && !isWebSearchStatusOnly && (
-            <MessageActions
-              chatId={chatId}
-              isLoading={isLoading}
-              key={`action-${message.id}`}
-              message={message}
-              setMode={setMode}
-              vote={vote}
-            />
+            <div className="relative w-full">
+              <MessageActions
+                chatId={chatId}
+                isLoading={isLoading}
+                key={`action-${message.id}`}
+                message={message}
+                setMode={setMode}
+                vote={vote}
+              />
+              {isAssistantMessage &&
+              webSearchData &&
+              assistantText.length > 0 &&
+              (Boolean(webSearchData.sources?.length) ||
+                Boolean(webSearchData.searchQueries?.length) ||
+                Boolean(webSearchData.citations?.length) ||
+                Boolean(webSearchData.videos?.length)) ? (
+                <div className="pointer-events-none absolute right-3 top-1/2 z-20 -translate-y-1/2 md:right-4">
+                  <div className="pointer-events-auto">
+                    <WebSearchSources
+                      citations={webSearchData.citations}
+                      overlay
+                      products={webSearchData.products}
+                      searchQueries={webSearchData.searchQueries}
+                      sources={webSearchData.sources}
+                      videos={webSearchData.videos}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
           )}
         </div>
       </div>
