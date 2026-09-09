@@ -164,6 +164,15 @@ const PurePreviewMessage = ({
   const hasWebSearchAnswer = assistantText.length > 0 || webSearchData !== null;
   const isWebSearchStatusOnly =
     isAssistantMessage && hasWebSearchStatus && assistantText.length === 0;
+  const hasWebSearchSourceDetails = Boolean(
+    isAssistantMessage &&
+      webSearchData &&
+      assistantText.length > 0 &&
+      (webSearchData.sources?.length ||
+        webSearchData.searchQueries?.length ||
+        webSearchData.citations?.length ||
+        webSearchData.videos?.length)
+  );
 
   return (
     <div
@@ -473,23 +482,19 @@ const PurePreviewMessage = ({
             <WebSearchProducts products={webSearchData.products} />
           ) : null}
 
-          {!isReadonly && !isWebSearchStatusOnly && (
+          {(!isReadonly && !isWebSearchStatusOnly) || hasWebSearchSourceDetails ? (
             <div className="relative w-full">
-              <MessageActions
-                chatId={chatId}
-                isLoading={isLoading}
-                key={`action-${message.id}`}
-                message={message}
-                setMode={setMode}
-                vote={vote}
-              />
-              {isAssistantMessage &&
-              webSearchData &&
-              assistantText.length > 0 &&
-              (Boolean(webSearchData.sources?.length) ||
-                Boolean(webSearchData.searchQueries?.length) ||
-                Boolean(webSearchData.citations?.length) ||
-                Boolean(webSearchData.videos?.length)) ? (
+              {!isReadonly && !isWebSearchStatusOnly ? (
+                <MessageActions
+                  chatId={chatId}
+                  isLoading={isLoading}
+                  key={`action-${message.id}`}
+                  message={message}
+                  setMode={setMode}
+                  vote={vote}
+                />
+              ) : null}
+              {hasWebSearchSourceDetails && webSearchData ? (
                 <div className="pointer-events-none absolute right-3 top-1/2 z-20 -translate-y-1/2 md:right-4">
                   <div className="pointer-events-auto">
                     <WebSearchSources
@@ -504,7 +509,7 @@ const PurePreviewMessage = ({
                 </div>
               ) : null}
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
