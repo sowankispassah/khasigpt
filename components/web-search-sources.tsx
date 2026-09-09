@@ -4,14 +4,14 @@ import {
   AlertCircle,
   ChevronDown,
   ExternalLink,
-  Globe2,
+  Info,
   LoaderCircle,
   Play,
   Search,
   ShoppingBag,
   Star,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatedStatus } from "@/components/animated-status";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
@@ -33,7 +33,31 @@ import {
   getYouTubeVideoId,
 } from "@/lib/web-search/youtube";
 
-function getActiveStatusCopy(context: WebSearchStatusData["context"]) {
+function getActiveStatusCopy(
+  context: WebSearchStatusData["context"],
+  elapsedMs: number
+) {
+  if (elapsedMs >= 12000) {
+    return {
+      defaultText: "Finalizing results",
+      description: "Status shown while KhasiGPT finalizes a grounded Web Search answer.",
+      key: "chat.web_search.finalizing_results",
+    };
+  }
+  if (elapsedMs >= 8000) {
+    return {
+      defaultText: "Reviewing search results",
+      description: "Status shown while KhasiGPT reviews grounded Web Search results.",
+      key: "chat.web_search.reviewing_results",
+    };
+  }
+  if (elapsedMs >= 4000) {
+    return {
+      defaultText: "Gathering more information",
+      description: "Status shown while KhasiGPT gathers more grounded Web Search information.",
+      key: "chat.web_search.gathering_information",
+    };
+  }
   if (context === "news") {
     return {
       defaultText: "Checking the latest sources",
@@ -57,8 +81,27 @@ export function WebSearchStatus({
 }) {
   const { translate } = useTranslation();
   const [isRetrying, setIsRetrying] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState(0);
   const isFailed = status.status === "failed";
-  const activeCopy = getActiveStatusCopy(status.context);
+  const activeCopy = getActiveStatusCopy(status.context, elapsedMs);
+  const phaseResetKey = `${status.status}:${status.context ?? "web"}`;
+
+  useEffect(() => {
+    setElapsedMs(0);
+    if (
+      !phaseResetKey ||
+      status.status === "completed" ||
+      status.status === "failed"
+    ) {
+      return;
+    }
+    // This timer only changes temporary copy; it never gates the search or answer.
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setElapsedMs(Date.now() - startedAt);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [phaseResetKey, status.status]);
 
   const handleRetry = async () => {
     if (!onRetry || isRetrying) {
@@ -406,6 +449,7 @@ export function WebSearchSources({
   sources: WebSearchSource[];
   videos?: WebSearchVideo[];
 }) {
+  const { translate } = useTranslation();
   const safeSources = sources
     .map(normalizeSource)
     .filter((source): source is NonNullable<ReturnType<typeof normalizeSource>> => Boolean(source))
@@ -457,12 +501,18 @@ export function WebSearchSources({
     <div className="w-full space-y-3">
       <WebSearchProducts products={safeProducts} />
       {hasSourceDetails ? <details
-      className="group w-full rounded-xl border border-border/60 bg-muted/20 text-left"
-      data-testid="web-search-sources"
-    >
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm [&::-webkit-details-marker]:hidden">
-        <Globe2 className="size-4 shrink-0 text-primary" />
-        <span className="min-w-0 flex-1 font-medium text-foreground">
+        className="group w-full rounded-xl border border-border/60 bg-muted/20 text-left"
+        data-testid="web-search-sources"
+      >
+      <summary
+        aria-label={translate(
+          "chat.web_search.sources_count",
+          `Sources (${safeSources.length})`
+        )}
+        className="flex cursor-pointer list-none items-center gap-2 px-2 py-1.5 text-sm [&::-webkit-details-marker]:hidden group-open:px-3 group-open:py-2.5"
+      >
+        <Info className="size-4 shrink-0 text-primary" />
+        <span className="hidden min-w-0 flex-1 font-medium text-foreground group-open:inline-flex">
           <EditableTranslation
             defaultText="Sources ({count})"
             description="Expandable heading above links returned by grounded Web Search."
@@ -470,7 +520,7 @@ export function WebSearchSources({
             values={{ count: safeSources.length }}
           />
         </span>
-        <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+        <ChevronDown className="hidden size-4 shrink-0 text-muted-foreground transition-transform group-open:inline-flex group-open:rotate-180" />
       </summary>
 
       <div className="space-y-3 border-border/60 border-t px-3 py-3">

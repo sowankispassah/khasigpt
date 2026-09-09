@@ -4684,6 +4684,21 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Animated status shown while KhasiGPT checks additional current sources.",
   },
   {
+    key: "chat.web_search.gathering_information",
+    defaultText: "Gathering more information",
+    description: "Animated status shown while KhasiGPT gathers more grounded Web Search information.",
+  },
+  {
+    key: "chat.web_search.reviewing_results",
+    defaultText: "Reviewing search results",
+    description: "Animated status shown while KhasiGPT reviews grounded Web Search results.",
+  },
+  {
+    key: "chat.web_search.finalizing_results",
+    defaultText: "Finalizing results",
+    description: "Animated status shown while KhasiGPT finalizes a grounded Web Search answer.",
+  },
+  {
     key: "news.status.checking_latest_sources",
     defaultText: "Checking the latest sources",
     description: "Animated status shown while KhasiGPT checks current sources for News.",

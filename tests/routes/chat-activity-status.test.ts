@@ -45,6 +45,10 @@ test("search and news progress use one minimal context-aware activity status", a
 
   expect(sources).toContain("Checking additional sources");
   expect(sources).toContain("Checking the latest sources");
+  expect(sources).toContain("Gathering more information");
+  expect(sources).toContain("Reviewing search results");
+  expect(sources).toContain("Finalizing results");
+  expect(sources).toContain("<Info");
   expect(sources).toContain("<AnimatedStatus");
   expect(sources).not.toContain("Searching the web...");
   expect(types).toContain('context?: "web" | "news"');
@@ -60,6 +64,10 @@ test("search and news progress use one minimal context-aware activity status", a
   expect(nativeStatus).toContain("clearInterval(interval)");
   expect(nativeChat).toContain("Checking additional sources");
   expect(nativeChat).toContain("Checking the latest sources");
+  expect(nativeChat).toContain("Gathering more information");
+  expect(nativeChat).toContain("Reviewing search results");
+  expect(nativeChat).toContain("Finalizing results");
+  expect(nativeChat).toContain("<Info");
   expect(nativeChat).toContain("<AnimatedStatusText");
   expect(nativeChat).not.toContain("function ThinkingText");
   expect(nativeChat).toContain("context: webSearchContext");
