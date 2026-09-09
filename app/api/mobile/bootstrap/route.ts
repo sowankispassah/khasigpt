@@ -122,6 +122,7 @@ const FALLBACK_FEATURE_SNAPSHOT: FeatureSnapshot = {
     degraded: true,
     imageGenerationDegraded: true,
     featureAccessStatus: "unavailable",
+    userFeatureAccessStatus: "unavailable",
     missingFeatureKeys: [],
   },
   // Render-only fallback for transient settings failures. Protected feature
@@ -336,6 +337,7 @@ export async function GET(request: Request) {
             platform: "android",
             preferredLanguage,
             role: session.user.role,
+            userId: session.user.id,
           }),
         phase,
       }),

@@ -14,10 +14,10 @@ import {
   getModelConfigById,
   getTranslationFeatureLanguageByCodeRaw,
 } from "@/lib/db/queries";
-import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { loadFeatureAccessSettingsByKeys } from "@/lib/settings/feature-access-settings";
+import { isFeatureEnabledForUser } from "@/lib/settings/user-feature-access";
 import { parseTranslateAccessModeSetting } from "@/lib/translate/config";
 import {
   buildLiveTranslationSystemPrompt,
@@ -124,7 +124,13 @@ export async function POST(request: Request) {
     translateAccessSettings.status === "unavailable" && rawTranslateSetting == null;
   const translateEnabled =
     translateSettingsUnavailable ||
-    isFeatureEnabledForRole(translateMode, session.user.role);
+    (await isFeatureEnabledForUser({
+      featureKey: TRANSLATE_FEATURE_FLAG_KEY,
+      mode: translateMode,
+      role: session.user.role,
+      source: "api.translate.live-token.user-feature-access",
+      userId: session.user.id,
+    }));
 
   if (!translateEnabled) {
     return Response.json({ message: "Not found" }, { status: 404 });

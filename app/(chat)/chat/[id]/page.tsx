@@ -47,6 +47,7 @@ import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
 } from "@/lib/settings/feature-access-settings";
+import { loadUserFeatureAccessOverrides } from "@/lib/settings/user-feature-access";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { rewriteDocumentUrlsForViewer } from "@/lib/uploads/document-access";
 import {
@@ -229,6 +230,7 @@ export default async function Page(props: {
     translationBundle,
     languageSettings,
     featureAccessSettings,
+    userAccess,
     imageGenerationAccess,
   ] = await Promise.all([
     loadChatModels(),
@@ -245,8 +247,13 @@ export default async function Page(props: {
       source: "chat.detail.feature-access",
       timeoutMs: CHAT_PAGE_FEATURE_ACCESS_TIMEOUT_MS,
     }),
+    loadUserFeatureAccessOverrides({
+      featureKeys: CHAT_PAGE_FEATURE_ACCESS_KEYS,
+      source: "chat.detail.user-feature-access",
+      userId: session.user.id,
+    }),
     withTimeout(
-      getImageGenerationAvailability({ userRole }).then(
+      getImageGenerationAvailability({ userId: session.user.id, userRole }).then(
         buildImageGenerationAccessFromAvailability
       ),
       CHAT_PAGE_OPTIONAL_QUERY_TIMEOUT_MS,
@@ -302,17 +309,31 @@ export default async function Page(props: {
   );
   const documentUploadsEnabled = isFeatureEnabledForRole(
     documentUploadsMode,
-    userRole
+    userRole,
+    userAccess.values.get(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY)
   );
   const studyModeMode = parseStudyModeAccessModeSetting(studyModeSetting);
-  const studyModeEnabled = isFeatureEnabledForRole(studyModeMode, userRole);
+  const studyModeEnabled = isFeatureEnabledForRole(
+    studyModeMode,
+    userRole,
+    userAccess.values.get(STUDY_MODE_FEATURE_FLAG_KEY)
+  );
   const jobsMode = parseJobsAccessModeSetting(jobsModeSetting);
-  const jobsModeEnabled = isFeatureEnabledForRole(jobsMode, userRole);
+  const jobsModeEnabled = isFeatureEnabledForRole(
+    jobsMode,
+    userRole,
+    userAccess.values.get(JOBS_FEATURE_FLAG_KEY)
+  );
   const newsEnabled =
-    isFeatureEnabledForRole(parseNewsAccessModeSetting(newsSetting), userRole) &&
+    isFeatureEnabledForRole(
+      parseNewsAccessModeSetting(newsSetting),
+      userRole,
+      userAccess.values.get(NEWS_FEATURE_FLAG_KEY)
+    ) &&
     isFeatureEnabledForRole(
       parseFeatureAccessMode(webSearchSetting, "admin_only"),
-      userRole
+      userRole,
+      userAccess.values.get(WEB_SEARCH_ENABLED_SETTING_KEY)
     );
   const voiceChatSettings = resolvePlatformVoiceChatSetting({
     legacyValue: voiceChatLegacySetting,
@@ -320,7 +341,8 @@ export default async function Page(props: {
   });
   const voiceChatEnabled = isFeatureEnabledForRole(
     parseVoiceChatAccessModeSetting(voiceChatSettings.web),
-    userRole
+    userRole,
+    userAccess.values.get(VOICE_CHAT_WEB_FEATURE_FLAG_KEY)
   );
   const activeLanguageSettings = languageSettings.map((language) => ({
     id: language.id,

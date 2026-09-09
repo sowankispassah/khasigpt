@@ -13,6 +13,7 @@ import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
 } from "@/lib/settings/feature-access-settings";
+import { loadUserFeatureAccessOverride } from "@/lib/settings/user-feature-access";
 import { withTimeout } from "@/lib/utils/async";
 
 export const TRANSLATE_ACCESS_MODE_FALLBACK: FeatureAccessMode = "disabled";
@@ -27,20 +28,27 @@ export function parseTranslateAccessModeSetting(
   return parseFeatureAccessMode(value, TRANSLATE_ACCESS_MODE_FALLBACK);
 }
 
-export async function isTranslateEnabledForRole(role: FeatureAccessRole) {
-  const featureAccessSettings = await loadFeatureAccessSettingsByKeys(
-    [TRANSLATE_FEATURE_FLAG_KEY],
-    {
+export async function isTranslateEnabledForRole(
+  role: FeatureAccessRole,
+  userId?: string | null
+) {
+  const [featureAccessSettings, userOverride] = await Promise.all([
+    loadFeatureAccessSettingsByKeys([TRANSLATE_FEATURE_FLAG_KEY], {
       source: "translate.config.feature-access",
       timeoutMs: TRANSLATE_FEATURE_ACCESS_TIMEOUT_MS,
-    }
-  );
+    }),
+    loadUserFeatureAccessOverride({
+      featureKey: TRANSLATE_FEATURE_FLAG_KEY,
+      source: "translate.config.user-feature-access",
+      userId,
+    }),
+  ]);
   const rawValue = getFeatureAccessModeSettingValue(
     featureAccessSettings,
     TRANSLATE_FEATURE_FLAG_KEY
   );
   const mode = parseTranslateAccessModeSetting(rawValue);
-  return isFeatureEnabledForRole(mode, role);
+  return isFeatureEnabledForRole(mode, role, userOverride);
 }
 
 export function parseTranslateProviderModeSetting(

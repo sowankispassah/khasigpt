@@ -43,11 +43,15 @@ export async function isHomeShortcutTargetAvailable({
   role,
   settings,
   target,
+  userId,
+  userOverrides = new Map(),
 }: {
   platform: HomeShortcutPlatform;
   role: UserRole | null | undefined;
   settings: ReadonlyMap<string, unknown>;
   target: HomeShortcutTargetDefinition;
+  userId?: string | null;
+  userOverrides?: ReadonlyMap<string, boolean>;
 }) {
   if (!isHomeShortcutTargetAvailableForPlatform(target, platform)) {
     return false;
@@ -65,7 +69,8 @@ export async function isHomeShortcutTargetAvailable({
         parseCalculatorAccessModeSetting(
           settings.get(CALCULATOR_FEATURE_FLAG_KEY)
         ),
-        role
+        role,
+        userOverrides.get(CALCULATOR_FEATURE_FLAG_KEY)
       );
     case "explore_meghalaya":
       return isFeatureEnabledForRole(
@@ -73,7 +78,8 @@ export async function isHomeShortcutTargetAvailable({
           settings.get(EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY),
           "admin_only"
         ),
-        role
+        role,
+        userOverrides.get(EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY)
       );
     case "image_generation": {
       if (
@@ -81,12 +87,14 @@ export async function isHomeShortcutTargetAvailable({
           parseImageGenerationAccessModeSetting(
             settings.get(IMAGE_GENERATION_FEATURE_FLAG_KEY)
           ),
-          role
+          role,
+          userOverrides.get(IMAGE_GENERATION_FEATURE_FLAG_KEY)
         )
       ) {
         return false;
       }
       const availability = await getImageGenerationAvailability({
+        userId,
         userRole: role,
       });
       return availability.enabled;
@@ -94,7 +102,8 @@ export async function isHomeShortcutTargetAvailable({
     case "jobs":
       return isFeatureEnabledForRole(
         parseJobsAccessModeSetting(settings.get(JOBS_FEATURE_FLAG_KEY)),
-        role
+        role,
+        userOverrides.get(JOBS_FEATURE_FLAG_KEY)
       );
     case "live_translation": {
       const settingKey =
@@ -104,21 +113,23 @@ export async function isHomeShortcutTargetAvailable({
       const mode = parseLiveTranslationAccessModeSetting(
         settings.get(settingKey)
       );
-      return isFeatureEnabledForRole(mode, role);
+      return isFeatureEnabledForRole(mode, role, userOverrides.get(settingKey));
     }
     case "study":
       return isFeatureEnabledForRole(
         parseStudyModeAccessModeSetting(
           settings.get(STUDY_MODE_FEATURE_FLAG_KEY)
         ),
-        role
+        role,
+        userOverrides.get(STUDY_MODE_FEATURE_FLAG_KEY)
       );
     case "translate":
       return isFeatureEnabledForRole(
         parseTranslateAccessModeSetting(
           settings.get(TRANSLATE_FEATURE_FLAG_KEY)
         ),
-        role
+        role,
+        userOverrides.get(TRANSLATE_FEATURE_FLAG_KEY)
       );
     case "voice_chat": {
       const platformKey =
@@ -134,7 +145,11 @@ export async function isHomeShortcutTargetAvailable({
       const mode = parseVoiceChatAccessModeSetting(
         platform === "web" ? resolved.web : resolved.android
       );
-      return isFeatureEnabledForRole(mode, role);
+      return isFeatureEnabledForRole(
+        mode,
+        role,
+        userOverrides.get(platformKey)
+      );
     }
   }
 }

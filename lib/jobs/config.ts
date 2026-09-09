@@ -9,6 +9,7 @@ import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
 } from "@/lib/settings/feature-access-settings";
+import { loadUserFeatureAccessOverride } from "@/lib/settings/user-feature-access";
 
 export const JOBS_ACCESS_MODE_FALLBACK: FeatureAccessMode = "disabled";
 const JOBS_ACCESS_READ_TIMEOUT_MS = 3000;
@@ -24,15 +25,20 @@ export function parseJobsAccessModeSetting(value: unknown): FeatureAccessMode {
 }
 
 export async function getJobsAccessForRole(
-  role: FeatureAccessRole
+  role: FeatureAccessRole,
+  userId?: string | null
 ): Promise<JobsAccessResult> {
-  const featureAccessSettings = await loadFeatureAccessSettingsByKeys(
-    [JOBS_FEATURE_FLAG_KEY],
-    {
+  const [featureAccessSettings, userOverride] = await Promise.all([
+    loadFeatureAccessSettingsByKeys([JOBS_FEATURE_FLAG_KEY], {
       source: "jobs.config.feature-access",
       timeoutMs: JOBS_ACCESS_READ_TIMEOUT_MS,
-    }
-  );
+    }),
+    loadUserFeatureAccessOverride({
+      featureKey: JOBS_FEATURE_FLAG_KEY,
+      source: "jobs.config.user-feature-access",
+      userId,
+    }),
+  ]);
   const rawValue = getFeatureAccessModeSettingValue(
     featureAccessSettings,
     JOBS_FEATURE_FLAG_KEY
@@ -42,15 +48,18 @@ export async function getJobsAccessForRole(
   return {
     degraded,
     enabled:
-      degraded && rawValue === undefined
+      degraded && rawValue === undefined && typeof userOverride !== "boolean"
         ? true
-        : isFeatureEnabledForRole(mode, role),
+        : isFeatureEnabledForRole(mode, role, userOverride),
     mode,
   };
 }
 
-export async function isJobsEnabledForRole(role: FeatureAccessRole) {
-  const access = await getJobsAccessForRole(role);
+export async function isJobsEnabledForRole(
+  role: FeatureAccessRole,
+  userId?: string | null
+) {
+  const access = await getJobsAccessForRole(role, userId);
   return access.enabled;
 }
 

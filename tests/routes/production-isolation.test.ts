@@ -40,6 +40,9 @@ test("unmetered live settings and cold failures never admit a non-admin", async 
       loadFeatureAccessSettingsByKeys: async () => ({ status: "unavailable" }),
       getFeatureAccessModeSettingValue: () => undefined,
     },
+    "@/lib/settings/user-feature-access": {
+      loadUserFeatureAccessOverride: async () => null,
+    },
   };
   const voice = loadModule("lib/voice/config.ts", mocks);
   const translation = loadModule("lib/live-translation/config.ts", mocks);
@@ -72,6 +75,10 @@ test("legacy translation token route withholds live credentials from regular use
     "@/lib/security/rate-limit": { incrementRateLimit: async () => ({ allowed: true }) },
     "@/lib/security/request-helpers": { getClientKeyFromHeaders: () => "test" },
     "@/lib/settings/feature-access-settings": { loadFeatureAccessSettingsByKeys: async () => ({ status: "confirmed", values: new Map() }) },
+    "@/lib/settings/user-feature-access": {
+      isFeatureEnabledForUser: async ({ mode, role }: { mode: featureAccess.FeatureAccessMode; role: featureAccess.FeatureAccessRole }) =>
+        featureAccess.isFeatureEnabledForRole(mode, role),
+    },
     "@/lib/translate/config": { parseTranslateAccessModeSetting: () => "enabled" },
     "@/lib/translate/live": { isGoogleLiveTranslationModel: () => true },
   });
@@ -279,6 +286,7 @@ test("bootstrap feature reads do not invoke image credits and full feature reads
     parseBooleanSetting: (value: string) => value === "true",
     getImageGenerationAccess: async () => { imageCalls += 1; throw new Error("credits unavailable"); },
     loadFeatureAccessSettingsByKeys: async () => ({ status: "confirmed", missingKeys: [], values: new Map() }),
+    loadUserFeatureAccessOverrides: async () => ({ status: "confirmed", values: new Map() }),
     getFeatureAccessModeSettingValue: () => "enabled",
     isFeatureEnabledForRole: (value: string) => value === "enabled",
     resolvePlatformVoiceChatSetting: () => ({ android: "enabled", web: "enabled" }),

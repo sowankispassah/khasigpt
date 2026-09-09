@@ -31,7 +31,10 @@ export async function GET(request: Request) {
     return new ChatSDKError("unauthorized:api").toResponse();
   }
 
-  const enabled = await isStudyModeEnabledForRole(session.user.role);
+  const enabled = await isStudyModeEnabledForRole(
+    session.user.role,
+    session.user.id
+  );
   if (!enabled) {
     return new ChatSDKError(
       "forbidden:api",

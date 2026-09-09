@@ -10,7 +10,7 @@ import {
   isFreeDailyChatLimitBypassedForTest,
   requiresPaidWebSearchCredits,
 } from "@/lib/chat/free-daily-limit";
-import { DEFAULT_FREE_MESSAGES_PER_DAY } from "@/lib/constants";
+import { DEFAULT_FREE_MESSAGES_PER_DAY, WEB_SEARCH_ENABLED_SETTING_KEY } from "@/lib/constants";
 import {
   acquirePaidGenerationForUser,
   consumeFreeDailyChatAllowance,
@@ -37,6 +37,7 @@ import { exploreSearchInputSchema } from "@/lib/explore/validation";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
+import { loadUserFeatureAccessOverride } from "@/lib/settings/user-feature-access";
 import type { ChatMessage } from "@/lib/types";
 import { generateUUID } from "@/lib/utils";
 import {
@@ -166,7 +167,7 @@ export async function POST(request: Request) {
     if (!auth?.user) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
-    if (!(await isExploreMeghalayaEnabledForRole(auth.user.role))) {
+    if (!(await isExploreMeghalayaEnabledForRole(auth.user.role, auth.user.id))) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
     const parsed = exploreSearchInputSchema.safeParse(
@@ -237,7 +238,7 @@ export async function POST(request: Request) {
     const results = placeSearch.results;
     let answer: WebSearchAnswer | null = null;
     if (shouldEnrichExploreSearch(parsed.data.searchMode)) {
-      const [config, registry, subscription, freeSettings, messageCount] =
+      const [config, registry, subscription, freeSettings, messageCount, webSearchOverride] =
         await Promise.all([
           loadWebSearchConfig(),
           getModelRegistry(),
@@ -246,6 +247,11 @@ export async function POST(request: Request) {
           getMessageCountByUserId({
             id: auth.user.id,
             since: startOfTodayInIst(),
+          }),
+          loadUserFeatureAccessOverride({
+            featureKey: WEB_SEARCH_ENABLED_SETTING_KEY,
+            source: "api.explore.search.web-search.user-feature-access",
+            userId: auth.user.id,
           }),
         ]);
       const model = registry.defaultConfig ?? registry.configs[0];
@@ -261,6 +267,7 @@ export async function POST(request: Request) {
       if (
         !isWebSearchAllowedForUser({
           config,
+          featureOverride: webSearchOverride,
           isPaidUser: hasCredits,
           platform,
           role: auth.user.role,

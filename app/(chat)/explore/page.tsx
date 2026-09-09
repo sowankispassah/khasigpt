@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function ExplorePage() {
   const session = await getChatRouteSession();
   if (!session?.user) redirect("/login?callbackUrl=/explore");
-  if (!(await isExploreMeghalayaEnabledForRole(session.user.role))) notFound();
+  if (!(await isExploreMeghalayaEnabledForRole(session.user.role, session.user.id))) notFound();
   const categories = await withTimeout(listExploreCategories(), 5_000).catch(
     (error) => {
       console.error("[explore/page] Category load failed.", error);

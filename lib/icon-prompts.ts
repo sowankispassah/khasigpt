@@ -26,6 +26,7 @@ import {
   isFeatureEnabledForRole,
   parseFeatureAccessMode,
 } from "@/lib/feature-access";
+import { USER_FEATURE_ACCESS_KEYS } from "@/lib/feature-access-catalog";
 import { isHomeShortcutTargetAvailable } from "@/lib/home-shortcut-access";
 import {
   getHomeShortcutTarget,
@@ -34,6 +35,7 @@ import {
   isHomeShortcutActionType,
 } from "@/lib/home-shortcut-registry";
 import { resolveLanguage } from "@/lib/i18n/languages";
+import { loadUserFeatureAccessOverrides } from "@/lib/settings/user-feature-access";
 
 export type IconPromptBehavior = "append" | "replace";
 
@@ -510,12 +512,18 @@ async function loadIconPromptSettings() {
 async function fetchIconPromptActions(
   preferredLanguage?: string | null,
   userRole?: UserRole | null,
-  platform: HomeShortcutPlatform = "web"
+  platform: HomeShortcutPlatform = "web",
+  userId?: string | null
 ) {
   const startedAt = Date.now();
-  const [{ activeLanguage, languages }, settings] = await Promise.all([
+  const [{ activeLanguage, languages }, settings, userAccess] = await Promise.all([
     resolveLanguage(preferredLanguage),
     loadIconPromptSettings(),
+    loadUserFeatureAccessOverrides({
+      featureKeys: USER_FEATURE_ACCESS_KEYS,
+      source: "icon-prompts",
+      userId,
+    }),
   ]);
   const { confirmed, enabledSetting, featureSettings, rawSettings } = settings;
 
@@ -525,7 +533,11 @@ async function fetchIconPromptActions(
   );
 
   const mode = parseIconPromptsAccessModeSetting(enabledSetting);
-  const enabledForRole = isFeatureEnabledForRole(mode, userRole ?? null);
+  const enabledForRole = isFeatureEnabledForRole(
+    mode,
+    userRole ?? null,
+    userAccess.values.get(ICON_PROMPTS_ENABLED_SETTING_KEY)
+  );
   if (!enabled || !enabledForRole) {
     return [];
   }
@@ -559,6 +571,8 @@ async function fetchIconPromptActions(
             role: userRole,
             settings: featureSettings,
             target,
+            userId,
+            userOverrides: userAccess.values,
           }).catch((error) => {
             console.error(
               `[icon-prompts] Failed to confirm linked target "${target.id}"; hiding its shortcut.`,

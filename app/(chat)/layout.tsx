@@ -33,6 +33,7 @@ import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
 } from "@/lib/settings/feature-access-settings";
+import { loadUserFeatureAccessOverrides } from "@/lib/settings/user-feature-access";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { parseTranslateAccessModeSetting } from "@/lib/translate/config";
 import { withTimeout } from "@/lib/utils/async";
@@ -109,10 +110,15 @@ export default async function Layout({
       })
     : Promise.resolve(null);
 
-  const [dbUser, translationBundle, featureAccessSettings] = await Promise.all([
+  const [dbUser, translationBundle, featureAccessSettings, userAccess] = await Promise.all([
     profileDetailsPromise,
     translationBundlePromise,
     featureAccessSettingsPromise,
+    loadUserFeatureAccessOverrides({
+      featureKeys: CHAT_LAYOUT_FEATURE_ACCESS_KEYS,
+      source: "chat.layout.user-feature-access",
+      userId: session?.user?.id,
+    }),
   ]);
 
   if (profileUser && needsProfileDetails && dbUser) {
@@ -183,42 +189,50 @@ export default async function Layout({
   const studyModeAccessMode = parseStudyModeAccessModeSetting(studyModeSetting);
   const studyModeEnabled = isFeatureEnabledForRole(
     studyModeAccessMode,
-    session?.user?.role ?? null
+    session?.user?.role ?? null,
+    userAccess.values.get(STUDY_MODE_FEATURE_FLAG_KEY)
   );
   const calculatorAccessMode =
     parseCalculatorAccessModeSetting(calculatorSetting);
   const calculatorEnabled = isFeatureEnabledForRole(
     calculatorAccessMode,
-    session?.user?.role ?? null
+    session?.user?.role ?? null,
+    userAccess.values.get(CALCULATOR_FEATURE_FLAG_KEY)
   );
   const jobsAccessMode = parseJobsAccessModeSetting(jobsSetting);
   const jobsModeEnabled = isFeatureEnabledForRole(
     jobsAccessMode,
-    session?.user?.role ?? null
+    session?.user?.role ?? null,
+    userAccess.values.get(JOBS_FEATURE_FLAG_KEY)
   );
   const newsEnabled =
     isFeatureEnabledForRole(
       parseNewsAccessModeSetting(newsSetting),
-      session?.user?.role ?? null
+      session?.user?.role ?? null,
+      userAccess.values.get(NEWS_FEATURE_FLAG_KEY)
     ) &&
     isFeatureEnabledForRole(
       parseFeatureAccessMode(webSearchSetting, "admin_only"),
-      session?.user?.role ?? null
+      session?.user?.role ?? null,
+      userAccess.values.get(WEB_SEARCH_ENABLED_SETTING_KEY)
     );
   const translateAccessMode = parseTranslateAccessModeSetting(translateSetting);
   const translateEnabled = isFeatureEnabledForRole(
     translateAccessMode,
-    session?.user?.role ?? null
+    session?.user?.role ?? null,
+    userAccess.values.get(TRANSLATE_FEATURE_FLAG_KEY)
   );
   const liveTranslationAccessMode =
     parseLiveTranslationAccessModeSetting(liveTranslationSetting);
   const liveTranslationEnabled = isFeatureEnabledForRole(
     liveTranslationAccessMode,
-    session?.user?.role ?? null
+    session?.user?.role ?? null,
+    userAccess.values.get(LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY)
   );
   const exploreMeghalayaEnabled = isFeatureEnabledForRole(
     parseFeatureAccessMode(exploreSetting, "admin_only"),
-    session?.user?.role ?? null
+    session?.user?.role ?? null,
+    userAccess.values.get(EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY)
   );
 
   return (

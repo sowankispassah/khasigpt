@@ -30,9 +30,11 @@ function isTransientDatabaseConnectionError(details: string) {
 async function isHistoryModeEnabled({
   mode,
   role,
+  userId,
 }: {
   mode: "default" | "jobs" | "study" | "news" | null;
   role: HistoryFeatureRole;
+  userId: string;
 }) {
   if (mode !== "study" && mode !== "jobs" && mode !== "news") {
     return true;
@@ -46,10 +48,10 @@ async function isHistoryModeEnabled({
         : "mobile.chat-history.news_feature_check";
   const loader =
     mode === "study"
-      ? () => isStudyModeEnabledForRole(role)
+      ? () => isStudyModeEnabledForRole(role, userId)
       : mode === "jobs"
-        ? () => isJobsEnabledForRole(role)
-        : () => isNewsEnabledForRole(role);
+        ? () => isJobsEnabledForRole(role, userId)
+        : () => isNewsEnabledForRole(role, userId);
 
   try {
     return await withApiTiming(
@@ -141,6 +143,7 @@ export async function GET(request: NextRequest) {
       !(await isHistoryModeEnabled({
         mode,
         role: session.user.role,
+        userId: session.user.id,
       }))
     ) {
       return new ChatSDKError(

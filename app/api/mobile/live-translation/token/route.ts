@@ -11,7 +11,7 @@ import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/api/auth";
 import { noStoreHeaders } from "@/lib/api/cache";
 import { withApiTiming } from "@/lib/api/observability";
-import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import { LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY } from "@/lib/constants";
 import {
   buildLiveTranslationSystemInstruction,
   DEFAULT_LIVE_TRANSLATION_LANGUAGE_A,
@@ -26,6 +26,7 @@ import {
 import { loadLiveTranslationSettingsValues } from "@/lib/live-translation/settings-read";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
+import { isFeatureEnabledForUser } from "@/lib/settings/user-feature-access";
 import { withTimeout } from "@/lib/utils/async";
 import {
   GEMINI_LIVE_WS_URL,
@@ -186,7 +187,13 @@ export async function POST(request: Request) {
     loadLiveTranslationSettings(),
   ]);
 
-  if (!isFeatureEnabledForRole(accessMode, authContext.user.role)) {
+  if (!(await isFeatureEnabledForUser({
+    featureKey: LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
+    mode: accessMode,
+    role: authContext.user.role,
+    source: "api.mobile.live-translation.token.user-feature-access",
+    userId: authContext.user.id,
+  }))) {
     return fallbackResponse(
       "feature-disabled",
       "Live Translation is not enabled for this account.",

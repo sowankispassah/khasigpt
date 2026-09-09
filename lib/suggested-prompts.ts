@@ -16,6 +16,7 @@ import {
   parseFeatureAccessMode,
 } from "@/lib/feature-access";
 import { resolveLanguage } from "@/lib/i18n/languages";
+import { loadUserFeatureAccessOverride } from "@/lib/settings/user-feature-access";
 
 type SuggestedPromptsMap = Record<string, string[]>;
 
@@ -65,16 +66,22 @@ async function loadSuggestedPromptSettings() {
 
 async function fetchSuggestedPrompts(
   preferredLanguageCode?: string | null,
-  userRole?: UserRole | null
+  userRole?: UserRole | null,
+  userId?: string | null
 ): Promise<string[]> {
-  const [{ activeLanguage, languages }, settings] = await Promise.all([
+  const [{ activeLanguage, languages }, settings, userOverride] = await Promise.all([
     resolveLanguage(preferredLanguageCode),
     loadSuggestedPromptSettings(),
+    loadUserFeatureAccessOverride({
+      featureKey: SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
+      source: "suggested-prompts",
+      userId,
+    }),
   ]);
 
   const enabledSetting = settings.get(SUGGESTED_PROMPTS_ENABLED_SETTING_KEY);
   const mode = parseSuggestedPromptsAccessModeSetting(enabledSetting);
-  const enabled = isFeatureEnabledForRole(mode, userRole ?? null);
+  const enabled = isFeatureEnabledForRole(mode, userRole ?? null, userOverride);
   if (!enabled && process.env.PLAYWRIGHT !== "true") {
     return [];
   }

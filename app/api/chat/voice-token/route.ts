@@ -11,13 +11,14 @@ import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/api/auth";
 import { noStoreHeaders } from "@/lib/api/cache";
 import { withApiTiming } from "@/lib/api/observability";
-import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import { VOICE_CHAT_WEB_FEATURE_FLAG_KEY } from "@/lib/constants";
 import {
   RAG_LIVE_SYSTEM_INSTRUCTION,
   RAG_LIVE_TOOL,
 } from "@/lib/rag/live-tool";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
+import { isFeatureEnabledForUser } from "@/lib/settings/user-feature-access";
 import { withTimeout } from "@/lib/utils/async";
 import { getVoiceChatAccessModeForPlatform } from "@/lib/voice/config";
 import {
@@ -146,7 +147,13 @@ export async function POST(request: Request) {
     liveVoiceModelPromise,
   ]);
 
-  if (!isFeatureEnabledForRole(voiceMode, authContext.user.role)) {
+  if (!(await isFeatureEnabledForUser({
+    featureKey: VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
+    mode: voiceMode,
+    role: authContext.user.role,
+    source: "api.chat.voice-token.user-feature-access",
+    userId: authContext.user.id,
+  }))) {
     return fallbackResponse(
       "feature-disabled",
       "Voice chat is not enabled for this account.",

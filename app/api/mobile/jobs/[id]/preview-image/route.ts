@@ -76,7 +76,10 @@ export async function GET(
       );
     }
 
-    const jobsAccess = await getJobsAccessForRole(session.user.role ?? null);
+    const jobsAccess = await getJobsAccessForRole(
+      session.user.role ?? null,
+      session.user.id
+    );
     if (!jobsAccess.enabled) {
       return NextResponse.json(
         { code: "forbidden:auth", message: "Jobs access is disabled for your role." },

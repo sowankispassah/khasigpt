@@ -9,6 +9,7 @@ import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
 } from "@/lib/settings/feature-access-settings";
+import { loadUserFeatureAccessOverride } from "@/lib/settings/user-feature-access";
 
 const STUDY_MODE_FEATURE_ACCESS_TIMEOUT_MS = 2_000;
 
@@ -41,23 +42,30 @@ export function parseStudyModeEnabledSetting(value: unknown): boolean {
   return coerceBoolean(value, false);
 }
 
-export async function isStudyModeEnabledForRole(role: FeatureAccessRole) {
-  const featureAccessSettings = await loadFeatureAccessSettingsByKeys(
-    [STUDY_MODE_FEATURE_FLAG_KEY],
-    {
+export async function isStudyModeEnabledForRole(
+  role: FeatureAccessRole,
+  userId?: string | null
+) {
+  const [featureAccessSettings, userOverride] = await Promise.all([
+    loadFeatureAccessSettingsByKeys([STUDY_MODE_FEATURE_FLAG_KEY], {
       source: "study.config.feature-access",
       timeoutMs: STUDY_MODE_FEATURE_ACCESS_TIMEOUT_MS,
-    }
-  );
+    }),
+    loadUserFeatureAccessOverride({
+      featureKey: STUDY_MODE_FEATURE_FLAG_KEY,
+      source: "study.config.user-feature-access",
+      userId,
+    }),
+  ]);
   const rawValue = getFeatureAccessModeSettingValue(
     featureAccessSettings,
     STUDY_MODE_FEATURE_FLAG_KEY
   );
   if (rawValue === undefined && featureAccessSettings.status === "unavailable") {
-    return true;
+    return typeof userOverride === "boolean" ? userOverride : true;
   }
   const mode = parseStudyModeAccessModeSetting(rawValue);
-  return isFeatureEnabledForRole(mode, role);
+  return isFeatureEnabledForRole(mode, role, userOverride);
 }
 
 export async function isStudyModeEnabled() {

@@ -37,6 +37,7 @@ import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
 } from "@/lib/settings/feature-access-settings";
+import { loadUserFeatureAccessOverride } from "@/lib/settings/user-feature-access";
 
 const DEFAULT_NANO_BANANA_MODEL_ID = "gemini-2.5-flash-image";
 const NANO_BANANA_MODEL_ID =
@@ -143,17 +144,28 @@ function buildModelSummary(
 }
 
 export async function getImageGenerationAvailability({
+  userId,
   userRole,
 }: {
+  userId?: string | null;
   userRole?: UserRole | null;
 }): Promise<ImageGenerationAvailability> {
-  const [rawSetting, activeModel] = await Promise.all([
+  const [rawSetting, activeModel, userOverride] = await Promise.all([
     loadImageGenerationSetting(),
     getActiveImageModel(),
+    loadUserFeatureAccessOverride({
+      featureKey: IMAGE_GENERATION_FEATURE_FLAG_KEY,
+      source: "image-generation.availability",
+      userId,
+    }),
   ]);
   const featureMode = parseImageGenerationAccessModeSetting(rawSetting);
   const isAdmin = userRole === "admin";
-  const featureEnabled = isFeatureEnabledForRole(featureMode, userRole);
+  const featureEnabled = isFeatureEnabledForRole(
+    featureMode,
+    userRole,
+    userOverride
+  );
   const modelEnabled = Boolean(activeModel?.isEnabled);
   let quotedTokensPerImage: number | null = null;
   if (
@@ -226,7 +238,7 @@ export async function getImageGenerationAccess({
   userId: string | null;
   userRole?: UserRole | null;
 }): Promise<ImageGenerationAccess> {
-  const [rawSetting, activeModel, resolvedRole] = await Promise.all([
+  const [rawSetting, activeModel, resolvedRole, userOverride] = await Promise.all([
     loadImageGenerationSetting(),
     getActiveImageModel(),
     userRole !== undefined
@@ -234,10 +246,19 @@ export async function getImageGenerationAccess({
       : userId
         ? getUserById(userId).then((user) => user?.role ?? null)
         : Promise.resolve(null),
+    loadUserFeatureAccessOverride({
+      featureKey: IMAGE_GENERATION_FEATURE_FLAG_KEY,
+      source: "image-generation.access",
+      userId,
+    }),
   ]);
   const featureMode = parseImageGenerationAccessModeSetting(rawSetting);
   const isAdmin = resolvedRole === "admin";
-  const featureEnabled = isFeatureEnabledForRole(featureMode, resolvedRole);
+  const featureEnabled = isFeatureEnabledForRole(
+    featureMode,
+    resolvedRole,
+    userOverride
+  );
   const modelEnabled = Boolean(activeModel?.isEnabled);
   let quotedTokensPerImage: number | null = null;
   if (

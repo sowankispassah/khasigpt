@@ -1,6 +1,40 @@
+import { USER_FEATURE_DEFINITIONS } from "@/lib/feature-access-catalog";
 import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
+  ...USER_FEATURE_DEFINITIONS.flatMap((feature) => [
+    {
+      key: feature.labelKey,
+      defaultText: feature.defaultLabel,
+      description: `Feature label for ${feature.defaultLabel} in per-user access settings.`,
+    },
+    {
+      key: feature.descriptionKey,
+      defaultText: feature.defaultDescription,
+      description: `Description for ${feature.defaultLabel} in per-user access settings.`,
+    },
+  ]),
+  { key: "admin.users.feature_access.menu", defaultText: "Feature Access", description: "Menu item that opens per-user feature access controls." },
+  { key: "admin.users.feature_access.title", defaultText: "Feature Access", description: "Title of the per-user feature access dialog." },
+  { key: "admin.users.feature_access.description", defaultText: "Choose which features {email} can use. Follow global keeps the normal app setting.", description: "Description of the per-user feature access dialog." },
+  { key: "admin.users.feature_access.loading", defaultText: "Loading feature access...", description: "Loading state in the per-user feature access dialog." },
+  { key: "admin.users.feature_access.load_error", defaultText: "Feature access could not be loaded. Please retry.", description: "Load error in the per-user feature access dialog." },
+  { key: "admin.users.feature_access.retry", defaultText: "Retry", description: "Retry button in the per-user feature access dialog." },
+  { key: "admin.users.feature_access.global_stale", defaultText: "Global settings are using the last confirmed values. Refresh before saving if you recently changed them.", description: "Warning for stale global settings in per-user feature access." },
+  { key: "admin.users.feature_access.global.enabled", defaultText: "Enable for all", description: "Global feature status badge." },
+  { key: "admin.users.feature_access.global.admin_only", defaultText: "Admin only", description: "Global feature status badge." },
+  { key: "admin.users.feature_access.global.disabled", defaultText: "Disable for all", description: "Global feature status badge." },
+  { key: "admin.users.feature_access.effective.on", defaultText: "Access on", description: "Effective per-user feature access badge." },
+  { key: "admin.users.feature_access.effective.off", defaultText: "Access off", description: "Effective per-user feature access badge." },
+  { key: "admin.users.feature_access.setting_label", defaultText: "User access setting", description: "Accessible label for per-user feature access choices." },
+  { key: "admin.users.feature_access.setting.inherit", defaultText: "Follow global", description: "Per-user feature setting that inherits the global value." },
+  { key: "admin.users.feature_access.setting.allow", defaultText: "Allow", description: "Per-user feature setting that grants access." },
+  { key: "admin.users.feature_access.setting.block", defaultText: "Block", description: "Per-user feature setting that denies access." },
+  { key: "admin.users.feature_access.cancel", defaultText: "Cancel", description: "Cancel button in the per-user feature access dialog." },
+  { key: "admin.users.feature_access.save", defaultText: "Save access", description: "Save button in the per-user feature access dialog." },
+  { key: "admin.users.feature_access.saving", defaultText: "Saving...", description: "Pending label while per-user feature access is saved." },
+  { key: "admin.users.feature_access.save_success", defaultText: "Feature access saved for this user.", description: "Success toast after saving per-user feature access." },
+  { key: "admin.users.feature_access.save_error", defaultText: "Feature access could not be saved. Please retry.", description: "Error toast after saving per-user feature access fails." },
   { key: "common.updating", defaultText: "Updating...", description: "Generic pending label while an update is being saved." },
   { key: "common.deleting", defaultText: "Deleting...", description: "Generic pending label while an item is being deleted." },
   {

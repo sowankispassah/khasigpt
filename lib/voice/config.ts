@@ -13,6 +13,7 @@ import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
 } from "@/lib/settings/feature-access-settings";
+import { loadUserFeatureAccessOverride } from "@/lib/settings/user-feature-access";
 import { restrictUnmeteredLiveAccess } from "@/lib/voice/launch-access";
 
 export const VOICE_CHAT_ACCESS_MODE_FALLBACK: FeatureAccessMode = "disabled";
@@ -26,9 +27,17 @@ export function parseVoiceChatAccessModeSetting(
   return restrictUnmeteredLiveAccess(parseFeatureAccessMode(value, VOICE_CHAT_ACCESS_MODE_FALLBACK));
 }
 
-export async function isVoiceChatEnabledForRole(role: FeatureAccessRole) {
+export async function isVoiceChatEnabledForRole(
+  role: FeatureAccessRole,
+  userId?: string | null
+) {
   const mode = await getVoiceChatAccessModeForPlatform("android");
-  return isFeatureEnabledForRole(mode, role);
+  const userOverride = await loadUserFeatureAccessOverride({
+    featureKey: VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
+    source: "voice.config.user-feature-access",
+    userId,
+  });
+  return isFeatureEnabledForRole(mode, role, userOverride);
 }
 
 export async function getVoiceChatAccessModeForPlatform(

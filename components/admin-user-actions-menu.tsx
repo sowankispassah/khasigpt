@@ -10,6 +10,7 @@ import {
   useTransition,
 } from "react";
 import { AdminUserDeleteDialog } from "@/components/admin-user-delete-dialog";
+import { AdminUserFeatureAccessDialog } from "@/components/admin-user-feature-access-dialog";
 import { LoaderIcon } from "@/components/icons";
 import { SessionUsageChatLink } from "@/components/session-usage-chat-link";
 import { toast } from "@/components/toast";
@@ -120,6 +121,7 @@ export function AdminUserActionsMenu({
   const [impersonateLoading, setImpersonateLoading] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [featureAccessDialogOpen, setFeatureAccessDialogOpen] = useState(false);
   const [isRefreshing, startRefresh] = useTransition();
   const router = useRouter();
 
@@ -243,6 +245,26 @@ export function AdminUserActionsMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52 p-1">
+        <DropdownMenuItem
+          className="p-0"
+          onSelect={(event) => {
+            event.preventDefault();
+            setOpen(false);
+            setFeatureAccessDialogOpen(true);
+          }}
+        >
+          <button
+            className="flex w-full cursor-pointer items-center justify-start rounded-sm px-3 py-2 font-normal text-sm hover:bg-muted"
+            type="button"
+          >
+            <EditableTranslation
+              defaultText="Feature Access"
+              description="Menu item that opens per-user feature access controls."
+              translationKey="admin.users.feature_access.menu"
+            />
+          </button>
+        </DropdownMenuItem>
+
         <DropdownMenuItem
           className="p-0"
           onSelect={(event) => event.preventDefault()}
@@ -398,6 +420,12 @@ export function AdminUserActionsMenu({
         email={email}
         onOpenChange={setDeleteDialogOpen}
         open={deleteDialogOpen}
+        userId={userId}
+      />
+      <AdminUserFeatureAccessDialog
+        email={email}
+        onOpenChange={setFeatureAccessDialogOpen}
+        open={featureAccessDialogOpen}
         userId={userId}
       />
     </>

@@ -25,7 +25,10 @@ import {
 import { classifyImageIntent } from "@/lib/ai/image-intent-classifier";
 import { verifyImageIntentToken } from "@/lib/ai/image-intent-token";
 import type { EnvironmentReferenceContext } from "@/lib/ai/visual-reference-types";
-import { IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY } from "@/lib/constants";
+import {
+  IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
+  WEB_SEARCH_ENABLED_SETTING_KEY,
+} from "@/lib/constants";
 import {
   acquirePaidGenerationForUser,
   deductImageCredits,
@@ -42,6 +45,7 @@ import { ChatSDKError } from "@/lib/errors";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
+import { loadUserFeatureAccessOverride } from "@/lib/settings/user-feature-access";
 import type { ChatMessage } from "@/lib/types";
 import { generateUUID } from "@/lib/utils";
 import {
@@ -600,10 +604,16 @@ export async function POST(request: Request) {
     const [
       webSearchConfig,
       environmentReferenceFeatureEnabled,
+      webSearchOverride,
       previousEnvironmentContext,
     ] = await Promise.all([
       loadWebSearchConfig(),
-      isEnvironmentReferenceEnabledForRole(session.user.role),
+      isEnvironmentReferenceEnabledForRole(session.user.role, session.user.id),
+      loadUserFeatureAccessOverride({
+        featureKey: WEB_SEARCH_ENABLED_SETTING_KEY,
+        source: "api.images.web-search.user-feature-access",
+        userId: session.user.id,
+      }),
       existingChat && payload.intent === "image_edit"
         ? getMessagesByChatId({ id: chatId })
             .then(readLatestEnvironmentReferenceContext)
@@ -623,6 +633,7 @@ export async function POST(request: Request) {
       environmentReferenceFeatureEnabled &&
       isWebSearchAllowedForUser({
         config: webSearchConfig,
+        featureOverride: webSearchOverride,
         isPaidUser: access.hasPaidCredits || access.hasPaidPlan,
         platform: webSearchPlatform,
         role: session.user.role,

@@ -13,7 +13,10 @@ export async function GET(request: Request) {
   if (!auth?.user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401, headers: noStoreHeaders() });
   }
-  const enabled = await isExploreMeghalayaEnabledForRole(auth.user.role).catch(
+  const enabled = await isExploreMeghalayaEnabledForRole(
+    auth.user.role,
+    auth.user.id
+  ).catch(
     () => false
   );
   if (!enabled) {

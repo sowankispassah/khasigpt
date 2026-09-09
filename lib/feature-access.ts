@@ -158,8 +158,13 @@ export function parseFeatureAccessMode(
 
 export function isFeatureEnabledForRole(
   mode: FeatureAccessMode,
-  role: FeatureAccessRole
+  role: FeatureAccessRole,
+  userOverride?: boolean | null
 ): boolean {
+  if (typeof userOverride === "boolean") {
+    return userOverride;
+  }
+
   if (mode === "disabled") {
     return false;
   }

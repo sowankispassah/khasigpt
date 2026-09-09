@@ -214,11 +214,13 @@ export async function loadWebSearchConfig({ timeoutMs = 1500 } = {}) {
 
 export function isWebSearchAllowedForUser({
   config,
+  featureOverride,
   isPaidUser,
   platform,
   role,
 }: {
   config: WebSearchConfig;
+  featureOverride?: boolean | null;
   isPaidUser: boolean;
   platform: WebSearchPlatform;
   role: UserRole;
@@ -226,7 +228,7 @@ export function isWebSearchAllowedForUser({
   if (config.provider === "disabled") {
     return false;
   }
-  if (!isFeatureEnabledForRole(config.accessMode, role)) {
+  if (!isFeatureEnabledForRole(config.accessMode, role, featureOverride)) {
     return false;
   }
   if (platform === "web" && !config.enabledWeb) {

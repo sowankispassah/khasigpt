@@ -37,6 +37,7 @@ import {
   isFeatureEnabledForRole,
   parseFeatureAccessMode,
 } from "@/lib/feature-access";
+import { USER_FEATURE_ACCESS_KEYS } from "@/lib/feature-access-catalog";
 import {
   getCachedTranslationBundle,
   getFreshTranslationBundle,
@@ -58,6 +59,7 @@ import {
   loadFeatureAccessSettingsByKeys,
   USER_VISIBLE_FEATURE_ACCESS_SETTING_KEYS,
 } from "@/lib/settings/feature-access-settings";
+import { loadUserFeatureAccessOverrides } from "@/lib/settings/user-feature-access";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
 import {
@@ -125,12 +127,19 @@ export async function loadFeatureAccessReadModel({
 }) {
   const [
     featureAccessSettings,
+    userFeatureAccess,
     customKnowledgeSetting,
     imageGenerationAccess,
   ] = await Promise.all([
     loadFeatureAccessSettingsByKeys(USER_VISIBLE_FEATURE_ACCESS_SETTING_KEYS, {
       source: "api.read-models.feature-access",
       timeoutMs: READ_TIMEOUT_MS + 3000,
+    }),
+    loadUserFeatureAccessOverrides({
+      featureKeys: USER_FEATURE_ACCESS_KEYS,
+      source: "api.read-models.user-feature-access",
+      timeoutMs: READ_TIMEOUT_MS,
+      userId,
     }),
     safeAppSetting<string | boolean | null>(
       CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
@@ -204,61 +213,83 @@ export async function loadFeatureAccessReadModel({
       imageGenerationDegraded: imageGenerationAccessDegraded,
       degraded:
         featureAccessSettings.status !== "confirmed" ||
+        userFeatureAccess.status !== "confirmed" ||
         imageGenerationAccessDegraded,
       featureAccessStatus: featureAccessSettings.status,
+      userFeatureAccessStatus: userFeatureAccess.status,
       missingFeatureKeys: featureAccessSettings.missingKeys,
     },
     calculator: isFeatureEnabledForRole(
       parseCalculatorAccessModeSetting(calculatorSetting),
-      role
+      role,
+      userFeatureAccess.values.get(CALCULATOR_FEATURE_FLAG_KEY)
     ),
     customKnowledge: parseBooleanSetting(customKnowledgeSetting),
     documentUploads: isFeatureEnabledForRole(
       parseDocumentUploadsAccessModeSetting(documentUploadsSetting),
-      role
+      role,
+      userFeatureAccess.values.get(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY)
     ),
     forum: true,
     exploreMeghalaya: isFeatureEnabledForRole(
       parseFeatureAccessMode(exploreSetting, "admin_only"),
-      role
+      role,
+      userFeatureAccess.values.get(EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY)
     ),
-    jobs: isFeatureEnabledForRole(parseJobsAccessModeSetting(jobsSetting), role),
-    news: isFeatureEnabledForRole(parseNewsAccessModeSetting(newsSetting), role),
+    jobs: isFeatureEnabledForRole(
+      parseJobsAccessModeSetting(jobsSetting),
+      role,
+      userFeatureAccess.values.get(JOBS_FEATURE_FLAG_KEY)
+    ),
+    news: isFeatureEnabledForRole(
+      parseNewsAccessModeSetting(newsSetting),
+      role,
+      userFeatureAccess.values.get(NEWS_FEATURE_FLAG_KEY)
+    ),
     study: isFeatureEnabledForRole(
       parseStudyModeAccessModeSetting(studySetting),
-      role
+      role,
+      userFeatureAccess.values.get(STUDY_MODE_FEATURE_FLAG_KEY)
     ),
     translate: isFeatureEnabledForRole(
       parseTranslateAccessModeSetting(translateSetting),
-      role
+      role,
+      userFeatureAccess.values.get(TRANSLATE_FEATURE_FLAG_KEY)
     ),
     webSearch: isFeatureEnabledForRole(
       parseFeatureAccessMode(webSearchSetting, "admin_only"),
-      role
+      role,
+      userFeatureAccess.values.get(WEB_SEARCH_ENABLED_SETTING_KEY)
     ),
     liveTranslation: isFeatureEnabledForRole(
       parseLiveTranslationAccessModeSetting(liveTranslationAndroidSetting),
-      role
+      role,
+      userFeatureAccess.values.get(LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY)
     ),
     liveTranslationAndroid: isFeatureEnabledForRole(
       parseLiveTranslationAccessModeSetting(liveTranslationAndroidSetting),
-      role
+      role,
+      userFeatureAccess.values.get(LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY)
     ),
     liveTranslationWeb: isFeatureEnabledForRole(
       parseLiveTranslationAccessModeSetting(liveTranslationWebSetting),
-      role
+      role,
+      userFeatureAccess.values.get(LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY)
     ),
     voiceChat: isFeatureEnabledForRole(
       parseVoiceChatAccessModeSetting(voiceChatSettings.android),
-      role
+      role,
+      userFeatureAccess.values.get(VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY)
     ),
     voiceChatAndroid: isFeatureEnabledForRole(
       parseVoiceChatAccessModeSetting(voiceChatSettings.android),
-      role
+      role,
+      userFeatureAccess.values.get(VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY)
     ),
     voiceChatWeb: isFeatureEnabledForRole(
       parseVoiceChatAccessModeSetting(voiceChatSettings.web),
-      role
+      role,
+      userFeatureAccess.values.get(VOICE_CHAT_WEB_FEATURE_FLAG_KEY)
     ),
     imageGeneration: imageGenerationAccess
       ? {
@@ -347,20 +378,22 @@ export async function loadPromptReadModel({
   platform = "web",
   preferredLanguage,
   role,
+  userId,
 }: {
   platform?: "android" | "web";
   preferredLanguage?: string | null;
   role: UserRole;
+  userId?: string | null;
 }) {
   let suggestedPromptsDegraded = false;
   let iconPromptActionsDegraded = false;
   const [suggestedPrompts, iconPromptActions] = await Promise.all([
-    loadSuggestedPrompts(preferredLanguage, role).catch((error) => {
+    loadSuggestedPrompts(preferredLanguage, role, userId).catch((error) => {
       console.error("[read-models] Failed to load suggested prompts.", error);
       suggestedPromptsDegraded = true;
       return [];
     }),
-    loadIconPromptActions(preferredLanguage, role, platform).catch((error) => {
+    loadIconPromptActions(preferredLanguage, role, platform, userId).catch((error) => {
       console.error("[read-models] Failed to load icon prompts.", error);
       iconPromptActionsDegraded = true;
       return getDefaultIconPromptActions(

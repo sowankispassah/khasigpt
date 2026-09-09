@@ -70,6 +70,32 @@ export const user = pgTable(
 
 export type User = InferSelectModel<typeof user>;
 
+export const userFeatureAccessOverride = pgTable(
+  "UserFeatureAccessOverride",
+  {
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    featureKey: varchar("featureKey", { length: 160 }).notNull(),
+    enabled: boolean("enabled").notNull(),
+    updatedByAdminId: uuid("updatedByAdminId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.userId, table.featureKey] }),
+    featureKeyIdx: index("UserFeatureAccessOverride_featureKey_idx").on(
+      table.featureKey
+    ),
+  })
+);
+
+export type UserFeatureAccessOverride = InferSelectModel<
+  typeof userFeatureAccessOverride
+>;
+
 export const userPresence = pgTable(
   "UserPresence",
   {

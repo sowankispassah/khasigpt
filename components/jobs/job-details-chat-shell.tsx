@@ -12,6 +12,7 @@ import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
 } from "@/lib/settings/feature-access-settings";
+import { loadUserFeatureAccessOverride } from "@/lib/settings/user-feature-access";
 import type { ChatMessage } from "@/lib/types";
 import { parseDocumentUploadsAccessModeSetting } from "@/lib/uploads/document-uploads";
 import { JobDetailsChatPanel } from "./job-details-chat-panel";
@@ -26,6 +27,7 @@ type JobDetailsChatShellProps = {
   initialVisibilityType?: VisibilityType;
   isReadonly?: boolean;
   userRole: FeatureAccessRole;
+  userId: string;
 };
 
 const JOB_CHAT_FEATURE_ACCESS_TIMEOUT_MS = 2_000;
@@ -40,10 +42,11 @@ export async function JobDetailsChatShell({
   initialVisibilityType = "private",
   isReadonly = false,
   userRole,
+  userId,
 }: JobDetailsChatShellProps) {
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
-  const [{ defaultModel, models }, featureAccessSettings] = await Promise.all([
+  const [{ defaultModel, models }, featureAccessSettings, userOverride] = await Promise.all([
     loadChatModels().catch(() => ({
       defaultModel: null,
       models: [],
@@ -51,6 +54,11 @@ export async function JobDetailsChatShell({
     loadFeatureAccessSettingsByKeys([DOCUMENT_UPLOADS_FEATURE_FLAG_KEY], {
       source: "jobs.details.chat-shell.feature-access",
       timeoutMs: JOB_CHAT_FEATURE_ACCESS_TIMEOUT_MS,
+    }),
+    loadUserFeatureAccessOverride({
+      featureKey: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+      source: "jobs.details.chat-shell.user-feature-access",
+      userId,
     }),
   ]);
 
@@ -67,7 +75,8 @@ export async function JobDetailsChatShell({
   );
   const documentUploadsEnabled = isFeatureEnabledForRole(
     documentUploadsMode,
-    userRole
+    userRole,
+    userOverride
   );
 
   return (

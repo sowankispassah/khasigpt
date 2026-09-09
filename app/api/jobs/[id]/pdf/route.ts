@@ -88,7 +88,10 @@ export async function GET(
     );
   }
 
-  const jobsEnabled = await isJobsEnabledForRole(session.user.role ?? null);
+  const jobsEnabled = await isJobsEnabledForRole(
+    session.user.role ?? null,
+    session.user.id
+  );
   if (!jobsEnabled) {
     return NextResponse.json(
       {

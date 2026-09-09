@@ -9,15 +9,24 @@ import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
 } from "@/lib/settings/feature-access-settings";
+import { loadUserFeatureAccessOverride } from "@/lib/settings/user-feature-access";
 import { parseExploreAccessModeSetting } from "./shared";
 
 export async function isExploreMeghalayaEnabledForRole(
-  role: UserRole | null | undefined
+  role: UserRole | null | undefined,
+  userId?: string | null
 ) {
-  const snapshot = await loadFeatureAccessSettingsByKeys(
-    [EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY],
-    { source: "explore.feature-access", timeoutMs: 2_000 }
-  );
+  const [snapshot, userOverride] = await Promise.all([
+    loadFeatureAccessSettingsByKeys([EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY], {
+      source: "explore.feature-access",
+      timeoutMs: 2_000,
+    }),
+    loadUserFeatureAccessOverride({
+      featureKey: EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
+      source: "explore.user-feature-access",
+      userId,
+    }),
+  ]);
   const value = getFeatureAccessModeSettingValue(
     snapshot,
     EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
@@ -25,6 +34,7 @@ export async function isExploreMeghalayaEnabledForRole(
   );
   return isFeatureEnabledForRole(
     parseExploreAccessModeSetting(value),
-    role
+    role,
+    userOverride
   );
 }

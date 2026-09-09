@@ -104,7 +104,10 @@ export default async function JobPostingDetailPage(props: {
     ? await props.searchParams
     : undefined;
   const session = await getChatRouteSession();
-  const jobsAccess = await getJobsAccessForRole(session?.user?.role ?? null);
+  const jobsAccess = await getJobsAccessForRole(
+    session?.user?.role ?? null,
+    session?.user?.id
+  );
 
   if (!jobsAccess.enabled) {
     notFound();
@@ -441,6 +444,7 @@ export default async function JobPostingDetailPage(props: {
           jobContext={jobCard}
           key={jobChatSession?.chatId ?? job.id}
           userRole={session.user.role ?? null}
+          userId={session.user.id}
         />
       </div>
     </>

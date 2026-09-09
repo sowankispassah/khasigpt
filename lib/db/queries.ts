@@ -140,6 +140,7 @@ import {
   type User,
   type UserSubscription,
   user,
+  userFeatureAccessOverride,
   userInviteAccess,
   userPresence,
   userProfileImage,
@@ -834,6 +835,79 @@ export async function getUserById(id: string): Promise<User | null> {
     return record ?? null;
   } catch (_error) {
     throw new ChatSDKError("bad_request:database", "Failed to get user by id");
+  }
+}
+
+export async function getUserFeatureAccessOverrides(
+  userId: string,
+  featureKeys?: readonly string[]
+): Promise<Map<string, boolean>> {
+  if (!isValidUUID(userId)) {
+    return new Map();
+  }
+
+  try {
+    const conditions = [eq(userFeatureAccessOverride.userId, userId)];
+    if (featureKeys && featureKeys.length > 0) {
+      conditions.push(inArray(userFeatureAccessOverride.featureKey, [...featureKeys]));
+    }
+    const rows = await db
+      .select({
+        enabled: userFeatureAccessOverride.enabled,
+        featureKey: userFeatureAccessOverride.featureKey,
+      })
+      .from(userFeatureAccessOverride)
+      .where(and(...conditions));
+
+    return new Map(rows.map((row) => [row.featureKey, row.enabled]));
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to get user feature access overrides"
+    );
+  }
+}
+
+export async function replaceUserFeatureAccessOverrides({
+  actorId,
+  overrides,
+  userId,
+}: {
+  actorId: string;
+  overrides: ReadonlyMap<string, boolean>;
+  userId: string;
+}) {
+  if (!isValidUUID(actorId) || !isValidUUID(userId)) {
+    throw new ChatSDKError("bad_request:database", "Invalid user id");
+  }
+
+  try {
+    return await db.transaction(async (tx) => {
+      await tx
+        .delete(userFeatureAccessOverride)
+        .where(eq(userFeatureAccessOverride.userId, userId));
+
+      if (overrides.size > 0) {
+        const now = new Date();
+        await tx.insert(userFeatureAccessOverride).values(
+          Array.from(overrides, ([featureKey, enabled]) => ({
+            createdAt: now,
+            enabled,
+            featureKey,
+            updatedAt: now,
+            updatedByAdminId: actorId,
+            userId,
+          }))
+        );
+      }
+
+      return new Map(overrides);
+    });
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to save user feature access overrides"
+    );
   }
 }
 

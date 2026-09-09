@@ -48,7 +48,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const jobsAccess = await getJobsAccessForRole(session.user.role ?? null);
+  const jobsAccess = await getJobsAccessForRole(
+    session.user.role ?? null,
+    session.user.id
+  );
   if (!jobsAccess.enabled) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }

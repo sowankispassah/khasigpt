@@ -13,6 +13,7 @@ import {
 } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { loadFeatureAccessSettingsByKeys } from "@/lib/settings/feature-access-settings";
+import { loadUserFeatureAccessOverride } from "@/lib/settings/user-feature-access";
 import {
   parseTranslateAccessModeSetting,
   parseTranslateProviderModeSetting,
@@ -30,11 +31,16 @@ export default async function TranslatePage() {
     redirect("/login?callbackUrl=/translate");
   }
 
-  const [translateAccessSettings, translateProviderModeSetting, languageResult] =
+  const [translateAccessSettings, userOverride, translateProviderModeSetting, languageResult] =
     await Promise.all([
     loadFeatureAccessSettingsByKeys([TRANSLATE_FEATURE_FLAG_KEY], {
       source: "translate.page.feature-access",
       timeoutMs: TRANSLATE_PAGE_QUERY_TIMEOUT_MS,
+    }),
+    loadUserFeatureAccessOverride({
+      featureKey: TRANSLATE_FEATURE_FLAG_KEY,
+      source: "translate.page.user-feature-access",
+      userId: session.user.id,
     }),
     withTimeout(
       getAppSetting<string | boolean | number>(TRANSLATE_PROVIDER_MODE_SETTING_KEY),
@@ -73,7 +79,11 @@ export default async function TranslatePage() {
     translateAccessSettings.status === "unavailable" && translateSetting == null;
   const translateEnabled =
     translateSettingsUnavailable ||
-    isFeatureEnabledForRole(translateAccessMode, session.user.role);
+    isFeatureEnabledForRole(
+      translateAccessMode,
+      session.user.role,
+      userOverride
+    );
   const translateProviderMode = parseTranslateProviderModeSetting(
     translateProviderModeSetting
   );

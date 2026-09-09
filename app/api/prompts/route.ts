@@ -19,7 +19,11 @@ export async function GET(request: Request) {
 
   const [promptsResult, iconPromptActionsResult] = await Promise.allSettled([
     withTimeout(
-      loadSuggestedPrompts(preferredLanguage, authContext.user.role),
+      loadSuggestedPrompts(
+        preferredLanguage,
+        authContext.user.role,
+        authContext.user.id
+      ),
       PROMPTS_READ_TIMEOUT_MS,
       () => {
         console.error("[api/prompts] Suggested prompts timed out.", {
@@ -28,7 +32,12 @@ export async function GET(request: Request) {
       }
     ),
     withTimeout(
-      loadIconPromptActions(preferredLanguage, authContext.user.role),
+      loadIconPromptActions(
+        preferredLanguage,
+        authContext.user.role,
+        "web",
+        authContext.user.id
+      ),
       PROMPTS_READ_TIMEOUT_MS,
       () => {
         console.error("[api/prompts] Icon prompts timed out.", {

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/api/auth";
 import { noStoreHeaders } from "@/lib/api/cache";
+import { LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY } from "@/lib/constants";
 import {
   getActiveChatOwnerById,
   getAppSetting,
@@ -13,7 +14,6 @@ import {
 } from "@/lib/db/queries";
 import type { DBMessage } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
-import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import {
   getLiveTranslationAccessModeForPlatform,
   getLiveTranslationLanguageName,
@@ -21,6 +21,7 @@ import {
   LIVE_TRANSLATION_SUPPORTED_LANGUAGES_SETTING_KEY,
   normalizeLiveTranslationLanguages,
 } from "@/lib/live-translation/config";
+import { isFeatureEnabledForUser } from "@/lib/settings/user-feature-access";
 import { generateUUID } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
 import { resolveLiveVoiceModelConfig } from "@/lib/voice/live-models";
@@ -119,7 +120,13 @@ export async function POST(request: Request) {
     return LIVE_TRANSLATION_ACCESS_MODE_FALLBACK;
   });
 
-  if (!isFeatureEnabledForRole(accessMode, authContext.user.role)) {
+  if (!(await isFeatureEnabledForUser({
+    featureKey: LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
+    mode: accessMode,
+    role: authContext.user.role,
+    source: "api.mobile.live-translation.session.user-feature-access",
+    userId: authContext.user.id,
+  }))) {
     return Response.json(
       { message: "Not found" },
       { headers: noStoreHeaders(), status: 404 }

@@ -4,11 +4,11 @@ import {
   TRANSLATE_PROVIDER_MODE_SETTING_KEY,
 } from "@/lib/constants";
 import { getAppSetting, getLastKnownAppSetting } from "@/lib/db/queries";
-import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { loadFeatureAccessSettingsByKeys } from "@/lib/settings/feature-access-settings";
+import { isFeatureEnabledForUser } from "@/lib/settings/user-feature-access";
 import {
   parseTranslateAccessModeSetting,
   parseTranslateProviderModeSetting,
@@ -101,7 +101,13 @@ export async function POST(request: Request) {
     translateAccessSettings.status === "unavailable" && rawTranslateSetting == null;
   const translateEnabled =
     translateSettingsUnavailable ||
-    isFeatureEnabledForRole(translateMode, session.user.role);
+    (await isFeatureEnabledForUser({
+      featureKey: TRANSLATE_FEATURE_FLAG_KEY,
+      mode: translateMode,
+      role: session.user.role,
+      source: "api.translate.user-feature-access",
+      userId: session.user.id,
+    }));
   const providerMode = parseTranslateProviderModeSetting(rawProviderModeSetting);
 
   if (!translateEnabled) {

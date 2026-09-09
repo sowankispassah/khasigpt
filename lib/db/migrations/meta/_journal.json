@@ -694,6 +694,13 @@
       "when": 1787443200007,
       "tag": "0096_paid_generation_admission",
       "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1788998400000,
+      "tag": "0097_user_feature_access_overrides",
+      "breakpoints": true
     }
   ]
 }

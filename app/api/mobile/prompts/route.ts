@@ -24,6 +24,7 @@ export async function GET(request: Request) {
       platform: "android",
       preferredLanguage,
       role: authContext.user.role,
+      userId: authContext.user.id,
     })
   );
 

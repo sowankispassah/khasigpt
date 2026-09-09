@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { DOCUMENT_UPLOADS_FEATURE_FLAG_KEY } from "@/lib/constants";
-import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
@@ -11,6 +10,7 @@ import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
 } from "@/lib/settings/feature-access-settings";
+import { isFeatureEnabledForUser } from "@/lib/settings/user-feature-access";
 import { buildDocumentDownloadUrl } from "@/lib/uploads/document-access";
 import {
   DOCUMENT_EXTENSION_BY_MIME,
@@ -117,10 +117,13 @@ export async function POST(request: Request) {
     const documentUploadsMode = parseDocumentUploadsAccessModeSetting(
       documentUploadsSetting
     );
-    const documentUploadsEnabled = isFeatureEnabledForRole(
-      documentUploadsMode,
-      session.user.role
-    );
+    const documentUploadsEnabled = await isFeatureEnabledForUser({
+      featureKey: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+      mode: documentUploadsMode,
+      role: session.user.role,
+      source: "api.files.upload.user-feature-access",
+      userId: session.user.id,
+    });
     const allowedMimeTypes = documentUploadsEnabled
       ? [...ALLOWED_IMAGE_MIME_TYPES, ...DOCUMENT_MIME_TYPES]
       : [...ALLOWED_IMAGE_MIME_TYPES];

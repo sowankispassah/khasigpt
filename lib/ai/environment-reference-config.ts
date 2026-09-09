@@ -10,27 +10,34 @@ import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
 } from "@/lib/settings/feature-access-settings";
+import { loadUserFeatureAccessOverride } from "@/lib/settings/user-feature-access";
 
 const ENVIRONMENT_REFERENCE_SETTING_TIMEOUT_MS = 1_500;
 
 export async function isEnvironmentReferenceEnabledForRole(
-  role: UserRole | null | undefined
+  role: UserRole | null | undefined,
+  userId?: string | null
 ) {
   try {
-    const snapshot = await loadFeatureAccessSettingsByKeys(
-      [IMAGE_WEB_REFERENCES_FEATURE_FLAG_KEY],
-      {
+    const [snapshot, userOverride] = await Promise.all([
+      loadFeatureAccessSettingsByKeys([IMAGE_WEB_REFERENCES_FEATURE_FLAG_KEY], {
         source: "image-environment-references.feature-access",
         timeoutMs: ENVIRONMENT_REFERENCE_SETTING_TIMEOUT_MS,
-      }
-    );
+      }),
+      loadUserFeatureAccessOverride({
+        featureKey: IMAGE_WEB_REFERENCES_FEATURE_FLAG_KEY,
+        source: "image-environment-references.user-feature-access",
+        userId,
+      }),
+    ]);
     const value = getFeatureAccessModeSettingValue(
       snapshot,
       IMAGE_WEB_REFERENCES_FEATURE_FLAG_KEY
     );
     return isFeatureEnabledForRole(
       parseFeatureAccessMode(value, "admin_only"),
-      role
+      role,
+      userOverride
     );
   } catch (error) {
     console.warn(

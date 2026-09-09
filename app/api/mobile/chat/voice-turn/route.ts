@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/api/auth";
 import { noStoreHeaders } from "@/lib/api/cache";
+import { VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY } from "@/lib/constants";
 import {
   getActiveChatOwnerById,
   getChatById,
@@ -11,7 +12,7 @@ import {
   updateChatStatusById,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
-import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import { isFeatureEnabledForUser } from "@/lib/settings/user-feature-access";
 import { generateUUID } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
 import { getVoiceChatAccessModeForPlatform } from "@/lib/voice/config";
@@ -92,7 +93,13 @@ export async function POST(request: Request) {
     return "enabled" as const;
   });
 
-  if (!isFeatureEnabledForRole(voiceMode, authContext.user.role)) {
+  if (!(await isFeatureEnabledForUser({
+    featureKey: VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
+    mode: voiceMode,
+    role: authContext.user.role,
+    source: "api.mobile.chat.voice-turn.user-feature-access",
+    userId: authContext.user.id,
+  }))) {
     return Response.json(
       { message: "Not found" },
       { headers: noStoreHeaders(), status: 404 }

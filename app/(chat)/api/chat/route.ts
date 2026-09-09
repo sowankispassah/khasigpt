@@ -50,6 +50,7 @@ import {
   JOBS_FEATURE_FLAG_KEY,
   NEWS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
+  WEB_SEARCH_ENABLED_SETTING_KEY,
 } from "@/lib/constants";
 import { getLiveCurrentInfo, type LiveCurrentInfo } from "@/lib/current-info/service";
 import {
@@ -122,6 +123,7 @@ import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
 } from "@/lib/settings/feature-access-settings";
+import { loadUserFeatureAccessOverrides } from "@/lib/settings/user-feature-access";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import {
   getStudyQuestionIndexCached,
@@ -188,6 +190,7 @@ const CHAT_API_FEATURE_ACCESS_KEYS = [
   STUDY_MODE_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   NEWS_FEATURE_FLAG_KEY,
+  WEB_SEARCH_ENABLED_SETTING_KEY,
 ] as const;
 
 const DEFAULT_CHAT_TITLE = "New Chat";
@@ -1165,6 +1168,13 @@ export async function POST(request: Request) {
         })
       ),
       measurePreModelStep("load_web_search_config", () => loadWebSearchConfig()),
+      measurePreModelStep("get_user_feature_access", () =>
+        loadUserFeatureAccessOverrides({
+          featureKeys: CHAT_API_FEATURE_ACCESS_KEYS,
+          source: "api.chat.user-feature-access",
+          userId: session.user.id,
+        })
+      ),
     ]);
     const activeSubscriptionPromise = measurePreModelStep(
       "get_active_subscription",
@@ -1182,6 +1192,7 @@ export async function POST(request: Request) {
         registry,
         featureAccessSettings,
         webSearchConfig,
+        userAccess,
       ],
       activeSubscription,
       chat,
@@ -1328,18 +1339,25 @@ export async function POST(request: Request) {
     );
     const documentUploadsEnabled = isFeatureEnabledForRole(
       documentUploadsMode,
-      session.user.role
+      session.user.role,
+      userAccess.values.get(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY)
     );
     const studyModeMode = parseStudyModeAccessModeSetting(studyModeSetting);
     const studyModeEnabled = isFeatureEnabledForRole(
       studyModeMode,
-      session.user.role
+      session.user.role,
+      userAccess.values.get(STUDY_MODE_FEATURE_FLAG_KEY)
     );
     const jobsMode = parseJobsAccessModeSetting(jobsModeSetting);
-    const jobsModeEnabled = isFeatureEnabledForRole(jobsMode, session.user.role);
+    const jobsModeEnabled = isFeatureEnabledForRole(
+      jobsMode,
+      session.user.role,
+      userAccess.values.get(JOBS_FEATURE_FLAG_KEY)
+    );
     const newsModeEnabled = isFeatureEnabledForRole(
       parseNewsAccessModeSetting(newsModeSetting),
-      session.user.role
+      session.user.role,
+      userAccess.values.get(NEWS_FEATURE_FLAG_KEY)
     );
     const requestedChatMode =
       chatModeInput === STUDY_CHAT_MODE ||
@@ -2920,6 +2938,7 @@ export async function POST(request: Request) {
     if (exploreFollowUp) {
       const exploreEnabled = await isExploreMeghalayaEnabledForRole(
         session.user.role,
+        session.user.id,
       );
       if (!exploreEnabled) {
         exploreFollowUpFailed = true;
@@ -3190,6 +3209,7 @@ export async function POST(request: Request) {
     }
     const webSearchAllowed = isWebSearchAllowedForUser({
       config: webSearchConfig,
+      featureOverride: userAccess.values.get(WEB_SEARCH_ENABLED_SETTING_KEY),
       isPaidUser: hasActiveCredits,
       platform: webSearchPlatform,
       role: userRole,

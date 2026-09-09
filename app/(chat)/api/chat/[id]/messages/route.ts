@@ -114,7 +114,7 @@ export async function GET(
 
   if (
     chat.mode === "news" &&
-    !(await isNewsEnabledForRole(session.user.role))
+    !(await isNewsEnabledForRole(session.user.role, session.user.id))
   ) {
     return new ChatSDKError("not_found:chat").toResponse();
   }

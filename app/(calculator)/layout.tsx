@@ -25,6 +25,7 @@ import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
 } from "@/lib/settings/feature-access-settings";
+import { loadUserFeatureAccessOverrides } from "@/lib/settings/user-feature-access";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { parseTranslateAccessModeSetting } from "@/lib/translate/config";
 import { withTimeout } from "@/lib/utils/async";
@@ -51,7 +52,7 @@ export default async function CalculatorLayout({
   }
 
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
-  const [translationBundle, featureAccessSettings] = await Promise.all([
+  const [translationBundle, featureAccessSettings, userAccess] = await Promise.all([
     withTimeout(
       getTranslationBundle(preferredLanguage),
       CALCULATOR_LAYOUT_TRANSLATION_TIMEOUT_MS,
@@ -70,6 +71,11 @@ export default async function CalculatorLayout({
     loadFeatureAccessSettingsByKeys(CALCULATOR_LAYOUT_FEATURE_ACCESS_KEYS, {
       source: "calculator.layout.feature-access",
       timeoutMs: CALCULATOR_LAYOUT_FEATURE_ACCESS_TIMEOUT_MS,
+    }),
+    loadUserFeatureAccessOverrides({
+      featureKeys: CALCULATOR_LAYOUT_FEATURE_ACCESS_KEYS,
+      source: "calculator.layout.user-feature-access",
+      userId: session.user.id,
     }),
   ]);
 
@@ -94,7 +100,8 @@ export default async function CalculatorLayout({
 
   const calculatorEnabled = isFeatureEnabledForRole(
     parseCalculatorAccessModeSetting(calculatorSetting),
-    session.user.role
+    session.user.role,
+    userAccess.values.get(CALCULATOR_FEATURE_FLAG_KEY)
   );
 
   if (!calculatorEnabled) {
@@ -103,19 +110,23 @@ export default async function CalculatorLayout({
 
   const jobsModeEnabled = isFeatureEnabledForRole(
     parseJobsAccessModeSetting(jobsSetting),
-    session.user.role
+    session.user.role,
+    userAccess.values.get(JOBS_FEATURE_FLAG_KEY)
   );
   const studyModeEnabled = isFeatureEnabledForRole(
     parseStudyModeAccessModeSetting(studyModeSetting),
-    session.user.role
+    session.user.role,
+    userAccess.values.get(STUDY_MODE_FEATURE_FLAG_KEY)
   );
   const translateEnabled = isFeatureEnabledForRole(
     parseTranslateAccessModeSetting(translateSetting),
-    session.user.role
+    session.user.role,
+    userAccess.values.get(TRANSLATE_FEATURE_FLAG_KEY)
   );
   const exploreMeghalayaEnabled = isFeatureEnabledForRole(
     parseFeatureAccessMode(exploreSetting, "admin_only"),
-    session.user.role
+    session.user.role,
+    userAccess.values.get(EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY)
   );
   const { languages, activeLanguage, dictionary } = translationBundle;
   const sidebarState = cookieStore.get("sidebar_state")?.value;

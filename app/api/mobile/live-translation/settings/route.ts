@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/api/auth";
 import { noStoreHeaders } from "@/lib/api/cache";
-import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import { LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY } from "@/lib/constants";
 import {
   DEFAULT_LIVE_TRANSLATION_LANGUAGE_A,
   DEFAULT_LIVE_TRANSLATION_LANGUAGE_B,
@@ -12,6 +12,7 @@ import {
   resolveLiveTranslationLanguageCode,
 } from "@/lib/live-translation/config";
 import { loadLiveTranslationSettingsValues } from "@/lib/live-translation/settings-read";
+import { isFeatureEnabledForUser } from "@/lib/settings/user-feature-access";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -41,7 +42,13 @@ export async function GET(request: Request) {
     }),
   ]);
 
-  if (!isFeatureEnabledForRole(accessMode, authContext.user.role)) {
+  if (!(await isFeatureEnabledForUser({
+    featureKey: LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
+    mode: accessMode,
+    role: authContext.user.role,
+    source: "api.mobile.live-translation.settings.user-feature-access",
+    userId: authContext.user.id,
+  }))) {
     return NextResponse.json(
       { message: "Not found" },
       { headers: noStoreHeaders(), status: 404 }

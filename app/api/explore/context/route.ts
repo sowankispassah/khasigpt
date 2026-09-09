@@ -29,7 +29,7 @@ const schema = z.object({
 export async function POST(request: Request) {
   const auth = await getAuthenticatedUser(request);
   if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  if (!(await isExploreMeghalayaEnabledForRole(auth.user.role))) {
+  if (!(await isExploreMeghalayaEnabledForRole(auth.user.role, auth.user.id))) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
   const parsed = schema.safeParse(await request.json().catch(() => null));
