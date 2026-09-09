@@ -47,6 +47,7 @@ export async function GET(
     const redemption = await redeemPrelaunchInviteTokenForUser({
       token,
       userId: session.user.id,
+      userEmail: session.user.email,
     });
 
     const redirectPath =

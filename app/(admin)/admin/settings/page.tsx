@@ -661,15 +661,18 @@ function CollapsibleSection({
   description,
   children,
   defaultOpen = false,
+  id,
 }: {
   title: ReactNode;
   description?: ReactNode;
   children: ReactNode;
   defaultOpen?: boolean;
+  id?: string;
 }) {
   return (
     <details
       className="group overflow-hidden rounded-lg border bg-card shadow-sm"
+      id={id}
       {...(defaultOpen ? { open: true } : {})}
     >
       <summary className="flex cursor-pointer items-center justify-between gap-3 px-6 py-4">
@@ -1208,7 +1211,9 @@ export default async function AdminSettingsPage({
 
       <div className="flex flex-col gap-6">
         <CollapsibleSection
+          defaultOpen
           description="Control whether the site is publicly available or temporarily under maintenance."
+          id="prelaunch-access"
           title="Maintenance"
         >
           <div className="flex flex-col gap-6">

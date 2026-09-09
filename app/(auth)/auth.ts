@@ -268,7 +268,10 @@ function isUserRole(value: unknown): value is UserRole {
   return typeof value === "string" && USER_ROLES.has(value as UserRole);
 }
 
-async function applyPendingInviteAccess(userId: string) {
+async function applyPendingInviteAccess(
+  userId: string,
+  userEmail?: string | null
+) {
   try {
     const cookieStore = await cookies();
     const pendingToken = cookieStore.get(PRELAUNCH_INVITE_COOKIE_NAME)?.value;
@@ -282,6 +285,7 @@ async function applyPendingInviteAccess(userId: string) {
       redeemPrelaunchInviteTokenForUser({
         token,
         userId,
+        userEmail,
       }),
       INVITE_REDEMPTION_TIMEOUT_MS
     ).catch((error) => {
@@ -413,7 +417,7 @@ export const {
       }
 
       if (typeof user?.id === "string" && user.role !== "admin") {
-        await applyPendingInviteAccess(user.id);
+        await applyPendingInviteAccess(user.id, user.email);
       }
 
       return true;

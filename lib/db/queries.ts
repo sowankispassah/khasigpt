@@ -2875,6 +2875,7 @@ export type PrelaunchInviteTokenStatus =
 export type RedeemPrelaunchInviteResult =
   | { status: "invalid_user" }
   | { status: "invalid_token" }
+  | { status: "assigned_elsewhere" }
   | { status: "blocked" }
   | { status: "revoked" }
   | { status: "expired" }
@@ -3215,9 +3216,11 @@ export async function getPrelaunchInviteTokenStatus(
 export async function redeemPrelaunchInviteTokenForUser({
   token,
   userId,
+  userEmail,
 }: {
   token: string;
   userId: string;
+  userEmail?: string | null;
 }): Promise<RedeemPrelaunchInviteResult> {
   if (!isValidUUID(userId)) {
     return { status: "invalid_user" };
@@ -3247,6 +3250,14 @@ export async function redeemPrelaunchInviteTokenForUser({
       const now = new Date();
       if (invite.expiresAt && invite.expiresAt <= now) {
         return { status: "expired" };
+      }
+
+      const assignedToEmail = normalizeInviteAssignedEmail(
+        invite.assignedToEmail
+      );
+      const normalizedUserEmail = normalizeInviteAssignedEmail(userEmail);
+      if (assignedToEmail && assignedToEmail !== normalizedUserEmail) {
+        return { status: "assigned_elsewhere" };
       }
 
       const [disabledInviteAccess] = await tx
@@ -3382,8 +3393,14 @@ export async function hasActivePrelaunchInviteAccessForUser(
 
   try {
     const [record] = await db
-      .select({ userId: userInviteAccess.userId })
+      .select({
+        userEmail: user.email,
+        assignedToEmail: inviteToken.assignedToEmail,
+        userId: userInviteAccess.userId,
+      })
       .from(userInviteAccess)
+      .innerJoin(user, eq(userInviteAccess.userId, user.id))
+      .innerJoin(inviteToken, eq(userInviteAccess.inviteId, inviteToken.id))
       .where(
         and(
           eq(userInviteAccess.userId, userId),
@@ -3392,7 +3409,17 @@ export async function hasActivePrelaunchInviteAccessForUser(
       )
       .limit(1);
 
-    return Boolean(record?.userId);
+    if (!record?.userId) {
+      return false;
+    }
+
+    const assignedToEmail = normalizeInviteAssignedEmail(
+      record.assignedToEmail
+    );
+    return (
+      !assignedToEmail ||
+      assignedToEmail === normalizeInviteAssignedEmail(record.userEmail)
+    );
   } catch (error) {
     if (isTableMissingError(error)) {
       return false;
