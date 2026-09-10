@@ -383,6 +383,7 @@ function buildModelPricingRows({
         markupMultiplier: markup,
         name: model.displayName,
         providerInputCostUsd,
+        providerCostType: "per_token",
         providerLabel: PROVIDER_LABELS[model.provider] ?? model.provider,
         providerModelId: model.providerModelId,
         providerOutputCostUsd,
@@ -395,19 +396,35 @@ function buildModelPricingRows({
     .filter((model) => model.type === "image" && !model.deletedAt)
     .map<ModelPricingRow>((model) => {
       const markup = normalizeMarkupMultiplier(model.markupMultiplier, 2);
+      const providerCostType = model.providerCostType ?? "per_generation";
+      const providerInputCostUsd =
+        providerCostType === "per_token"
+          ? Math.max(0, Number(model.inputProviderCostPerMillion ?? 0))
+          : null;
       const providerOutputCostUsd = Math.max(
         0,
-        Number(model.providerCostPerOutputUsd ?? 0)
+        Number(
+          providerCostType === "per_token"
+            ? model.outputProviderCostPerMillion
+            : model.providerCostPerOutputUsd
+        )
       );
+      const customerInputChargeInr =
+        providerInputCostUsd === null
+          ? null
+          : providerInputCostUsd * usdToInr * markup;
       const customerOutputChargeInr =
         providerOutputCostUsd * usdToInr * markup;
       return {
-        creditInputCharge: null,
+        creditInputCharge:
+          customerInputChargeInr === null
+            ? null
+            : creditsForCharge(customerInputChargeInr, walletUnitsPerInr),
         creditOutputCharge: creditsForCharge(
           customerOutputChargeInr,
           walletUnitsPerInr
         ),
-        customerInputChargeInr: null,
+        customerInputChargeInr,
         customerOutputChargeInr,
         id: model.id,
         isActive: model.isActive,
@@ -416,7 +433,8 @@ function buildModelPricingRows({
         key: `image:${model.id}`,
         markupMultiplier: markup,
         name: model.displayName,
-        providerInputCostUsd: null,
+        providerInputCostUsd,
+        providerCostType,
         providerLabel: PROVIDER_LABELS[model.provider] ?? model.provider,
         providerModelId: model.providerModelId,
         providerOutputCostUsd,
@@ -460,6 +478,7 @@ function buildModelPricingRows({
         markupMultiplier: markup,
         name: model.displayName,
         providerInputCostUsd,
+        providerCostType: "per_token",
         providerLabel: PROVIDER_LABELS[model.provider] ?? model.provider,
         providerModelId: model.providerModelId,
         providerOutputCostUsd,

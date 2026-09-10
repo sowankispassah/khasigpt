@@ -708,6 +708,13 @@
       "when": 1788998400001,
       "tag": "0098_independent_mobile_launch_gate",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1788998400002,
+      "tag": "0099_image_token_provider_pricing",
+      "breakpoints": true
     }
   ]
 }

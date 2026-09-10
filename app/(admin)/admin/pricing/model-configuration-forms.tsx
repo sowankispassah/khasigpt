@@ -15,9 +15,9 @@ import {
   LIVE_VOICE_MEDIA_RESOLUTION_OPTIONS,
 } from "@/lib/voice/live";
 import {
+  ImageCostPlusFields,
   type PricingPreviewContext,
   TokenCostPlusFields,
-  UnitCostPlusFields,
 } from "./cost-plus-pricing-fields";
 
 const PROVIDER_OPTIONS = [
@@ -373,9 +373,12 @@ export function ImageModelConfigurationForm({
       className="grid gap-4 md:grid-cols-2"
     >
       <CommonFields model={model} prefix={prefix} provider="google" />
-      <UnitCostPlusFields
+      <ImageCostPlusFields
         context={context}
+        initialCostType={model?.providerCostType ?? "per_generation"}
+        initialInputCost={Number(model?.inputProviderCostPerMillion ?? 0)}
         initialMarkup={Number(model?.markupMultiplier ?? 2)}
+        initialOutputCost={Number(model?.outputProviderCostPerMillion ?? 0)}
         initialProviderCost={Number(model?.providerCostPerOutputUsd ?? 0)}
         prefix={prefix}
       />

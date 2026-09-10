@@ -21,6 +21,16 @@ export type GeneratedProviderImage = {
   mediaType: string;
 };
 
+export type ImageProviderTokenUsage = {
+  inputTokens: number;
+  outputTokens: number;
+};
+
+export type ProviderImageGenerationResult = {
+  images: GeneratedProviderImage[];
+  usage: ImageProviderTokenUsage | null;
+};
+
 type ProviderEnvironment = Partial<
   Record<
     | "AI_GATEWAY_API_KEY"
@@ -47,6 +57,43 @@ type ProviderResponseImage = {
   mimeType?: unknown;
   url?: unknown;
 };
+
+function readFiniteTokenCount(
+  record: Record<string, unknown>,
+  keys: string[]
+) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+      return Math.round(value);
+    }
+  }
+  return 0;
+}
+
+export function extractImageProviderTokenUsage(
+  value: unknown
+): ImageProviderTokenUsage | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const inputTokens = readFiniteTokenCount(record, [
+    "input_tokens",
+    "inputTokens",
+    "prompt_tokens",
+    "promptTokens",
+  ]);
+  const outputTokens = readFiniteTokenCount(record, [
+    "output_tokens",
+    "outputTokens",
+    "completion_tokens",
+    "completionTokens",
+  ]);
+  return inputTokens + outputTokens > 0
+    ? { inputTokens, outputTokens }
+    : null;
+}
 
 function requireProviderKey(
   env: ProviderEnvironment,
@@ -295,11 +342,14 @@ async function generateXaiImage({
     }
   );
   const value = await readProviderJson(response, "xAI Grok");
-  return collectProviderImages({
-    abortSignal,
-    fetchImpl,
-    responseImages: value.data,
-  });
+  return {
+    images: await collectProviderImages({
+      abortSignal,
+      fetchImpl,
+      responseImages: value.data,
+    }),
+    usage: extractImageProviderTokenUsage(value.usage),
+  };
 }
 
 function imageBlob(image: ImageInput) {
@@ -361,11 +411,14 @@ async function generateOpenAiImage({
     signal: abortSignal,
   });
   const value = await readProviderJson(response, "OpenAI");
-  return collectProviderImages({
-    abortSignal,
-    fetchImpl,
-    responseImages: value.data,
-  });
+  return {
+    images: await collectProviderImages({
+      abortSignal,
+      fetchImpl,
+      responseImages: value.data,
+    }),
+    usage: extractImageProviderTokenUsage(value.usage),
+  };
 }
 
 function defaultSleep(milliseconds: number, abortSignal?: AbortSignal) {
@@ -496,13 +549,14 @@ async function generateBflImage({
           "Black Forest Labs returned no generated image."
         );
       }
-      return [
-        await downloadProviderImage({
+      return {
+        images: [await downloadProviderImage({
           abortSignal,
           fetchImpl,
           url: result.sample,
-        }),
-      ];
+        })],
+        usage: extractImageProviderTokenUsage(polled.usage),
+      };
     }
     if (status === "error" || status === "failed") {
       throw new ChatSDKError(
@@ -564,11 +618,14 @@ async function generateBytePlusImage({
     }
   );
   const value = await readProviderJson(response, "BytePlus ModelArk");
-  return collectProviderImages({
-    abortSignal,
-    fetchImpl,
-    responseImages: value.data,
-  });
+  return {
+    images: await collectProviderImages({
+      abortSignal,
+      fetchImpl,
+      responseImages: value.data,
+    }),
+    usage: extractImageProviderTokenUsage(value.usage),
+  };
 }
 
 function resolveGatewayCredential(env: ProviderEnvironment) {
@@ -620,11 +677,14 @@ async function generateGatewayImage({
   const rawImages = Array.isArray(value.images)
     ? value.images.map((base64) => ({ base64 }))
     : [];
-  return collectProviderImages({
-    abortSignal,
-    fetchImpl,
-    responseImages: rawImages,
-  });
+  return {
+    images: await collectProviderImages({
+      abortSignal,
+      fetchImpl,
+      responseImages: rawImages,
+    }),
+    usage: extractImageProviderTokenUsage(value.usage),
+  };
 }
 
 type ProviderGenerationInput = {

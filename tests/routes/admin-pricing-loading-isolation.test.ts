@@ -266,7 +266,11 @@ test.describe("admin pricing loading isolation", () => {
     ]);
 
     expect(formSource).toContain("<TokenCostPlusFields");
-    expect(formSource).toContain("<UnitCostPlusFields");
+    expect(formSource).toContain("<ImageCostPlusFields");
+    expect(formSource).toContain('initialCostType={model?.providerCostType ?? "per_generation"}');
+    expect(previewSource).toContain('name="providerCostType"');
+    expect(previewSource).toContain('value="per_generation"');
+    expect(previewSource).toContain('value="per_token"');
     expect(formSource).not.toContain("Legacy fixed price");
     expect(formSource).not.toContain("Legacy credits per image");
     expect(formSource).not.toContain("Legacy credit multiplier");

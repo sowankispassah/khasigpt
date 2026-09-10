@@ -128,7 +128,7 @@ test.describe("hybrid image provider routing", () => {
         url: expect.stringContaining("data:image/png;base64,"),
       })
     );
-    expect(result).toEqual([
+    expect(result.images).toEqual([
       expect.objectContaining({ mediaType: "image/png" }),
     ]);
   });
@@ -139,6 +139,7 @@ test.describe("hybrid image provider routing", () => {
       requests.push({ body: init?.body, url: input.toString() });
       return jsonResponse({
         data: [{ b64_json: ONE_PIXEL_PNG_BASE64 }],
+        usage: { input_tokens: 120, output_tokens: 480 },
       });
     };
     const runtime = {
@@ -146,7 +147,7 @@ test.describe("hybrid image provider routing", () => {
       fetch: fetchMock,
     };
 
-    await generateExternalProviderImage({
+    const generated = await generateExternalProviderImage({
       adapter: "openai",
       modelId: "gpt-image-2",
       prompt: "A hill station at sunrise",
@@ -168,6 +169,7 @@ test.describe("hybrid image provider routing", () => {
     const editForm = requests[1]?.body as FormData;
     expect(editForm.get("model")).toBe("gpt-image-2");
     expect(editForm.get("image")).toBeInstanceOf(Blob);
+    expect(generated.usage).toEqual({ inputTokens: 120, outputTokens: 480 });
   });
 
   test("polls BFL and downloads its signed image result", async () => {
@@ -213,7 +215,7 @@ test.describe("hybrid image provider routing", () => {
       "https://api.bfl.ai/v1/get_result?id=request-1",
       "https://delivery.example/generated.png",
     ]);
-    expect(result[0]?.mediaType).toBe("image/png");
+    expect(result.images[0]?.mediaType).toBe("image/png");
   });
 
   test("sends Seedream reference images directly to BytePlus ModelArk", async () => {
@@ -254,7 +256,7 @@ test.describe("hybrid image provider routing", () => {
     );
     expect(captured.body?.sequential_image_generation).toBe("disabled");
     expect(captured.body?.response_format).toBe("b64_json");
-    expect(result[0]?.mediaType).toBe("image/png");
+    expect(result.images[0]?.mediaType).toBe("image/png");
   });
 
   test("fails clearly when a selected provider has no usable key", async () => {

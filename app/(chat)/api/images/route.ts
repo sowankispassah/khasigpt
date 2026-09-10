@@ -719,7 +719,7 @@ export async function POST(request: Request) {
       maxReferenceImages: maxModelReferences,
     });
 
-    const images = await generateImageWithProvider({
+    const generationResult = await generateImageWithProvider({
       prompt: generationRequest.prompt,
       images: generationRequest.images,
       abortSignal: request.signal,
@@ -727,6 +727,16 @@ export async function POST(request: Request) {
       modelId: access.model.providerModelId,
       preferredLanguage,
     });
+    const { images, usage: providerTokenUsage } = generationResult;
+
+    const finalGenerationQuote =
+      generationQuote.imagePricing.providerCostType === "per_token"
+        ? await getImageGenerationChargeQuote(
+            access.model.id,
+            1,
+            providerTokenUsage ?? { inputTokens: 0, outputTokens: 0 }
+          )
+        : generationQuote;
 
     const generatedImageParts = await Promise.all(
       images.slice(0, 1).map(async (image, index) => {
@@ -782,7 +792,8 @@ export async function POST(request: Request) {
       allowManualCredits: true,
       imageModelConfigId: access.model.id,
       outputCount: 1,
-      generationQuote,
+      generationQuote: finalGenerationQuote,
+      providerTokenUsage: providerTokenUsage ?? undefined,
       requestKey: `image:${assistantMessageId}`,
     });
 

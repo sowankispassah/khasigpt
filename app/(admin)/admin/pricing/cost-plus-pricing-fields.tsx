@@ -246,33 +246,88 @@ export function TokenCostPlusFields({
   );
 }
 
-export function UnitCostPlusFields({
+export function ImageCostPlusFields({
   context,
+  initialCostType,
+  initialInputCost,
   initialMarkup,
+  initialOutputCost,
   initialProviderCost,
   prefix,
 }: {
   context: PricingPreviewContext;
+  initialCostType: "per_generation" | "per_token";
+  initialInputCost: number;
   initialMarkup: number;
+  initialOutputCost: number;
   initialProviderCost: number;
   prefix: string;
 }) {
   const { translate } = useTranslation();
+  const [costType, setCostType] = useState(initialCostType);
+  const [inputCost, setInputCost] = useState(String(initialInputCost));
+  const [outputCost, setOutputCost] = useState(String(initialOutputCost));
   const [providerCost, setProviderCost] = useState(String(initialProviderCost));
   const [markup, setMarkup] = useState(String(initialMarkup));
 
   return (
     <>
-      <PricingNumberField
-        id={`${prefix}-provider-cost`}
-        label="Provider cost (USD / completed image)"
-        min={0.000001}
-        name="providerCostPerOutputUsd"
-        onChange={setProviderCost}
-        step={0.000001}
-        translationKey="admin.pricing.provider_image_cost"
-        value={providerCost}
-      />
+      <label className="flex flex-col gap-2" htmlFor={`${prefix}-cost-type`}>
+        <FieldLabel translationKey="admin.pricing.image_cost_type">
+          Provider Cost Type
+        </FieldLabel>
+        <select
+          className={inputClassName}
+          id={`${prefix}-cost-type`}
+          name="providerCostType"
+          onChange={(event) =>
+            setCostType(event.target.value as "per_generation" | "per_token")
+          }
+          value={costType}
+        >
+          <option value="per_generation">
+            {translate("admin.pricing.image_cost_type.generation", "Per Generation")}
+          </option>
+          <option value="per_token">
+            {translate("admin.pricing.image_cost_type.token", "Per Token")}
+          </option>
+        </select>
+      </label>
+      {costType === "per_generation" ? (
+        <PricingNumberField
+          id={`${prefix}-provider-cost`}
+          label="Provider cost (USD / completed image)"
+          min={0.000001}
+          name="providerCostPerOutputUsd"
+          onChange={setProviderCost}
+          step={0.000001}
+          translationKey="admin.pricing.provider_image_cost"
+          value={providerCost}
+        />
+      ) : (
+        <>
+          <PricingNumberField
+            id={`${prefix}-input-cost`}
+            label="Input cost per 1M tokens"
+            min={0.000001}
+            name="inputProviderCostPerMillion"
+            onChange={setInputCost}
+            step={0.000001}
+            translationKey="admin.pricing.image_input_cost"
+            value={inputCost}
+          />
+          <PricingNumberField
+            id={`${prefix}-output-cost`}
+            label="Output cost per 1M tokens"
+            min={0.000001}
+            name="outputProviderCostPerMillion"
+            onChange={setOutputCost}
+            step={0.000001}
+            translationKey="admin.pricing.image_output_cost"
+            value={outputCost}
+          />
+        </>
+      )}
       <PricingNumberField
         id={`${prefix}-markup`}
         label="Customer markup"
@@ -285,15 +340,38 @@ export function UnitCostPlusFields({
         value={markup}
       />
       <div className="md:col-span-2">
-        <CostPlusPreviewCard
-          context={context}
-          markupMultiplier={Number(markup)}
-          providerCostUsd={Number(providerCost)}
-          title={translate(
-            "admin.pricing.preview.image_output",
-            "Pricing per completed image"
-          )}
-        />
+        {costType === "per_generation" ? (
+          <CostPlusPreviewCard
+            context={context}
+            markupMultiplier={Number(markup)}
+            providerCostUsd={Number(providerCost)}
+            title={translate(
+              "admin.pricing.preview.image_output",
+              "Pricing per completed image"
+            )}
+          />
+        ) : (
+          <div className="space-y-3">
+            <CostPlusPreviewCard
+              context={context}
+              markupMultiplier={Number(markup)}
+              providerCostUsd={Number(inputCost)}
+              title={translate(
+                "admin.pricing.preview.image_input_tokens",
+                "Image input pricing per 1M tokens"
+              )}
+            />
+            <CostPlusPreviewCard
+              context={context}
+              markupMultiplier={Number(markup)}
+              providerCostUsd={Number(outputCost)}
+              title={translate(
+                "admin.pricing.preview.image_output_tokens",
+                "Image output pricing per 1M tokens"
+              )}
+            />
+          </div>
+        )}
       </div>
     </>
   );

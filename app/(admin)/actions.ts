@@ -2025,12 +2025,26 @@ export async function createImageModelConfigAction(formData: FormData) {
   const config = parseJson(formData.get("configJson"));
   const isEnabled = parseBoolean(formData.get("isEnabled"));
   const isActive = parseBoolean(formData.get("isActive"));
+  const providerCostType =
+    formData.get("providerCostType")?.toString() === "per_token"
+      ? "per_token"
+      : "per_generation";
   const providerCostPerOutputUsd = parseNumber(
     formData.get("providerCostPerOutputUsd")
   );
+  const inputProviderCostPerMillion = parseNumber(
+    formData.get("inputProviderCostPerMillion")
+  );
+  const outputProviderCostPerMillion = parseNumber(
+    formData.get("outputProviderCostPerMillion")
+  );
   const markupMultiplier = parseNumber(formData.get("markupMultiplier"));
+  const hasCompleteProviderPricing =
+    providerCostType === "per_token"
+      ? inputProviderCostPerMillion > 0 && outputProviderCostPerMillion > 0
+      : providerCostPerOutputUsd > 0;
   if (
-    providerCostPerOutputUsd <= 0 ||
+    !hasCompleteProviderPricing ||
     markupMultiplier < 1 ||
     markupMultiplier > 20
   ) {
@@ -2059,6 +2073,9 @@ export async function createImageModelConfigAction(formData: FormData) {
       description,
       config,
       providerCostPerOutputUsd,
+      providerCostType,
+      inputProviderCostPerMillion,
+      outputProviderCostPerMillion,
       markupMultiplier,
       isEnabled,
       isActive,
@@ -2096,6 +2113,9 @@ export async function updateImageModelConfigAction(formData: FormData) {
     description?: string | null;
     config?: Record<string, unknown> | null;
     providerCostPerOutputUsd?: number;
+    providerCostType?: "per_generation" | "per_token";
+    inputProviderCostPerMillion?: number;
+    outputProviderCostPerMillion?: number;
     markupMultiplier?: number;
     isEnabled?: boolean;
   } = {};
@@ -2129,12 +2149,31 @@ export async function updateImageModelConfigAction(formData: FormData) {
     );
   }
 
+  const providerCostType =
+    formData.get("providerCostType")?.toString() === "per_token"
+      ? "per_token"
+      : "per_generation";
+  patch.providerCostType = providerCostType;
+  if (formData.has("inputProviderCostPerMillion")) {
+    patch.inputProviderCostPerMillion = parseNumber(
+      formData.get("inputProviderCostPerMillion")
+    );
+  }
+  if (formData.has("outputProviderCostPerMillion")) {
+    patch.outputProviderCostPerMillion = parseNumber(
+      formData.get("outputProviderCostPerMillion")
+    );
+  }
+
   if (formData.has("markupMultiplier")) {
     patch.markupMultiplier = parseNumber(formData.get("markupMultiplier"));
   }
 
   if (
-    (patch.providerCostPerOutputUsd ?? 0) <= 0 ||
+    (providerCostType === "per_token"
+      ? (patch.inputProviderCostPerMillion ?? 0) <= 0 ||
+        (patch.outputProviderCostPerMillion ?? 0) <= 0
+      : (patch.providerCostPerOutputUsd ?? 0) <= 0) ||
     (patch.markupMultiplier ?? 0) < 1 ||
     (patch.markupMultiplier ?? 0) > 20
   ) {
@@ -2227,16 +2266,33 @@ export async function updateImageModelPricingAction(formData: FormData) {
   }
 
   const pricing = {
+    providerCostType:
+      formData.get("providerCostType")?.toString() === "per_token"
+        ? ("per_token" as const)
+        : ("per_generation" as const),
     providerCostPerOutputUsd: Math.max(
       0,
       parseNumber(formData.get("providerCostPerOutputUsd"))
+    ),
+    inputProviderCostPerMillion: Math.max(
+      0,
+      parseNumber(formData.get("inputProviderCostPerMillion"))
     ),
     markupMultiplier: normalizeMarkupMultiplier(
       formData.get("markupMultiplier"),
       2
     ),
+    outputProviderCostPerMillion: Math.max(
+      0,
+      parseNumber(formData.get("outputProviderCostPerMillion"))
+    ),
   };
-  if (pricing.providerCostPerOutputUsd <= 0) {
+  if (
+    pricing.providerCostType === "per_token"
+      ? pricing.inputProviderCostPerMillion <= 0 ||
+        pricing.outputProviderCostPerMillion <= 0
+      : pricing.providerCostPerOutputUsd <= 0
+  ) {
     redirect("/admin/pricing?notice=model-provider-cost-required");
   }
 
@@ -2370,7 +2426,13 @@ export async function setActiveImageModelConfigAction(formData: FormData) {
   }
 
   const model = await getImageModelConfigById({ id });
-  if (!model || Number(model.providerCostPerOutputUsd ?? 0) <= 0) {
+  const hasProviderPricing = model
+    ? model.providerCostType === "per_token"
+      ? Number(model.inputProviderCostPerMillion ?? 0) > 0 &&
+        Number(model.outputProviderCostPerMillion ?? 0) > 0
+      : Number(model.providerCostPerOutputUsd ?? 0) > 0
+    : false;
+  if (!model || !hasProviderPricing) {
     redirect("/admin/pricing?notice=model-provider-cost-required");
   }
 

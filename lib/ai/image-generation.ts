@@ -7,7 +7,10 @@ import {
   type CharacterReferenceDeps,
 } from "@/lib/ai/character-reference";
 import { getActiveImageModel } from "@/lib/ai/image-model-registry";
-import { generateExternalProviderImage } from "@/lib/ai/image-provider-core";
+import {
+  extractImageProviderTokenUsage,
+  generateExternalProviderImage,
+} from "@/lib/ai/image-provider-core";
 import {
   getMaxReferenceImagesForProviderModel,
   resolveImageProviderAdapter,
@@ -22,7 +25,7 @@ import {
 import {
   getActiveSubscriptionForUser,
   getAppSetting,
-  getCostPlusCreditQuote,
+  getImageGenerationChargeQuote,
   getModelConfigById,
   getUserById,
 } from "@/lib/db/queries";
@@ -143,6 +146,23 @@ function buildModelSummary(
   };
 }
 
+function hasCompleteImageProviderPricing(
+  model: Awaited<ReturnType<typeof getActiveImageModel>>
+) {
+  if (!model) return false;
+  return model.providerCostType === "per_token"
+    ? Number(model.inputProviderCostPerMillion ?? 0) > 0 &&
+        Number(model.outputProviderCostPerMillion ?? 0) > 0
+    : Number(model.providerCostPerOutputUsd ?? 0) > 0;
+}
+
+async function getImageAdmissionCreditUnits(
+  model: NonNullable<Awaited<ReturnType<typeof getActiveImageModel>>>
+) {
+  const quote = await getImageGenerationChargeQuote(model.id);
+  return quote.costPlusQuote.creditUnits;
+}
+
 export async function getImageGenerationAvailability({
   userId,
   userRole,
@@ -168,16 +188,9 @@ export async function getImageGenerationAvailability({
   );
   const modelEnabled = Boolean(activeModel?.isEnabled);
   let quotedTokensPerImage: number | null = null;
-  if (
-    activeModel &&
-    Number(activeModel.providerCostPerOutputUsd ?? 0) > 0
-  ) {
+  if (activeModel && hasCompleteImageProviderPricing(activeModel)) {
     try {
-      const quote = await getCostPlusCreditQuote({
-        providerCostUsd: Number(activeModel.providerCostPerOutputUsd),
-        markupMultiplier: Number(activeModel.markupMultiplier ?? 2),
-      });
-      quotedTokensPerImage = quote?.creditUnits ?? null;
+      quotedTokensPerImage = await getImageAdmissionCreditUnits(activeModel);
     } catch (error) {
       console.warn(
         "[image-generation] Cost-plus quote unavailable; image pricing remains unavailable.",
@@ -227,7 +240,7 @@ export async function isImageGenerationEnabledForAllUsers(): Promise<boolean> {
   const activeModel = await getActiveImageModel();
   return Boolean(
     activeModel?.isEnabled &&
-      Number(activeModel.providerCostPerOutputUsd ?? 0) > 0
+      hasCompleteImageProviderPricing(activeModel)
   );
 }
 
@@ -261,16 +274,9 @@ export async function getImageGenerationAccess({
   );
   const modelEnabled = Boolean(activeModel?.isEnabled);
   let quotedTokensPerImage: number | null = null;
-  if (
-    activeModel &&
-    Number(activeModel.providerCostPerOutputUsd ?? 0) > 0
-  ) {
+  if (activeModel && hasCompleteImageProviderPricing(activeModel)) {
     try {
-      const quote = await getCostPlusCreditQuote({
-        providerCostUsd: Number(activeModel.providerCostPerOutputUsd),
-        markupMultiplier: Number(activeModel.markupMultiplier ?? 2),
-      });
-      quotedTokensPerImage = quote?.creditUnits ?? null;
+      quotedTokensPerImage = await getImageAdmissionCreditUnits(activeModel);
     } catch (error) {
       console.warn(
         "[image-generation] Submit-time quote unavailable; image pricing remains unavailable.",
@@ -890,10 +896,13 @@ async function generateNanoBananaImageFromResolvedPrompt({
     );
   }
 
-  return result.files.map((file) => ({
-    base64: file.base64,
-    mediaType: file.mediaType,
-  }));
+  return {
+    images: result.files.map((file) => ({
+      base64: file.base64,
+      mediaType: file.mediaType,
+    })),
+    usage: extractImageProviderTokenUsage(result.usage),
+  };
 }
 
 export async function generateImageWithProvider({

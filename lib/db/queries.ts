@@ -7198,6 +7198,9 @@ export async function createImageModelConfig({
   description = "",
   config = null,
   providerCostPerOutputUsd,
+  providerCostType = "per_generation",
+  inputProviderCostPerMillion = 0,
+  outputProviderCostPerMillion = 0,
   markupMultiplier = DEFAULT_IMAGE_MARKUP_MULTIPLIER,
   isEnabled = true,
   isActive = false,
@@ -7209,12 +7212,23 @@ export async function createImageModelConfig({
   description?: string;
   config?: Record<string, unknown> | null;
   providerCostPerOutputUsd: number;
+  providerCostType?: ImageModelConfig["providerCostType"];
+  inputProviderCostPerMillion?: number;
+  outputProviderCostPerMillion?: number;
   markupMultiplier?: number;
   isEnabled?: boolean;
   isActive?: boolean;
 }): Promise<ImageModelConfig> {
   const now = new Date();
-  if (!Number.isFinite(providerCostPerOutputUsd) || providerCostPerOutputUsd <= 0) {
+  const hasValidPricing =
+    providerCostType === "per_token"
+      ? Number.isFinite(inputProviderCostPerMillion) &&
+        inputProviderCostPerMillion > 0 &&
+        Number.isFinite(outputProviderCostPerMillion) &&
+        outputProviderCostPerMillion > 0
+      : Number.isFinite(providerCostPerOutputUsd) &&
+        providerCostPerOutputUsd > 0;
+  if (!hasValidPricing) {
     throw new ChatSDKError(
       "bad_request:configuration",
       "Image provider cost must be greater than zero"
@@ -7233,6 +7247,9 @@ export async function createImageModelConfig({
           description,
           config,
           providerCostPerOutputUsd,
+          providerCostType,
+          inputProviderCostPerMillion,
+          outputProviderCostPerMillion,
           markupMultiplier: normalizeMarkupMultiplier(
             markupMultiplier,
             DEFAULT_IMAGE_MARKUP_MULTIPLIER
@@ -7474,6 +7491,9 @@ export async function updateImageModelConfig({
   description?: string | null;
   config?: Record<string, unknown> | null;
   providerCostPerOutputUsd?: number;
+  providerCostType?: ImageModelConfig["providerCostType"];
+  inputProviderCostPerMillion?: number;
+  outputProviderCostPerMillion?: number;
   markupMultiplier?: number;
   isEnabled?: boolean;
 }): Promise<ImageModelConfig | null> {
@@ -7506,6 +7526,41 @@ export async function updateImageModelConfig({
         );
       }
       updateData.providerCostPerOutputUsd = patch.providerCostPerOutputUsd;
+    }
+    if (patch.providerCostType !== undefined) {
+      if (!["per_generation", "per_token"].includes(patch.providerCostType)) {
+        throw new ChatSDKError(
+          "bad_request:configuration",
+          "Unsupported image provider cost type"
+        );
+      }
+      updateData.providerCostType = patch.providerCostType;
+    }
+    if (patch.inputProviderCostPerMillion !== undefined) {
+      if (
+        !Number.isFinite(patch.inputProviderCostPerMillion) ||
+        patch.inputProviderCostPerMillion < 0
+      ) {
+        throw new ChatSDKError(
+          "bad_request:configuration",
+          "Image input provider cost must be zero or greater"
+        );
+      }
+      updateData.inputProviderCostPerMillion =
+        patch.inputProviderCostPerMillion;
+    }
+    if (patch.outputProviderCostPerMillion !== undefined) {
+      if (
+        !Number.isFinite(patch.outputProviderCostPerMillion) ||
+        patch.outputProviderCostPerMillion < 0
+      ) {
+        throw new ChatSDKError(
+          "bad_request:configuration",
+          "Image output provider cost must be zero or greater"
+        );
+      }
+      updateData.outputProviderCostPerMillion =
+        patch.outputProviderCostPerMillion;
     }
     if (patch.markupMultiplier !== undefined) {
       updateData.markupMultiplier = normalizeMarkupMultiplier(
@@ -7642,6 +7697,11 @@ export async function setActiveImageModelConfig(id: string): Promise<string> {
             .select({
               id: imageModelConfig.id,
               providerCostPerOutputUsd: imageModelConfig.providerCostPerOutputUsd,
+              providerCostType: imageModelConfig.providerCostType,
+              inputProviderCostPerMillion:
+                imageModelConfig.inputProviderCostPerMillion,
+              outputProviderCostPerMillion:
+                imageModelConfig.outputProviderCostPerMillion,
             })
             .from(imageModelConfig)
             .where(
@@ -7655,7 +7715,12 @@ export async function setActiveImageModelConfig(id: string): Promise<string> {
           if (!target) {
             throw new Error("Image model configuration not found");
           }
-          if (Number(target.providerCostPerOutputUsd ?? 0) <= 0) {
+          const hasProviderPricing =
+            target.providerCostType === "per_token"
+              ? Number(target.inputProviderCostPerMillion ?? 0) > 0 &&
+                Number(target.outputProviderCostPerMillion ?? 0) > 0
+              : Number(target.providerCostPerOutputUsd ?? 0) > 0;
+          if (!hasProviderPricing) {
             throw new ChatSDKError(
               "bad_request:configuration",
               "Provider cost must be added before this image model can be activated"
@@ -8659,6 +8724,7 @@ export type AdminModelPricingSnapshotRow = {
   outputProviderCostPerMillion: number | null;
   provider: string;
   providerCostPerOutputUsd: number | null;
+  providerCostType: "per_generation" | "per_token" | null;
   providerModelId: string;
   reasoningTag: string | null;
   supportsReasoning: boolean;
@@ -8691,6 +8757,7 @@ export async function listAdminModelPricingSnapshot(): Promise<
             ${modelConfig.inputProviderCostPerMillion} AS "inputProviderCostPerMillion",
             ${modelConfig.outputProviderCostPerMillion} AS "outputProviderCostPerMillion",
             NULL::double precision AS "providerCostPerOutputUsd",
+            'per_token'::text AS "providerCostType",
             ${modelConfig.markupMultiplier} AS "markupMultiplier",
             ${modelConfig.systemPrompt} AS "systemPrompt",
             ${modelConfig.codeTemplate} AS "codeTemplate",
@@ -8720,9 +8787,10 @@ export async function listAdminModelPricingSnapshot(): Promise<
             ${imageModelConfig.isEnabled} AS "isEnabled",
             false AS "isDefault",
             ${imageModelConfig.isActive} AS "isActive",
-            NULL::double precision AS "inputProviderCostPerMillion",
-            NULL::double precision AS "outputProviderCostPerMillion",
+            ${imageModelConfig.inputProviderCostPerMillion} AS "inputProviderCostPerMillion",
+            ${imageModelConfig.outputProviderCostPerMillion} AS "outputProviderCostPerMillion",
             ${imageModelConfig.providerCostPerOutputUsd} AS "providerCostPerOutputUsd",
+            ${imageModelConfig.providerCostType} AS "providerCostType",
             ${imageModelConfig.markupMultiplier} AS "markupMultiplier",
             NULL::text AS "systemPrompt",
             NULL::text AS "codeTemplate",
@@ -8755,6 +8823,7 @@ export async function listAdminModelPricingSnapshot(): Promise<
             ${liveVoiceModelConfig.inputProviderCostPerMillion} AS "inputProviderCostPerMillion",
             ${liveVoiceModelConfig.outputProviderCostPerMillion} AS "outputProviderCostPerMillion",
             NULL::double precision AS "providerCostPerOutputUsd",
+            'per_token'::text AS "providerCostType",
             ${liveVoiceModelConfig.markupMultiplier} AS "markupMultiplier",
             NULL::text AS "systemPrompt",
             NULL::text AS "codeTemplate",
@@ -11457,7 +11526,16 @@ export async function getCostPlusCreditQuote({
   };
 }
 
-export async function getImageGenerationChargeQuote(imageModelConfigId: string | null, outputCount = 1) {
+export type ImageProviderTokenUsage = {
+  inputTokens: number;
+  outputTokens: number;
+};
+
+export async function getImageGenerationChargeQuote(
+  imageModelConfigId: string | null,
+  outputCount = 1,
+  tokenUsage?: ImageProviderTokenUsage
+) {
   const normalizedOutputCount = Math.max(1, Math.round(outputCount));
   const [imagePricing] = imageModelConfigId
     ? await db
@@ -11465,6 +11543,11 @@ export async function getImageGenerationChargeQuote(imageModelConfigId: string |
           providerKey: imageModelConfig.provider,
           providerCostPerOutputUsd:
             imageModelConfig.providerCostPerOutputUsd,
+          providerCostType: imageModelConfig.providerCostType,
+          inputProviderCostPerMillion:
+            imageModelConfig.inputProviderCostPerMillion,
+          outputProviderCostPerMillion:
+            imageModelConfig.outputProviderCostPerMillion,
           markupMultiplier: imageModelConfig.markupMultiplier,
         })
         .from(imageModelConfig)
@@ -11476,13 +11559,44 @@ export async function getImageGenerationChargeQuote(imageModelConfigId: string |
         )
         .limit(1)
     : [];
+  const normalizedTokenUsage = tokenUsage
+    ? {
+        inputTokens: Math.max(0, Math.round(tokenUsage.inputTokens)),
+        outputTokens: Math.max(0, Math.round(tokenUsage.outputTokens)),
+      }
+    : null;
+  const isTokenPricing = imagePricing?.providerCostType === "per_token";
+  if (
+    isTokenPricing &&
+    normalizedTokenUsage &&
+    normalizedTokenUsage.inputTokens + normalizedTokenUsage.outputTokens <= 0
+  ) {
+    throw new ChatSDKError(
+      "bad_request:usage",
+      "The image provider did not return billable token usage"
+    );
+  }
+  const pricedTokenUsage = isTokenPricing
+    ? (normalizedTokenUsage ?? { inputTokens: 1, outputTokens: 1 })
+    : null;
   const providerCostUsd = imagePricing
-    ? calculateUnitProviderCostUsd({
-        providerCostPerUnitUsd: Number(
-          imagePricing.providerCostPerOutputUsd ?? 0
-        ),
-        unitCount: normalizedOutputCount,
-      })
+    ? isTokenPricing && pricedTokenUsage
+      ? calculateTokenProviderCostUsd({
+          inputCostPerMillionUsd: Number(
+            imagePricing.inputProviderCostPerMillion ?? 0
+          ),
+          inputTokens: pricedTokenUsage.inputTokens,
+          outputCostPerMillionUsd: Number(
+            imagePricing.outputProviderCostPerMillion ?? 0
+          ),
+          outputTokens: pricedTokenUsage.outputTokens,
+        })
+      : calculateUnitProviderCostUsd({
+          providerCostPerUnitUsd: Number(
+            imagePricing.providerCostPerOutputUsd ?? 0
+          ),
+          unitCount: normalizedOutputCount,
+        })
     : 0;
   const costPlusQuote = imagePricing
     ? await getCostPlusCreditQuote({
@@ -11499,7 +11613,14 @@ export async function getImageGenerationChargeQuote(imageModelConfigId: string |
       "Image generation pricing is unavailable"
     );
   }
-  return { imagePricing, costPlusQuote, outputCount: normalizedOutputCount, imageModelConfigId };
+  return {
+    imagePricing,
+    costPlusQuote,
+    outputCount: normalizedOutputCount,
+    imageModelConfigId,
+    tokenUsage: pricedTokenUsage,
+    usageEstimated: isTokenPricing && !normalizedTokenUsage,
+  };
 }
 
 export async function deductImageCredits({
@@ -11510,6 +11631,7 @@ export async function deductImageCredits({
   outputCount = 1,
   requestKey = null,
   generationQuote,
+  providerTokenUsage,
 }: {
   userId: string;
   chatId: string;
@@ -11518,13 +11640,24 @@ export async function deductImageCredits({
   outputCount?: number;
   requestKey?: string | null;
   generationQuote?: Awaited<ReturnType<typeof getImageGenerationChargeQuote>>;
+  providerTokenUsage?: ImageProviderTokenUsage;
 }): Promise<void> {
-  const quote = generationQuote ?? await getImageGenerationChargeQuote(imageModelConfigId, outputCount);
+  const quote = generationQuote ?? await getImageGenerationChargeQuote(
+    imageModelConfigId,
+    outputCount,
+    providerTokenUsage
+  );
   if (quote.imageModelConfigId !== imageModelConfigId || quote.outputCount !== outputCount) throw new ChatSDKError("bad_request:configuration");
+  if (quote.usageEstimated) {
+    throw new ChatSDKError(
+      "bad_request:usage",
+      "Exact provider usage is required before token-priced images can be charged"
+    );
+  }
   const { imagePricing, costPlusQuote, outputCount: normalizedOutputCount } = quote;
-  const resolvedTokens = costPlusQuote.creditUnits;
+  const calculatedTokens = costPlusQuote.creditUnits;
 
-  if (resolvedTokens <= 0) {
+  if (calculatedTokens <= 0) {
     throw new ChatSDKError(
       "bad_request:usage",
       "Token usage must be greater than zero"
@@ -11559,8 +11692,9 @@ export async function deductImageCredits({
       const availableBalance = allowManualCredits
         ? manualBalance + paidBalance
         : paidBalance;
+      const resolvedTokens = Math.min(calculatedTokens, availableBalance);
 
-      if (availableBalance < resolvedTokens) {
+      if (resolvedTokens <= 0) {
         throw new ChatSDKError(
           "payment_required:credits",
           allowManualCredits
@@ -11591,9 +11725,11 @@ export async function deductImageCredits({
           chatId,
           modelConfigId: null,
           subscriptionId: subscription.id,
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: resolvedTokens,
+          inputTokens: quote.tokenUsage?.inputTokens ?? 0,
+          outputTokens: quote.tokenUsage?.outputTokens ?? 0,
+          totalTokens: quote.tokenUsage
+            ? quote.tokenUsage.inputTokens + quote.tokenUsage.outputTokens
+            : resolvedTokens,
           manualTokens: manualTokensDeducted,
           paidTokens: paidTokensDeducted,
           createdAt: now,
@@ -11616,6 +11752,8 @@ export async function deductImageCredits({
         category: "image",
         providerKey: imagePricing.providerKey,
         requestKey,
+        inputTokens: quote.tokenUsage?.inputTokens ?? 0,
+        outputTokens: quote.tokenUsage?.outputTokens ?? 0,
         unitCount: normalizedOutputCount,
         providerCostUsd: costPlusQuote.providerCostUsd,
         usdToInr: costPlusQuote.usdToInr,
@@ -11626,6 +11764,9 @@ export async function deductImageCredits({
         paidCreditUnits: paidTokensDeducted,
         pricingMetadata: {
           pricingReferencePlanId: costPlusQuote.pricingReferencePlanId,
+          providerCostType: imagePricing.providerCostType,
+          calculatedCreditUnits: calculatedTokens,
+          balanceCapped: resolvedTokens < calculatedTokens,
           walletUnitsPerInr: costPlusQuote.walletUnitsPerInr,
         },
         status: "settled",

@@ -236,6 +236,20 @@ export const imageModelConfig = pgTable(
     providerCostPerOutputUsd: doublePrecision("providerCostPerOutputUsd")
       .notNull()
       .default(0),
+    providerCostType: varchar("providerCostType", { length: 24 })
+      .$type<"per_generation" | "per_token">()
+      .notNull()
+      .default("per_generation"),
+    inputProviderCostPerMillion: doublePrecision(
+      "inputProviderCostPerMillion"
+    )
+      .notNull()
+      .default(0),
+    outputProviderCostPerMillion: doublePrecision(
+      "outputProviderCostPerMillion"
+    )
+      .notNull()
+      .default(0),
     markupMultiplier: doublePrecision("markupMultiplier").notNull().default(2),
     isEnabled: boolean("isEnabled").notNull().default(true),
     isActive: boolean("isActive").notNull().default(false),

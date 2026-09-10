@@ -57,6 +57,7 @@ export type ModelPricingRow = {
   markupMultiplier: number;
   name: string;
   providerInputCostUsd: number | null;
+  providerCostType: "per_generation" | "per_token";
   providerLabel: string;
   providerModelId: string;
   providerOutputCostUsd: number;
@@ -172,7 +173,8 @@ export function ModelPricingManagementTable({
 
   const hasCompletePricing = (model: ModelPricingRow) =>
     model.providerOutputCostUsd > 0 &&
-    (model.type === "image" || Number(model.providerInputCostUsd ?? 0) > 0);
+    (model.providerCostType === "per_generation" ||
+      Number(model.providerInputCostUsd ?? 0) > 0);
 
   const closeDialog = () => {
     setDialogMode(null);
@@ -284,25 +286,26 @@ export function ModelPricingManagementTable({
                     <tr><td className="px-4 py-8 text-center text-muted-foreground" colSpan={9}>{translate("admin.pricing.model_type_empty", "No {type} models are configured. Use the add button above to create one.").replace("{type}", typeLabel(type).toLowerCase())}</td></tr>
                   ) : visibleModels.map((model) => {
                     const pricingComplete = hasCompletePricing(model);
-                    const unitLabel = model.type === "image" ? translate("admin.pricing.per_output", "per output") : translate("admin.pricing.per_million", "per 1M tokens");
+                    const tokenPriced = model.providerCostType === "per_token";
+                    const unitLabel = tokenPriced ? translate("admin.pricing.per_million", "per 1M tokens") : translate("admin.pricing.per_output", "per output");
                     return (
                       <tr className="bg-card/70 transition hover:bg-muted/20" key={model.key}>
                         <td className="max-w-[250px] px-4 py-3"><span className="font-medium">{model.name}</span><span className="block truncate font-mono text-muted-foreground text-xs">{model.providerModelId}</span></td>
                         <td className="px-4 py-3">{model.providerLabel}</td>
                         <td className="px-4 py-3 text-right text-xs">
                           {model.providerInputCostUsd !== null ? <span className="block">{translate("admin.pricing.input", "Input")}: {formatCurrency(model.providerInputCostUsd, "USD")}</span> : null}
-                          <span className="block">{model.type === "image" ? formatCurrency(model.providerOutputCostUsd, "USD") : `${translate("admin.pricing.output", "Output")}: ${formatCurrency(model.providerOutputCostUsd, "USD")}`}</span>
+                          <span className="block">{tokenPriced ? `${translate("admin.pricing.output", "Output")}: ${formatCurrency(model.providerOutputCostUsd, "USD")}` : formatCurrency(model.providerOutputCostUsd, "USD")}</span>
                           <span className="block text-muted-foreground">{unitLabel}</span>
                         </td>
                         <td className="px-4 py-3 text-right font-medium">{model.markupMultiplier.toFixed(2)}×</td>
                         <td className="px-4 py-3 text-right text-xs">
                           {model.customerInputChargeInr !== null ? <span className="block">{translate("admin.pricing.input", "Input")}: {formatCurrency(model.customerInputChargeInr, "INR")}</span> : null}
-                          <span className="block">{model.type === "image" ? formatCurrency(model.customerOutputChargeInr, "INR") : `${translate("admin.pricing.output", "Output")}: ${formatCurrency(model.customerOutputChargeInr, "INR")}`}</span>
+                          <span className="block">{tokenPriced ? `${translate("admin.pricing.output", "Output")}: ${formatCurrency(model.customerOutputChargeInr, "INR")}` : formatCurrency(model.customerOutputChargeInr, "INR")}</span>
                           <span className="block text-muted-foreground">{unitLabel}</span>
                         </td>
                         <td className="px-4 py-3 text-right text-xs">
                           {model.creditInputCharge !== null ? <span className="block">{translate("admin.pricing.input", "Input")}: {formatCredits(model.creditInputCharge)}</span> : null}
-                          <span className="block">{model.type === "image" ? formatCredits(model.creditOutputCharge) : `${translate("admin.pricing.output", "Output")}: ${formatCredits(model.creditOutputCharge)}`}</span>
+                          <span className="block">{tokenPriced ? `${translate("admin.pricing.output", "Output")}: ${formatCredits(model.creditOutputCharge)}` : formatCredits(model.creditOutputCharge)}</span>
                           <span className="block text-muted-foreground">{unitLabel}</span>
                         </td>
                         <td className="px-4 py-3"><div className="flex max-w-56 flex-wrap gap-1"><span className={cn("rounded-full px-2 py-0.5 text-xs", model.isEnabled ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>{model.isEnabled ? translate("admin.pricing.active", "Active") : translate("admin.pricing.inactive", "Inactive")}</span>{!pricingComplete ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800 text-xs">{translate("admin.pricing.pricing_incomplete", "Pricing incomplete — add provider cost")}</span> : null}{model.isDefault ? <span className="rounded-full bg-blue-100 px-2 py-0.5 text-blue-700 text-xs">{translate("admin.pricing.default", "Default")}</span> : null}{model.isActive ? <span className="rounded-full bg-blue-100 px-2 py-0.5 text-blue-700 text-xs">{translate("admin.pricing.selected", "Selected")}</span> : null}</div></td>
