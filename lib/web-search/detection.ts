@@ -28,6 +28,15 @@ const CURRENT_TIME_PATTERNS: Array<[string, RegExp]> = [
   ["current_time", /\bmynta\s+(?:ka\s+)?por\b/i],
 ];
 
+const CURRENT_DATE_PATTERNS: Array<[string, RegExp]> = [
+  [
+    "current_date",
+    /\bwhat(?:'s| is)\s+(?:the\s+)?(?:current\s+date|date\s+today|today['’]s\s+date)\b/i,
+  ],
+  ["current_date", /\bwhat\s+date\s+is\s+it\b/i],
+  ["current_date", /\b(?:today['’]s\s+date|current\s+date|date\s+today)\b/i],
+];
+
 const CURRENT_WEATHER_PATTERNS: Array<[string, RegExp]> = [
   ["current_weather", /\b(?:current\s+)?weather\b/i],
   ["current_weather", /\b(?:current\s+)?temperature\b/i],
@@ -41,7 +50,7 @@ const CURRENT_WEATHER_PATTERNS: Array<[string, RegExp]> = [
 const FUTURE_WEATHER_PATTERN =
   /\b(?:forecast|tomorrow|tonight|next\s+(?:day|week)|this\s+weekend)\b/i;
 
-export type CurrentInfoIntent = "time" | "weather";
+export type CurrentInfoIntent = "time" | "date" | "weather";
 
 export type CurrentInfoDecision = {
   intent: CurrentInfoIntent | null;
@@ -95,15 +104,22 @@ export function detectCurrentInfoNeed(text: string): CurrentInfoDecision {
   const timeReasons = CURRENT_TIME_PATTERNS.flatMap(([reason, pattern]) =>
     pattern.test(normalized) ? [reason] : []
   );
+  const dateReasons = CURRENT_DATE_PATTERNS.flatMap(([reason, pattern]) =>
+    pattern.test(normalized) ? [reason] : []
+  );
   const weatherReasons = CURRENT_WEATHER_PATTERNS.flatMap(([reason, pattern]) =>
     pattern.test(normalized) ? [reason] : []
   );
-  const reasons = Array.from(new Set([...timeReasons, ...weatherReasons]));
+  const reasons = Array.from(
+    new Set([...timeReasons, ...dateReasons, ...weatherReasons])
+  );
   const intent = timeReasons.length > 0
     ? "time"
-    : weatherReasons.length > 0 && !FUTURE_WEATHER_PATTERN.test(normalized)
-      ? "weather"
-      : null;
+    : dateReasons.length > 0
+      ? "date"
+      : weatherReasons.length > 0 && !FUTURE_WEATHER_PATTERN.test(normalized)
+        ? "weather"
+        : null;
 
   return {
     intent,

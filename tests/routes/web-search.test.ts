@@ -173,6 +173,10 @@ test.describe("web search grounding", () => {
   });
 
   test("detects live time and weather questions before RAG or web search", () => {
+    expect(detectCurrentInfoNeed("What's today's date?")).toMatchObject({
+      intent: "date",
+      locationQuery: null,
+    });
     expect(detectCurrentInfoNeed("Katno baje mynta?")).toMatchObject({
       intent: "time",
       locationQuery: null,
@@ -191,6 +195,10 @@ test.describe("web search grounding", () => {
     });
     expect(detectWebSearchNeed("Katno baje mynta?")).toMatchObject({
       currentInfoIntent: "time",
+      shouldSearch: false,
+    });
+    expect(detectWebSearchNeed("What's today's date?")).toMatchObject({
+      currentInfoIntent: "date",
       shouldSearch: false,
     });
     expect(detectWebSearchNeed("What is the current weather in Shillong?")).toMatchObject({

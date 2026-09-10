@@ -149,6 +149,7 @@ function describeWeatherCode(value: unknown) {
 
 async function getCurrentTimeInfo(
   locationQuery: string | null,
+  intent: "time" | "date" = "time",
   signal?: AbortSignal,
 ): Promise<LiveCurrentInfo> {
   const location = locationQuery
@@ -164,7 +165,7 @@ async function getCurrentTimeInfo(
   const formatted = formatLocalDate(now, timezone);
 
   return {
-    intent: "time",
+    intent,
     locationName: location.name,
     timezone,
     fetchedAt: now.toISOString(),
@@ -255,8 +256,8 @@ export async function getLiveCurrentInfo({
   if (!decision.intent) {
     return null;
   }
-  if (decision.intent === "time") {
-    return getCurrentTimeInfo(decision.locationQuery, signal);
+  if (decision.intent === "time" || decision.intent === "date") {
+    return getCurrentTimeInfo(decision.locationQuery, decision.intent, signal);
   }
   return getCurrentWeatherInfo({
     decision,

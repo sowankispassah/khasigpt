@@ -3393,11 +3393,11 @@ export async function POST(request: Request) {
       );
     } else if (liveCurrentInfo) {
       systemInstructionParts.push(
-        "Trusted live current-information data is attached below. For time and weather questions, use only those exact values, preserve the stated location and time zone, and do not estimate or add facts from memory, RAG, or other sources. Answer naturally in the user's language without mentioning hidden context or implementation details.",
+        "Trusted live current-information data is attached below. For date, time, and weather questions, use only those exact values, preserve the stated location and time zone, and do not estimate or add facts from memory, RAG, or other sources. Answer naturally in the user's language without mentioning hidden context or implementation details.",
       );
     } else if (shouldUseLiveCurrentInfo && liveCurrentInfoFailureReason) {
       systemInstructionParts.push(
-        "The user asked for live time or weather data, but the trusted live provider was unavailable. Do not guess or provide a stale answer. Briefly explain that live data is temporarily unavailable and invite the user to try again.",
+        "The user asked for live date, time, or weather data, but the trusted live provider was unavailable. Do not guess or provide a stale answer. Briefly explain that live data is temporarily unavailable and invite the user to try again.",
       );
     }
     customRagUsed = Boolean(ragResult.context) &&
