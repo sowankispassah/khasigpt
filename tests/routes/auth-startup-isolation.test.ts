@@ -9,6 +9,19 @@ async function readWorkspaceFile(relativePath: string) {
 }
 
 test.describe("auth startup isolation guardrails", () => {
+  test("signup profile completion uses the auth pool on both platforms", async () => {
+    for (const file of [
+      "app/(auth)/complete-profile/actions.ts",
+      "app/api/mobile/profile/route.ts",
+    ]) {
+      const source = await readWorkspaceFile(file);
+      expect(source).toContain("updateAuthUserProfileFields({");
+      expect(source).toContain("getAuthUserById(session.user.id)");
+      expect(source).not.toContain("updateUserProfileFields({");
+    }
+    const native = await readWorkspaceFile("app/api/mobile/profile/route.ts");
+    expect(native).not.toContain("unstable_update");
+  });
   test("auth shell and auth copy pages do not load DB translation bundles", async () => {
     const fallbackSource = await readWorkspaceFile(
       "lib/i18n/auth-fallback-bundle.ts"

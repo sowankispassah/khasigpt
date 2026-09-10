@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import { getUserById, updateUserProfileFields } from "@/lib/db/queries";
+import { getAuthUserById, updateAuthUserProfileFields } from "@/lib/db/auth-queries";
 import { withTimeout } from "@/lib/utils/async";
 import {
   DATE_OF_BIRTH_LOCK_MESSAGE,
@@ -79,11 +79,11 @@ export async function submitDateOfBirthAction(
     };
   }
 
-  let updatedProfile: Awaited<ReturnType<typeof updateUserProfileFields>> | null =
+  let updatedProfile: Awaited<ReturnType<typeof updateAuthUserProfileFields>> | null =
     null;
   try {
     updatedProfile = await withTimeout(
-      updateUserProfileFields({
+      updateAuthUserProfileFields({
         id: session.user.id,
         dateOfBirth: parsed.data.dob,
         firstName: parsed.data.firstName,
@@ -104,14 +104,15 @@ export async function submitDateOfBirthAction(
     });
     return {
       status: "error",
-      message:
-        "Profile service is taking too long. Please wait a moment and try again.",
+      message: error instanceof Error && error.message === "timeout"
+        ? "Profile service is taking too long. Please wait a moment and try again."
+        : "Unable to update your profile right now. Please try again.",
     };
   }
 
   if (!updatedProfile) {
     const currentUser = await withTimeout(
-      getUserById(session.user.id),
+      getAuthUserById(session.user.id),
       PROFILE_ACTION_LOOKUP_TIMEOUT_MS,
       () => {
         console.error("[complete-profile] Profile fallback lookup timed out.", {

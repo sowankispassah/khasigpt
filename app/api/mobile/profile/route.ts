@@ -1,12 +1,11 @@
 import { getDownloadUrl } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { unstable_update } from "@/app/(auth)/auth";
+import { getAuthUserById, updateAuthUserProfileFields } from "@/lib/db/auth-queries";
 import {
   createAuditLogEntry,
   getActiveUserProfileImage,
   getUserById,
-  updateUserProfileFields,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { getMobileSession } from "@/lib/mobile-auth-session";
@@ -107,7 +106,7 @@ export async function PATCH(request: Request) {
     return new ChatSDKError("unauthorized:api").toResponse();
   }
 
-  const parsed = profilePatchSchema.safeParse(await request.json());
+  const parsed = profilePatchSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues.at(0)?.message ?? "Invalid profile data." },
@@ -123,10 +122,10 @@ export async function PATCH(request: Request) {
     );
   }
 
-  let updated: Awaited<ReturnType<typeof updateUserProfileFields>> | null = null;
+  let updated: Awaited<ReturnType<typeof updateAuthUserProfileFields>> | null = null;
   try {
     updated = await withTimeout(
-      updateUserProfileFields({
+      updateAuthUserProfileFields({
         id: session.user.id,
         dateOfBirth,
         firstName: parsed.data.firstName,
@@ -147,8 +146,9 @@ export async function PATCH(request: Request) {
     });
     return NextResponse.json(
       {
-        error:
-          "Profile service is taking too long. Please wait a moment and try again.",
+        error: error instanceof Error && error.message === "timeout"
+          ? "Profile service is taking too long. Please wait a moment and try again."
+          : "Unable to update your profile right now. Please try again.",
       },
       { status: 503 }
     );
@@ -156,7 +156,7 @@ export async function PATCH(request: Request) {
 
   if (!updated) {
     const currentUser = await withTimeout(
-      getUserById(session.user.id),
+      getAuthUserById(session.user.id),
       PROFILE_LOOKUP_TIMEOUT_MS,
       () => {
         console.error("[api/mobile/profile] Fallback profile lookup timed out.", {
@@ -209,15 +209,6 @@ export async function PATCH(request: Request) {
       error,
     });
   });
-
-  await unstable_update({
-    user: {
-      dateOfBirth: updated.dateOfBirth,
-      firstName: updated.firstName,
-      lastName: updated.lastName,
-      name: [updated.firstName, updated.lastName].filter(Boolean).join(" "),
-    },
-  }).catch(() => undefined);
 
   return NextResponse.json({
     ok: true,

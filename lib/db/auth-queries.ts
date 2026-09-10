@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
@@ -183,6 +183,59 @@ export async function getAuthUserById(
       "bad_request:database",
       "Failed to get auth user by id"
     );
+  }
+}
+
+// Profile completion is part of signup. It must not queue behind optional
+// bootstrap, history, billing, or admin work on the general-purpose pool.
+export async function updateAuthUserProfileFields({
+  id,
+  dateOfBirth,
+  firstName,
+  lastName,
+}: {
+  id: string;
+  dateOfBirth?: string;
+  firstName?: string;
+  lastName?: string;
+}) {
+  if (!isValidUUID(id)) return null;
+  const startedAt = Date.now();
+  try {
+    const [updated] = await getAuthDb()
+      .update(user)
+      .set({
+        ...(dateOfBirth !== undefined ? { dateOfBirth } : {}),
+        ...(firstName !== undefined ? { firstName: firstName.trim() } : {}),
+        ...(lastName !== undefined ? { lastName: lastName.trim() } : {}),
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(user.id, id),
+        dateOfBirth !== undefined
+          ? or(isNull(user.dateOfBirth), eq(user.dateOfBirth, dateOfBirth))
+          : undefined
+      ))
+      .returning({
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        dateOfBirth: user.dateOfBirth,
+      });
+    console.info("[auth.profile] Save completed.", {
+      durationMs: Date.now() - startedAt,
+      updated: Boolean(updated),
+    });
+    return updated ?? null;
+  } catch (error) {
+    const cause = error instanceof Error && error.cause ? error.cause : error;
+    console.error("[auth.profile] Save failed.", {
+      durationMs: Date.now() - startedAt,
+      code: cause && typeof cause === "object" && "code" in cause
+        ? String(cause.code) : "unknown",
+    });
+    throw new ChatSDKError("bad_request:database", "Failed to update profile");
   }
 }
 
