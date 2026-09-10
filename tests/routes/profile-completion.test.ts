@@ -39,11 +39,12 @@ test("new account can complete its profile through web and native", async ({ bro
     const malformed = await request.patch(`${origin}/api/mobile/profile`, { headers: { ...headers, "Content-Type": "application/json" }, data: "{" });
     expect(malformed.status()).toBe(400);
     const cookieName = origin.startsWith("https:") ? "__Secure-authjs.session-token" : "authjs.session-token";
-    const webToken = await encode({ secret, salt: cookieName, token: {
+    const webSession = {
       id: ids[1], sub: ids[1], email: `profile-${ids[1].slice(0,8)}@example.invalid`,
       role: "regular", firstName: null, lastName: null, dateOfBirth: null,
       imageVersion: null, allowPersonalKnowledge: false, dbRefreshedAt: Date.now(),
-    } });
+    };
+    const webToken = await encode({ secret, salt: cookieName, token: webSession });
     await context.addCookies([{ name: cookieName, value: webToken, url: origin, httpOnly: true, secure: origin.startsWith("https:"), sameSite: "Lax" }]);
     const page = await context.newPage();
     await page.goto(`${origin}/complete-profile`);
