@@ -271,6 +271,21 @@ test.describe("admin pricing loading isolation", () => {
     expect(previewSource).toContain('name="providerCostType"');
     expect(previewSource).toContain('value="per_generation"');
     expect(previewSource).toContain('value="per_token"');
+    expect(previewSource).toContain(
+      'name="textInputProviderCostPerMillion"'
+    );
+    expect(previewSource).toContain(
+      'name="imageOutputProviderCostPerMillion"'
+    );
+    expect(previewSource).toContain(
+      'name="imageInputProviderCostPerMillion"'
+    );
+    expect(previewSource).toContain(
+      'name="cachedTextInputProviderCostPerMillion"'
+    );
+    expect(previewSource).toContain(
+      'name="cachedImageInputProviderCostPerMillion"'
+    );
     expect(formSource).not.toContain("Legacy fixed price");
     expect(formSource).not.toContain("Legacy credits per image");
     expect(formSource).not.toContain("Legacy credit multiplier");

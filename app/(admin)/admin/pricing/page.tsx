@@ -416,6 +416,20 @@ function buildModelPricingRows({
       const customerOutputChargeInr =
         providerOutputCostUsd * usdToInr * markup;
       return {
+        cachedImageInputProviderCostUsd:
+          providerCostType === "per_token"
+            ? Math.max(
+                0,
+                Number(model.cachedImageInputProviderCostPerMillion ?? 0)
+              )
+            : null,
+        cachedTextInputProviderCostUsd:
+          providerCostType === "per_token"
+            ? Math.max(
+                0,
+                Number(model.cachedTextInputProviderCostPerMillion ?? 0)
+              )
+            : null,
         creditInputCharge:
           customerInputChargeInr === null
             ? null
@@ -427,6 +441,13 @@ function buildModelPricingRows({
         customerInputChargeInr,
         customerOutputChargeInr,
         id: model.id,
+        imageInputProviderCostUsd:
+          providerCostType === "per_token"
+            ? Math.max(
+                0,
+                Number(model.imageInputProviderCostPerMillion ?? 0)
+              )
+            : null,
         isActive: model.isActive,
         isDefault: model.isDefault,
         isEnabled: model.isEnabled,

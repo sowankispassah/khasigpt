@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { generateExternalProviderImage } from "@/lib/ai/image-provider-core";
+import {
+  extractImageProviderTokenUsage,
+  generateExternalProviderImage,
+} from "@/lib/ai/image-provider-core";
 import {
   getMaxReferenceImagesForProviderModel,
   normalizeImageProviderModelId,
@@ -17,6 +20,31 @@ function jsonResponse(value: unknown, status = 200) {
 }
 
 test.describe("hybrid image provider routing", () => {
+  test("normalizes Google modality token details without combining them", () => {
+    expect(
+      extractImageProviderTokenUsage(
+        {
+          candidatesTokenCount: 600,
+          candidatesTokensDetails: [
+            { modality: "IMAGE", tokenCount: 600 },
+          ],
+          promptTokenCount: 500,
+          promptTokensDetails: [
+            { modality: "TEXT", tokenCount: 200 },
+            { modality: "IMAGE", tokenCount: 300 },
+          ],
+        },
+        { hasInputImages: true }
+      )
+    ).toEqual({
+      cachedImageInputTokens: 0,
+      cachedTextInputTokens: 0,
+      imageInputTokens: 300,
+      imageOutputTokens: 600,
+      textInputTokens: 200,
+    });
+  });
+
   test("routes every configured provider without changing the shared DB enum", () => {
     expect(
       resolveImageProviderAdapter({
@@ -139,7 +167,18 @@ test.describe("hybrid image provider routing", () => {
       requests.push({ body: init?.body, url: input.toString() });
       return jsonResponse({
         data: [{ b64_json: ONE_PIXEL_PNG_BASE64 }],
-        usage: { input_tokens: 120, output_tokens: 480 },
+        usage: {
+          input_tokens: 500,
+          input_tokens_details: {
+            cached_tokens_details: {
+              image_tokens: 100,
+              text_tokens: 50,
+            },
+            image_tokens: 300,
+            text_tokens: 200,
+          },
+          output_tokens: 600,
+        },
       });
     };
     const runtime = {
@@ -169,7 +208,13 @@ test.describe("hybrid image provider routing", () => {
     const editForm = requests[1]?.body as FormData;
     expect(editForm.get("model")).toBe("gpt-image-2");
     expect(editForm.get("image")).toBeInstanceOf(Blob);
-    expect(generated.usage).toEqual({ inputTokens: 120, outputTokens: 480 });
+    expect(generated.usage).toEqual({
+      cachedImageInputTokens: 100,
+      cachedTextInputTokens: 50,
+      imageInputTokens: 200,
+      imageOutputTokens: 600,
+      textInputTokens: 150,
+    });
   });
 
   test("polls BFL and downloads its signed image result", async () => {

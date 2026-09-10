@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   calculateBillableInputTokens,
   calculateCostPlusPreview,
+  calculateImageTokenProviderCostUsd,
   calculateTokenProviderCostUsd,
   calculateUnitProviderCostUsd,
   calculateWalletUnitsPerInr,
@@ -90,6 +91,23 @@ test("prices input and output tokens independently", () => {
   });
 
   expect(charge.totalCreditUnits).toBe(3805);
+});
+
+test("prices each image token modality exactly once", () => {
+  const providerCostUsd = calculateImageTokenProviderCostUsd({
+    cachedImageInputCostPerMillionUsd: 2,
+    cachedImageInputTokens: 100,
+    cachedTextInputCostPerMillionUsd: 1.25,
+    cachedTextInputTokens: 50,
+    imageInputCostPerMillionUsd: 8,
+    imageInputTokens: 200,
+    imageOutputCostPerMillionUsd: 30,
+    imageOutputTokens: 600,
+    textInputCostPerMillionUsd: 5,
+    textInputTokens: 150,
+  });
+
+  expect(providerCostUsd).toBeCloseTo(0.0206125, 10);
 });
 
 test("prices image output and web search by actual billable units", () => {

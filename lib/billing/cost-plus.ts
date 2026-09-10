@@ -146,6 +146,44 @@ export function calculateTokenProviderCostUsd({
   return inputCost + outputCost;
 }
 
+export function calculateImageTokenProviderCostUsd({
+  cachedImageInputCostPerMillionUsd,
+  cachedImageInputTokens,
+  cachedTextInputCostPerMillionUsd,
+  cachedTextInputTokens,
+  imageInputCostPerMillionUsd,
+  imageInputTokens,
+  imageOutputCostPerMillionUsd,
+  imageOutputTokens,
+  textInputCostPerMillionUsd,
+  textInputTokens,
+}: {
+  cachedImageInputCostPerMillionUsd: number;
+  cachedImageInputTokens: number;
+  cachedTextInputCostPerMillionUsd: number;
+  cachedTextInputTokens: number;
+  imageInputCostPerMillionUsd: number;
+  imageInputTokens: number;
+  imageOutputCostPerMillionUsd: number;
+  imageOutputTokens: number;
+  textInputCostPerMillionUsd: number;
+  textInputTokens: number;
+}) {
+  return (
+    (finiteNonNegative(textInputTokens) *
+      finiteNonNegative(textInputCostPerMillionUsd) +
+      finiteNonNegative(imageInputTokens) *
+        finiteNonNegative(imageInputCostPerMillionUsd) +
+      finiteNonNegative(cachedTextInputTokens) *
+        finiteNonNegative(cachedTextInputCostPerMillionUsd) +
+      finiteNonNegative(cachedImageInputTokens) *
+        finiteNonNegative(cachedImageInputCostPerMillionUsd) +
+      finiteNonNegative(imageOutputTokens) *
+        finiteNonNegative(imageOutputCostPerMillionUsd)) /
+    1_000_000
+  );
+}
+
 export function calculateUnitProviderCostUsd({
   providerCostPerUnitUsd,
   unitCount,

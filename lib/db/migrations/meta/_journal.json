@@ -715,6 +715,13 @@
       "when": 1788998400002,
       "tag": "0099_image_token_provider_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1788998400003,
+      "tag": "0100_image_modality_token_pricing",
+      "breakpoints": true
     }
   ]
 }

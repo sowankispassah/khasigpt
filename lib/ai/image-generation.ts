@@ -151,8 +151,8 @@ function hasCompleteImageProviderPricing(
 ) {
   if (!model) return false;
   return model.providerCostType === "per_token"
-    ? Number(model.inputProviderCostPerMillion ?? 0) > 0 &&
-        Number(model.outputProviderCostPerMillion ?? 0) > 0
+    ? Number(model.textInputProviderCostPerMillion ?? 0) > 0 &&
+        Number(model.imageOutputProviderCostPerMillion ?? 0) > 0
     : Number(model.providerCostPerOutputUsd ?? 0) > 0;
 }
 
@@ -901,7 +901,12 @@ async function generateNanoBananaImageFromResolvedPrompt({
       base64: file.base64,
       mediaType: file.mediaType,
     })),
-    usage: extractImageProviderTokenUsage(result.usage),
+    usage: extractImageProviderTokenUsage(
+      result.providerMetadata?.google?.usageMetadata ?? result.usage,
+      {
+      hasInputImages: Boolean(images?.length),
+      }
+    ),
   };
 }
 

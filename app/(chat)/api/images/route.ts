@@ -734,7 +734,13 @@ export async function POST(request: Request) {
         ? await getImageGenerationChargeQuote(
             access.model.id,
             1,
-            providerTokenUsage ?? { inputTokens: 0, outputTokens: 0 }
+            providerTokenUsage ?? {
+              textInputTokens: 0,
+              imageInputTokens: 0,
+              cachedTextInputTokens: 0,
+              cachedImageInputTokens: 0,
+              imageOutputTokens: 0,
+            }
           )
         : generationQuote;
 

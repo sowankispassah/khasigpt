@@ -33,6 +33,7 @@ import type { ArtifactKind } from "@/components/artifact";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { normalizeCharacterText } from "@/lib/ai/character-normalize";
 import {
+  calculateImageTokenProviderCostUsd,
   calculateTokenProviderCostUsd,
   calculateUnitProviderCostUsd,
   calculateWalletUnitsPerInr,
@@ -7199,8 +7200,11 @@ export async function createImageModelConfig({
   config = null,
   providerCostPerOutputUsd,
   providerCostType = "per_generation",
-  inputProviderCostPerMillion = 0,
-  outputProviderCostPerMillion = 0,
+  textInputProviderCostPerMillion = 0,
+  imageOutputProviderCostPerMillion = 0,
+  imageInputProviderCostPerMillion = 0,
+  cachedTextInputProviderCostPerMillion = 0,
+  cachedImageInputProviderCostPerMillion = 0,
   markupMultiplier = DEFAULT_IMAGE_MARKUP_MULTIPLIER,
   isEnabled = true,
   isActive = false,
@@ -7213,8 +7217,11 @@ export async function createImageModelConfig({
   config?: Record<string, unknown> | null;
   providerCostPerOutputUsd: number;
   providerCostType?: ImageModelConfig["providerCostType"];
-  inputProviderCostPerMillion?: number;
-  outputProviderCostPerMillion?: number;
+  textInputProviderCostPerMillion?: number;
+  imageOutputProviderCostPerMillion?: number;
+  imageInputProviderCostPerMillion?: number;
+  cachedTextInputProviderCostPerMillion?: number;
+  cachedImageInputProviderCostPerMillion?: number;
   markupMultiplier?: number;
   isEnabled?: boolean;
   isActive?: boolean;
@@ -7222,10 +7229,15 @@ export async function createImageModelConfig({
   const now = new Date();
   const hasValidPricing =
     providerCostType === "per_token"
-      ? Number.isFinite(inputProviderCostPerMillion) &&
-        inputProviderCostPerMillion > 0 &&
-        Number.isFinite(outputProviderCostPerMillion) &&
-        outputProviderCostPerMillion > 0
+      ? Number.isFinite(textInputProviderCostPerMillion) &&
+        textInputProviderCostPerMillion > 0 &&
+        Number.isFinite(imageOutputProviderCostPerMillion) &&
+        imageOutputProviderCostPerMillion > 0 &&
+        [
+          imageInputProviderCostPerMillion,
+          cachedTextInputProviderCostPerMillion,
+          cachedImageInputProviderCostPerMillion,
+        ].every((cost) => Number.isFinite(cost) && cost >= 0)
       : Number.isFinite(providerCostPerOutputUsd) &&
         providerCostPerOutputUsd > 0;
   if (!hasValidPricing) {
@@ -7248,8 +7260,11 @@ export async function createImageModelConfig({
           config,
           providerCostPerOutputUsd,
           providerCostType,
-          inputProviderCostPerMillion,
-          outputProviderCostPerMillion,
+          textInputProviderCostPerMillion,
+          imageOutputProviderCostPerMillion,
+          imageInputProviderCostPerMillion,
+          cachedTextInputProviderCostPerMillion,
+          cachedImageInputProviderCostPerMillion,
           markupMultiplier: normalizeMarkupMultiplier(
             markupMultiplier,
             DEFAULT_IMAGE_MARKUP_MULTIPLIER
@@ -7492,8 +7507,11 @@ export async function updateImageModelConfig({
   config?: Record<string, unknown> | null;
   providerCostPerOutputUsd?: number;
   providerCostType?: ImageModelConfig["providerCostType"];
-  inputProviderCostPerMillion?: number;
-  outputProviderCostPerMillion?: number;
+  textInputProviderCostPerMillion?: number;
+  imageOutputProviderCostPerMillion?: number;
+  imageInputProviderCostPerMillion?: number;
+  cachedTextInputProviderCostPerMillion?: number;
+  cachedImageInputProviderCostPerMillion?: number;
   markupMultiplier?: number;
   isEnabled?: boolean;
 }): Promise<ImageModelConfig | null> {
@@ -7536,31 +7554,45 @@ export async function updateImageModelConfig({
       }
       updateData.providerCostType = patch.providerCostType;
     }
-    if (patch.inputProviderCostPerMillion !== undefined) {
+    if (patch.textInputProviderCostPerMillion !== undefined) {
       if (
-        !Number.isFinite(patch.inputProviderCostPerMillion) ||
-        patch.inputProviderCostPerMillion < 0
+        !Number.isFinite(patch.textInputProviderCostPerMillion) ||
+        patch.textInputProviderCostPerMillion < 0
       ) {
         throw new ChatSDKError(
           "bad_request:configuration",
           "Image input provider cost must be zero or greater"
         );
       }
-      updateData.inputProviderCostPerMillion =
-        patch.inputProviderCostPerMillion;
+      updateData.textInputProviderCostPerMillion =
+        patch.textInputProviderCostPerMillion;
     }
-    if (patch.outputProviderCostPerMillion !== undefined) {
+    if (patch.imageOutputProviderCostPerMillion !== undefined) {
       if (
-        !Number.isFinite(patch.outputProviderCostPerMillion) ||
-        patch.outputProviderCostPerMillion < 0
+        !Number.isFinite(patch.imageOutputProviderCostPerMillion) ||
+        patch.imageOutputProviderCostPerMillion < 0
       ) {
         throw new ChatSDKError(
           "bad_request:configuration",
           "Image output provider cost must be zero or greater"
         );
       }
-      updateData.outputProviderCostPerMillion =
-        patch.outputProviderCostPerMillion;
+      updateData.imageOutputProviderCostPerMillion =
+        patch.imageOutputProviderCostPerMillion;
+    }
+    for (const [key, value] of [
+      ["imageInputProviderCostPerMillion", patch.imageInputProviderCostPerMillion],
+      ["cachedTextInputProviderCostPerMillion", patch.cachedTextInputProviderCostPerMillion],
+      ["cachedImageInputProviderCostPerMillion", patch.cachedImageInputProviderCostPerMillion],
+    ] as const) {
+      if (value === undefined) continue;
+      if (!Number.isFinite(value) || value < 0) {
+        throw new ChatSDKError(
+          "bad_request:configuration",
+          "Optional image provider costs must be zero or greater"
+        );
+      }
+      updateData[key] = value;
     }
     if (patch.markupMultiplier !== undefined) {
       updateData.markupMultiplier = normalizeMarkupMultiplier(
@@ -7698,10 +7730,10 @@ export async function setActiveImageModelConfig(id: string): Promise<string> {
               id: imageModelConfig.id,
               providerCostPerOutputUsd: imageModelConfig.providerCostPerOutputUsd,
               providerCostType: imageModelConfig.providerCostType,
-              inputProviderCostPerMillion:
-                imageModelConfig.inputProviderCostPerMillion,
-              outputProviderCostPerMillion:
-                imageModelConfig.outputProviderCostPerMillion,
+              textInputProviderCostPerMillion:
+                imageModelConfig.textInputProviderCostPerMillion,
+              imageOutputProviderCostPerMillion:
+                imageModelConfig.imageOutputProviderCostPerMillion,
             })
             .from(imageModelConfig)
             .where(
@@ -7717,8 +7749,8 @@ export async function setActiveImageModelConfig(id: string): Promise<string> {
           }
           const hasProviderPricing =
             target.providerCostType === "per_token"
-              ? Number(target.inputProviderCostPerMillion ?? 0) > 0 &&
-                Number(target.outputProviderCostPerMillion ?? 0) > 0
+              ? Number(target.textInputProviderCostPerMillion ?? 0) > 0 &&
+                Number(target.imageOutputProviderCostPerMillion ?? 0) > 0
               : Number(target.providerCostPerOutputUsd ?? 0) > 0;
           if (!hasProviderPricing) {
             throw new ChatSDKError(
@@ -8725,6 +8757,9 @@ export type AdminModelPricingSnapshotRow = {
   provider: string;
   providerCostPerOutputUsd: number | null;
   providerCostType: "per_generation" | "per_token" | null;
+  imageInputProviderCostPerMillion: number | null;
+  cachedTextInputProviderCostPerMillion: number | null;
+  cachedImageInputProviderCostPerMillion: number | null;
   providerModelId: string;
   reasoningTag: string | null;
   supportsReasoning: boolean;
@@ -8758,6 +8793,9 @@ export async function listAdminModelPricingSnapshot(): Promise<
             ${modelConfig.outputProviderCostPerMillion} AS "outputProviderCostPerMillion",
             NULL::double precision AS "providerCostPerOutputUsd",
             'per_token'::text AS "providerCostType",
+            NULL::double precision AS "imageInputProviderCostPerMillion",
+            NULL::double precision AS "cachedTextInputProviderCostPerMillion",
+            NULL::double precision AS "cachedImageInputProviderCostPerMillion",
             ${modelConfig.markupMultiplier} AS "markupMultiplier",
             ${modelConfig.systemPrompt} AS "systemPrompt",
             ${modelConfig.codeTemplate} AS "codeTemplate",
@@ -8787,10 +8825,13 @@ export async function listAdminModelPricingSnapshot(): Promise<
             ${imageModelConfig.isEnabled} AS "isEnabled",
             false AS "isDefault",
             ${imageModelConfig.isActive} AS "isActive",
-            ${imageModelConfig.inputProviderCostPerMillion} AS "inputProviderCostPerMillion",
-            ${imageModelConfig.outputProviderCostPerMillion} AS "outputProviderCostPerMillion",
+            ${imageModelConfig.textInputProviderCostPerMillion} AS "inputProviderCostPerMillion",
+            ${imageModelConfig.imageOutputProviderCostPerMillion} AS "outputProviderCostPerMillion",
             ${imageModelConfig.providerCostPerOutputUsd} AS "providerCostPerOutputUsd",
             ${imageModelConfig.providerCostType} AS "providerCostType",
+            ${imageModelConfig.imageInputProviderCostPerMillion} AS "imageInputProviderCostPerMillion",
+            ${imageModelConfig.cachedTextInputProviderCostPerMillion} AS "cachedTextInputProviderCostPerMillion",
+            ${imageModelConfig.cachedImageInputProviderCostPerMillion} AS "cachedImageInputProviderCostPerMillion",
             ${imageModelConfig.markupMultiplier} AS "markupMultiplier",
             NULL::text AS "systemPrompt",
             NULL::text AS "codeTemplate",
@@ -8824,6 +8865,9 @@ export async function listAdminModelPricingSnapshot(): Promise<
             ${liveVoiceModelConfig.outputProviderCostPerMillion} AS "outputProviderCostPerMillion",
             NULL::double precision AS "providerCostPerOutputUsd",
             'per_token'::text AS "providerCostType",
+            NULL::double precision AS "imageInputProviderCostPerMillion",
+            NULL::double precision AS "cachedTextInputProviderCostPerMillion",
+            NULL::double precision AS "cachedImageInputProviderCostPerMillion",
             ${liveVoiceModelConfig.markupMultiplier} AS "markupMultiplier",
             NULL::text AS "systemPrompt",
             NULL::text AS "codeTemplate",
@@ -11527,8 +11571,11 @@ export async function getCostPlusCreditQuote({
 }
 
 export type ImageProviderTokenUsage = {
-  inputTokens: number;
-  outputTokens: number;
+  textInputTokens: number;
+  imageInputTokens: number;
+  cachedTextInputTokens: number;
+  cachedImageInputTokens: number;
+  imageOutputTokens: number;
 };
 
 export async function getImageGenerationChargeQuote(
@@ -11544,10 +11591,16 @@ export async function getImageGenerationChargeQuote(
           providerCostPerOutputUsd:
             imageModelConfig.providerCostPerOutputUsd,
           providerCostType: imageModelConfig.providerCostType,
-          inputProviderCostPerMillion:
-            imageModelConfig.inputProviderCostPerMillion,
-          outputProviderCostPerMillion:
-            imageModelConfig.outputProviderCostPerMillion,
+          textInputProviderCostPerMillion:
+            imageModelConfig.textInputProviderCostPerMillion,
+          imageInputProviderCostPerMillion:
+            imageModelConfig.imageInputProviderCostPerMillion,
+          cachedTextInputProviderCostPerMillion:
+            imageModelConfig.cachedTextInputProviderCostPerMillion,
+          cachedImageInputProviderCostPerMillion:
+            imageModelConfig.cachedImageInputProviderCostPerMillion,
+          imageOutputProviderCostPerMillion:
+            imageModelConfig.imageOutputProviderCostPerMillion,
           markupMultiplier: imageModelConfig.markupMultiplier,
         })
         .from(imageModelConfig)
@@ -11561,15 +11614,29 @@ export async function getImageGenerationChargeQuote(
     : [];
   const normalizedTokenUsage = tokenUsage
     ? {
-        inputTokens: Math.max(0, Math.round(tokenUsage.inputTokens)),
-        outputTokens: Math.max(0, Math.round(tokenUsage.outputTokens)),
+        textInputTokens: Math.max(0, Math.round(tokenUsage.textInputTokens)),
+        imageInputTokens: Math.max(0, Math.round(tokenUsage.imageInputTokens)),
+        cachedTextInputTokens: Math.max(
+          0,
+          Math.round(tokenUsage.cachedTextInputTokens)
+        ),
+        cachedImageInputTokens: Math.max(
+          0,
+          Math.round(tokenUsage.cachedImageInputTokens)
+        ),
+        imageOutputTokens: Math.max(0, Math.round(tokenUsage.imageOutputTokens)),
       }
     : null;
   const isTokenPricing = imagePricing?.providerCostType === "per_token";
   if (
     isTokenPricing &&
     normalizedTokenUsage &&
-    normalizedTokenUsage.inputTokens + normalizedTokenUsage.outputTokens <= 0
+    (normalizedTokenUsage.textInputTokens +
+        normalizedTokenUsage.imageInputTokens +
+        normalizedTokenUsage.cachedTextInputTokens +
+        normalizedTokenUsage.cachedImageInputTokens <=
+        0 ||
+      normalizedTokenUsage.imageOutputTokens <= 0)
   ) {
     throw new ChatSDKError(
       "bad_request:usage",
@@ -11577,19 +11644,37 @@ export async function getImageGenerationChargeQuote(
     );
   }
   const pricedTokenUsage = isTokenPricing
-    ? (normalizedTokenUsage ?? { inputTokens: 1, outputTokens: 1 })
+    ? (normalizedTokenUsage ?? {
+        textInputTokens: 1,
+        imageInputTokens: 0,
+        cachedTextInputTokens: 0,
+        cachedImageInputTokens: 0,
+        imageOutputTokens: 1,
+      })
     : null;
   const providerCostUsd = imagePricing
     ? isTokenPricing && pricedTokenUsage
-      ? calculateTokenProviderCostUsd({
-          inputCostPerMillionUsd: Number(
-            imagePricing.inputProviderCostPerMillion ?? 0
+      ? calculateImageTokenProviderCostUsd({
+          textInputCostPerMillionUsd: Number(
+            imagePricing.textInputProviderCostPerMillion ?? 0
           ),
-          inputTokens: pricedTokenUsage.inputTokens,
-          outputCostPerMillionUsd: Number(
-            imagePricing.outputProviderCostPerMillion ?? 0
+          textInputTokens: pricedTokenUsage.textInputTokens,
+          imageInputCostPerMillionUsd: Number(
+            imagePricing.imageInputProviderCostPerMillion ?? 0
           ),
-          outputTokens: pricedTokenUsage.outputTokens,
+          imageInputTokens: pricedTokenUsage.imageInputTokens,
+          cachedTextInputCostPerMillionUsd: Number(
+            imagePricing.cachedTextInputProviderCostPerMillion ?? 0
+          ),
+          cachedTextInputTokens: pricedTokenUsage.cachedTextInputTokens,
+          cachedImageInputCostPerMillionUsd: Number(
+            imagePricing.cachedImageInputProviderCostPerMillion ?? 0
+          ),
+          cachedImageInputTokens: pricedTokenUsage.cachedImageInputTokens,
+          imageOutputCostPerMillionUsd: Number(
+            imagePricing.imageOutputProviderCostPerMillion ?? 0
+          ),
+          imageOutputTokens: pricedTokenUsage.imageOutputTokens,
         })
       : calculateUnitProviderCostUsd({
           providerCostPerUnitUsd: Number(
@@ -11725,10 +11810,19 @@ export async function deductImageCredits({
           chatId,
           modelConfigId: null,
           subscriptionId: subscription.id,
-          inputTokens: quote.tokenUsage?.inputTokens ?? 0,
-          outputTokens: quote.tokenUsage?.outputTokens ?? 0,
+          inputTokens: quote.tokenUsage
+            ? quote.tokenUsage.textInputTokens +
+              quote.tokenUsage.imageInputTokens +
+              quote.tokenUsage.cachedTextInputTokens +
+              quote.tokenUsage.cachedImageInputTokens
+            : 0,
+          outputTokens: quote.tokenUsage?.imageOutputTokens ?? 0,
           totalTokens: quote.tokenUsage
-            ? quote.tokenUsage.inputTokens + quote.tokenUsage.outputTokens
+            ? quote.tokenUsage.textInputTokens +
+              quote.tokenUsage.imageInputTokens +
+              quote.tokenUsage.cachedTextInputTokens +
+              quote.tokenUsage.cachedImageInputTokens +
+              quote.tokenUsage.imageOutputTokens
             : resolvedTokens,
           manualTokens: manualTokensDeducted,
           paidTokens: paidTokensDeducted,
@@ -11752,8 +11846,18 @@ export async function deductImageCredits({
         category: "image",
         providerKey: imagePricing.providerKey,
         requestKey,
-        inputTokens: quote.tokenUsage?.inputTokens ?? 0,
-        outputTokens: quote.tokenUsage?.outputTokens ?? 0,
+        inputTokens: quote.tokenUsage
+          ? quote.tokenUsage.textInputTokens +
+            quote.tokenUsage.imageInputTokens +
+            quote.tokenUsage.cachedTextInputTokens +
+            quote.tokenUsage.cachedImageInputTokens
+          : 0,
+        outputTokens: quote.tokenUsage?.imageOutputTokens ?? 0,
+        textInputTokens: quote.tokenUsage?.textInputTokens ?? 0,
+        imageInputTokens: quote.tokenUsage?.imageInputTokens ?? 0,
+        cachedTextInputTokens: quote.tokenUsage?.cachedTextInputTokens ?? 0,
+        cachedImageInputTokens: quote.tokenUsage?.cachedImageInputTokens ?? 0,
+        imageOutputTokens: quote.tokenUsage?.imageOutputTokens ?? 0,
         unitCount: normalizedOutputCount,
         providerCostUsd: costPlusQuote.providerCostUsd,
         usdToInr: costPlusQuote.usdToInr,
@@ -11767,6 +11871,7 @@ export async function deductImageCredits({
           providerCostType: imagePricing.providerCostType,
           calculatedCreditUnits: calculatedTokens,
           balanceCapped: resolvedTokens < calculatedTokens,
+          tokenUsage: quote.tokenUsage,
           walletUnitsPerInr: costPlusQuote.walletUnitsPerInr,
         },
         status: "settled",

@@ -135,6 +135,7 @@ function PricingNumberField({
   min,
   name,
   onChange,
+  required = true,
   step,
   translationKey,
   value,
@@ -145,6 +146,7 @@ function PricingNumberField({
   min: number;
   name: string;
   onChange: (value: string) => void;
+  required?: boolean;
   step: number;
   translationKey: string;
   value: string;
@@ -159,7 +161,7 @@ function PricingNumberField({
         min={min}
         name={name}
         onChange={(event) => onChange(event.target.value)}
-        required
+        required={required}
         step={step}
         type="number"
         value={value}
@@ -248,25 +250,44 @@ export function TokenCostPlusFields({
 
 export function ImageCostPlusFields({
   context,
+  initialCachedImageInputCost,
+  initialCachedTextInputCost,
   initialCostType,
-  initialInputCost,
+  initialImageInputCost,
+  initialImageOutputCost,
   initialMarkup,
-  initialOutputCost,
   initialProviderCost,
+  initialTextInputCost,
   prefix,
 }: {
   context: PricingPreviewContext;
+  initialCachedImageInputCost: number;
+  initialCachedTextInputCost: number;
   initialCostType: "per_generation" | "per_token";
-  initialInputCost: number;
+  initialImageInputCost: number;
+  initialImageOutputCost: number;
   initialMarkup: number;
-  initialOutputCost: number;
   initialProviderCost: number;
+  initialTextInputCost: number;
   prefix: string;
 }) {
   const { translate } = useTranslation();
   const [costType, setCostType] = useState(initialCostType);
-  const [inputCost, setInputCost] = useState(String(initialInputCost));
-  const [outputCost, setOutputCost] = useState(String(initialOutputCost));
+  const [textInputCost, setTextInputCost] = useState(
+    String(initialTextInputCost)
+  );
+  const [imageOutputCost, setImageOutputCost] = useState(
+    String(initialImageOutputCost)
+  );
+  const [imageInputCost, setImageInputCost] = useState(
+    initialImageInputCost > 0 ? String(initialImageInputCost) : ""
+  );
+  const [cachedTextInputCost, setCachedTextInputCost] = useState(
+    initialCachedTextInputCost > 0 ? String(initialCachedTextInputCost) : ""
+  );
+  const [cachedImageInputCost, setCachedImageInputCost] = useState(
+    initialCachedImageInputCost > 0 ? String(initialCachedImageInputCost) : ""
+  );
   const [providerCost, setProviderCost] = useState(String(initialProviderCost));
   const [markup, setMarkup] = useState(String(initialMarkup));
 
@@ -307,24 +328,57 @@ export function ImageCostPlusFields({
       ) : (
         <>
           <PricingNumberField
-            id={`${prefix}-input-cost`}
-            label="Input cost per 1M tokens"
+            id={`${prefix}-text-input-cost`}
+            label="Text Input cost per 1M tokens"
             min={0.000001}
-            name="inputProviderCostPerMillion"
-            onChange={setInputCost}
+            name="textInputProviderCostPerMillion"
+            onChange={setTextInputCost}
             step={0.000001}
-            translationKey="admin.pricing.image_input_cost"
-            value={inputCost}
+            translationKey="admin.pricing.image_text_input_cost"
+            value={textInputCost}
           />
           <PricingNumberField
-            id={`${prefix}-output-cost`}
-            label="Output cost per 1M tokens"
+            id={`${prefix}-image-output-cost`}
+            label="Image Output cost per 1M tokens"
             min={0.000001}
-            name="outputProviderCostPerMillion"
-            onChange={setOutputCost}
+            name="imageOutputProviderCostPerMillion"
+            onChange={setImageOutputCost}
             step={0.000001}
-            translationKey="admin.pricing.image_output_cost"
-            value={outputCost}
+            translationKey="admin.pricing.image_image_output_cost"
+            value={imageOutputCost}
+          />
+          <PricingNumberField
+            id={`${prefix}-image-input-cost`}
+            label="Image Input cost per 1M tokens (optional)"
+            min={0}
+            name="imageInputProviderCostPerMillion"
+            onChange={setImageInputCost}
+            required={false}
+            step={0.000001}
+            translationKey="admin.pricing.image_image_input_cost"
+            value={imageInputCost}
+          />
+          <PricingNumberField
+            id={`${prefix}-cached-text-input-cost`}
+            label="Cached Text Input cost per 1M tokens (optional)"
+            min={0}
+            name="cachedTextInputProviderCostPerMillion"
+            onChange={setCachedTextInputCost}
+            required={false}
+            step={0.000001}
+            translationKey="admin.pricing.image_cached_text_input_cost"
+            value={cachedTextInputCost}
+          />
+          <PricingNumberField
+            id={`${prefix}-cached-image-input-cost`}
+            label="Cached Image Input cost per 1M tokens (optional)"
+            min={0}
+            name="cachedImageInputProviderCostPerMillion"
+            onChange={setCachedImageInputCost}
+            required={false}
+            step={0.000001}
+            translationKey="admin.pricing.image_cached_image_input_cost"
+            value={cachedImageInputCost}
           />
         </>
       )}
@@ -355,21 +409,54 @@ export function ImageCostPlusFields({
             <CostPlusPreviewCard
               context={context}
               markupMultiplier={Number(markup)}
-              providerCostUsd={Number(inputCost)}
+              providerCostUsd={Number(textInputCost)}
               title={translate(
-                "admin.pricing.preview.image_input_tokens",
-                "Image input pricing per 1M tokens"
+                "admin.pricing.preview.image_text_input_tokens",
+                "Text input pricing per 1M tokens"
               )}
             />
             <CostPlusPreviewCard
               context={context}
               markupMultiplier={Number(markup)}
-              providerCostUsd={Number(outputCost)}
+              providerCostUsd={Number(imageOutputCost)}
               title={translate(
-                "admin.pricing.preview.image_output_tokens",
+                "admin.pricing.preview.image_image_output_tokens",
                 "Image output pricing per 1M tokens"
               )}
             />
+            {Number(imageInputCost) > 0 ? (
+              <CostPlusPreviewCard
+                context={context}
+                markupMultiplier={Number(markup)}
+                providerCostUsd={Number(imageInputCost)}
+                title={translate(
+                  "admin.pricing.preview.image_image_input_tokens",
+                  "Image input pricing per 1M tokens"
+                )}
+              />
+            ) : null}
+            {Number(cachedTextInputCost) > 0 ? (
+              <CostPlusPreviewCard
+                context={context}
+                markupMultiplier={Number(markup)}
+                providerCostUsd={Number(cachedTextInputCost)}
+                title={translate(
+                  "admin.pricing.preview.image_cached_text_input_tokens",
+                  "Cached text input pricing per 1M tokens"
+                )}
+              />
+            ) : null}
+            {Number(cachedImageInputCost) > 0 ? (
+              <CostPlusPreviewCard
+                context={context}
+                markupMultiplier={Number(markup)}
+                providerCostUsd={Number(cachedImageInputCost)}
+                title={translate(
+                  "admin.pricing.preview.image_cached_image_input_tokens",
+                  "Cached image input pricing per 1M tokens"
+                )}
+              />
+            ) : null}
           </div>
         )}
       </div>

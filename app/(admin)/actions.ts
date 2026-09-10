@@ -2032,16 +2032,26 @@ export async function createImageModelConfigAction(formData: FormData) {
   const providerCostPerOutputUsd = parseNumber(
     formData.get("providerCostPerOutputUsd")
   );
-  const inputProviderCostPerMillion = parseNumber(
-    formData.get("inputProviderCostPerMillion")
+  const textInputProviderCostPerMillion = parseNumber(
+    formData.get("textInputProviderCostPerMillion")
   );
-  const outputProviderCostPerMillion = parseNumber(
-    formData.get("outputProviderCostPerMillion")
+  const imageOutputProviderCostPerMillion = parseNumber(
+    formData.get("imageOutputProviderCostPerMillion")
+  );
+  const imageInputProviderCostPerMillion = parseNumber(
+    formData.get("imageInputProviderCostPerMillion")
+  );
+  const cachedTextInputProviderCostPerMillion = parseNumber(
+    formData.get("cachedTextInputProviderCostPerMillion")
+  );
+  const cachedImageInputProviderCostPerMillion = parseNumber(
+    formData.get("cachedImageInputProviderCostPerMillion")
   );
   const markupMultiplier = parseNumber(formData.get("markupMultiplier"));
   const hasCompleteProviderPricing =
     providerCostType === "per_token"
-      ? inputProviderCostPerMillion > 0 && outputProviderCostPerMillion > 0
+      ? textInputProviderCostPerMillion > 0 &&
+        imageOutputProviderCostPerMillion > 0
       : providerCostPerOutputUsd > 0;
   if (
     !hasCompleteProviderPricing ||
@@ -2074,8 +2084,11 @@ export async function createImageModelConfigAction(formData: FormData) {
       config,
       providerCostPerOutputUsd,
       providerCostType,
-      inputProviderCostPerMillion,
-      outputProviderCostPerMillion,
+      textInputProviderCostPerMillion,
+      imageOutputProviderCostPerMillion,
+      imageInputProviderCostPerMillion,
+      cachedTextInputProviderCostPerMillion,
+      cachedImageInputProviderCostPerMillion,
       markupMultiplier,
       isEnabled,
       isActive,
@@ -2114,8 +2127,11 @@ export async function updateImageModelConfigAction(formData: FormData) {
     config?: Record<string, unknown> | null;
     providerCostPerOutputUsd?: number;
     providerCostType?: "per_generation" | "per_token";
-    inputProviderCostPerMillion?: number;
-    outputProviderCostPerMillion?: number;
+    textInputProviderCostPerMillion?: number;
+    imageOutputProviderCostPerMillion?: number;
+    imageInputProviderCostPerMillion?: number;
+    cachedTextInputProviderCostPerMillion?: number;
+    cachedImageInputProviderCostPerMillion?: number;
     markupMultiplier?: number;
     isEnabled?: boolean;
   } = {};
@@ -2154,15 +2170,22 @@ export async function updateImageModelConfigAction(formData: FormData) {
       ? "per_token"
       : "per_generation";
   patch.providerCostType = providerCostType;
-  if (formData.has("inputProviderCostPerMillion")) {
-    patch.inputProviderCostPerMillion = parseNumber(
-      formData.get("inputProviderCostPerMillion")
+  if (formData.has("textInputProviderCostPerMillion")) {
+    patch.textInputProviderCostPerMillion = parseNumber(
+      formData.get("textInputProviderCostPerMillion")
     );
   }
-  if (formData.has("outputProviderCostPerMillion")) {
-    patch.outputProviderCostPerMillion = parseNumber(
-      formData.get("outputProviderCostPerMillion")
+  if (formData.has("imageOutputProviderCostPerMillion")) {
+    patch.imageOutputProviderCostPerMillion = parseNumber(
+      formData.get("imageOutputProviderCostPerMillion")
     );
+  }
+  for (const field of [
+    "imageInputProviderCostPerMillion",
+    "cachedTextInputProviderCostPerMillion",
+    "cachedImageInputProviderCostPerMillion",
+  ] as const) {
+    if (formData.has(field)) patch[field] = parseNumber(formData.get(field));
   }
 
   if (formData.has("markupMultiplier")) {
@@ -2171,8 +2194,8 @@ export async function updateImageModelConfigAction(formData: FormData) {
 
   if (
     (providerCostType === "per_token"
-      ? (patch.inputProviderCostPerMillion ?? 0) <= 0 ||
-        (patch.outputProviderCostPerMillion ?? 0) <= 0
+      ? (patch.textInputProviderCostPerMillion ?? 0) <= 0 ||
+        (patch.imageOutputProviderCostPerMillion ?? 0) <= 0
       : (patch.providerCostPerOutputUsd ?? 0) <= 0) ||
     (patch.markupMultiplier ?? 0) < 1 ||
     (patch.markupMultiplier ?? 0) > 20
@@ -2218,13 +2241,13 @@ export async function updateChatModelPricingAction(formData: FormData) {
       0,
       parseNumber(formData.get("inputProviderCostPerMillion"))
     ),
-    outputProviderCostPerMillion: Math.max(
-      0,
-      parseNumber(formData.get("outputProviderCostPerMillion"))
-    ),
     markupMultiplier: normalizeMarkupMultiplier(
       formData.get("markupMultiplier"),
       4
+    ),
+    outputProviderCostPerMillion: Math.max(
+      0,
+      parseNumber(formData.get("outputProviderCostPerMillion"))
     ),
   };
   if (
@@ -2274,23 +2297,35 @@ export async function updateImageModelPricingAction(formData: FormData) {
       0,
       parseNumber(formData.get("providerCostPerOutputUsd"))
     ),
-    inputProviderCostPerMillion: Math.max(
+    textInputProviderCostPerMillion: Math.max(
       0,
-      parseNumber(formData.get("inputProviderCostPerMillion"))
+      parseNumber(formData.get("textInputProviderCostPerMillion"))
     ),
     markupMultiplier: normalizeMarkupMultiplier(
       formData.get("markupMultiplier"),
       2
     ),
-    outputProviderCostPerMillion: Math.max(
+    imageOutputProviderCostPerMillion: Math.max(
       0,
-      parseNumber(formData.get("outputProviderCostPerMillion"))
+      parseNumber(formData.get("imageOutputProviderCostPerMillion"))
+    ),
+    imageInputProviderCostPerMillion: Math.max(
+      0,
+      parseNumber(formData.get("imageInputProviderCostPerMillion"))
+    ),
+    cachedTextInputProviderCostPerMillion: Math.max(
+      0,
+      parseNumber(formData.get("cachedTextInputProviderCostPerMillion"))
+    ),
+    cachedImageInputProviderCostPerMillion: Math.max(
+      0,
+      parseNumber(formData.get("cachedImageInputProviderCostPerMillion"))
     ),
   };
   if (
     pricing.providerCostType === "per_token"
-      ? pricing.inputProviderCostPerMillion <= 0 ||
-        pricing.outputProviderCostPerMillion <= 0
+      ? pricing.textInputProviderCostPerMillion <= 0 ||
+        pricing.imageOutputProviderCostPerMillion <= 0
       : pricing.providerCostPerOutputUsd <= 0
   ) {
     redirect("/admin/pricing?notice=model-provider-cost-required");
@@ -2428,8 +2463,8 @@ export async function setActiveImageModelConfigAction(formData: FormData) {
   const model = await getImageModelConfigById({ id });
   const hasProviderPricing = model
     ? model.providerCostType === "per_token"
-      ? Number(model.inputProviderCostPerMillion ?? 0) > 0 &&
-        Number(model.outputProviderCostPerMillion ?? 0) > 0
+      ? Number(model.textInputProviderCostPerMillion ?? 0) > 0 &&
+        Number(model.imageOutputProviderCostPerMillion ?? 0) > 0
       : Number(model.providerCostPerOutputUsd ?? 0) > 0
     : false;
   if (!model || !hasProviderPricing) {

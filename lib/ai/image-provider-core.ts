@@ -22,8 +22,11 @@ export type GeneratedProviderImage = {
 };
 
 export type ImageProviderTokenUsage = {
-  inputTokens: number;
-  outputTokens: number;
+  textInputTokens: number;
+  imageInputTokens: number;
+  cachedTextInputTokens: number;
+  cachedImageInputTokens: number;
+  imageOutputTokens: number;
 };
 
 export type ProviderImageGenerationResult = {
@@ -71,27 +74,180 @@ function readFiniteTokenCount(
   return 0;
 }
 
+function readObject(
+  record: Record<string, unknown>,
+  keys: string[]
+): Record<string, unknown> | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+  }
+  return null;
+}
+
+function readModalityTokenCount(
+  record: Record<string, unknown>,
+  keys: string[],
+  modality: "IMAGE" | "TEXT"
+) {
+  for (const key of keys) {
+    const value = record[key];
+    if (!Array.isArray(value)) continue;
+    return value.reduce((total, item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        return total;
+      }
+      const detail = item as Record<string, unknown>;
+      if (String(detail.modality ?? "").toUpperCase() !== modality) {
+        return total;
+      }
+      return total + readFiniteTokenCount(detail, ["tokenCount", "token_count"]);
+    }, 0);
+  }
+  return 0;
+}
+
 export function extractImageProviderTokenUsage(
-  value: unknown
+  value: unknown,
+  { hasInputImages = false }: { hasInputImages?: boolean } = {}
 ): ImageProviderTokenUsage | null {
   if (!value || typeof value !== "object") {
     return null;
   }
   const record = value as Record<string, unknown>;
-  const inputTokens = readFiniteTokenCount(record, [
+  const aggregateInputTokens = readFiniteTokenCount(record, [
     "input_tokens",
     "inputTokens",
     "prompt_tokens",
     "promptTokens",
+    "promptTokenCount",
   ]);
-  const outputTokens = readFiniteTokenCount(record, [
+  const aggregateOutputTokens = readFiniteTokenCount(record, [
     "output_tokens",
     "outputTokens",
     "completion_tokens",
     "completionTokens",
+    "candidatesTokenCount",
   ]);
-  return inputTokens + outputTokens > 0
-    ? { inputTokens, outputTokens }
+  const inputDetails = readObject(record, [
+    "input_tokens_details",
+    "inputTokensDetails",
+    "prompt_tokens_details",
+    "promptTokensDetails",
+    "input_token_details",
+    "inputTokenDetails",
+  ]);
+  const outputDetails = readObject(record, [
+    "output_tokens_details",
+    "outputTokensDetails",
+    "completion_tokens_details",
+    "completionTokensDetails",
+    "output_token_details",
+    "outputTokenDetails",
+  ]);
+  const cachedDetails =
+    (inputDetails
+      ? readObject(inputDetails, [
+          "cached_tokens_details",
+          "cachedTokensDetails",
+        ])
+      : null) ??
+    readObject(record, ["cached_tokens_details", "cachedTokensDetails"]);
+  const cachedDetailTextTokens = readModalityTokenCount(
+    record,
+    ["cacheTokensDetails", "cachedTokensDetails"],
+    "TEXT"
+  );
+  const cachedDetailImageTokens = readModalityTokenCount(
+    record,
+    ["cacheTokensDetails", "cachedTokensDetails"],
+    "IMAGE"
+  );
+  const aggregateCachedInputTokens = readFiniteTokenCount(record, [
+    "cachedInputTokens",
+    "cached_input_tokens",
+    "cachedContentTokenCount",
+  ]);
+  const cachedTextInputTokens =
+    (inputDetails
+      ? readFiniteTokenCount(inputDetails, [
+        "cached_text_tokens",
+        "cachedTextTokens",
+      ])
+      : 0) ||
+    readFiniteTokenCount(record, [
+      "cached_text_input_tokens",
+      "cachedTextInputTokens",
+    ]) ||
+    cachedDetailTextTokens ||
+    (cachedDetails
+      ? readFiniteTokenCount(cachedDetails, ["text_tokens", "textTokens"])
+      : 0) ||
+    (!hasInputImages ? aggregateCachedInputTokens : 0);
+  const cachedImageInputTokens =
+    (inputDetails
+      ? readFiniteTokenCount(inputDetails, [
+        "cached_image_tokens",
+        "cachedImageTokens",
+      ])
+      : 0) ||
+    readFiniteTokenCount(record, [
+      "cached_image_input_tokens",
+      "cachedImageInputTokens",
+    ]) ||
+    cachedDetailImageTokens ||
+    (cachedDetails
+      ? readFiniteTokenCount(cachedDetails, ["image_tokens", "imageTokens"])
+      : 0);
+  const detailedImageInputTokens =
+    (inputDetails
+      ? readFiniteTokenCount(inputDetails, ["image_tokens", "imageTokens"])
+      : 0) ||
+    readModalityTokenCount(record, ["promptTokensDetails"], "IMAGE");
+  const detailedTextInputTokens =
+    (inputDetails
+      ? readFiniteTokenCount(inputDetails, ["text_tokens", "textTokens"])
+      : 0) ||
+    readModalityTokenCount(record, ["promptTokensDetails"], "TEXT");
+  const totalImageInputTokens = detailedImageInputTokens;
+  const totalTextInputTokens =
+    detailedTextInputTokens > 0
+      ? detailedTextInputTokens
+      : totalImageInputTokens > 0
+        ? Math.max(0, aggregateInputTokens - totalImageInputTokens)
+        : hasInputImages
+          ? 0
+          : aggregateInputTokens;
+  const textInputTokens = Math.max(
+    0,
+    totalTextInputTokens - cachedTextInputTokens
+  );
+  const imageInputTokens = Math.max(
+    0,
+    totalImageInputTokens - cachedImageInputTokens
+  );
+  const imageOutputTokens =
+    (outputDetails
+      ? readFiniteTokenCount(outputDetails, ["image_tokens", "imageTokens"])
+      : 0) ||
+    readModalityTokenCount(record, ["candidatesTokensDetails"], "IMAGE") ||
+    aggregateOutputTokens;
+  const totalCategorizedTokens =
+    textInputTokens +
+    imageInputTokens +
+    cachedTextInputTokens +
+    cachedImageInputTokens +
+    imageOutputTokens;
+  return totalCategorizedTokens > 0
+    ? {
+        textInputTokens,
+        imageInputTokens,
+        cachedTextInputTokens,
+        cachedImageInputTokens,
+        imageOutputTokens,
+      }
     : null;
 }
 
@@ -348,7 +504,9 @@ async function generateXaiImage({
       fetchImpl,
       responseImages: value.data,
     }),
-    usage: extractImageProviderTokenUsage(value.usage),
+    usage: extractImageProviderTokenUsage(value.usage, {
+      hasInputImages: Boolean(images?.length),
+    }),
   };
 }
 
@@ -417,7 +575,9 @@ async function generateOpenAiImage({
       fetchImpl,
       responseImages: value.data,
     }),
-    usage: extractImageProviderTokenUsage(value.usage),
+    usage: extractImageProviderTokenUsage(value.usage, {
+      hasInputImages: Boolean(images?.length),
+    }),
   };
 }
 
@@ -555,7 +715,9 @@ async function generateBflImage({
           fetchImpl,
           url: result.sample,
         })],
-        usage: extractImageProviderTokenUsage(polled.usage),
+        usage: extractImageProviderTokenUsage(polled.usage, {
+          hasInputImages: Boolean(images?.length),
+        }),
       };
     }
     if (status === "error" || status === "failed") {
@@ -624,7 +786,9 @@ async function generateBytePlusImage({
       fetchImpl,
       responseImages: value.data,
     }),
-    usage: extractImageProviderTokenUsage(value.usage),
+    usage: extractImageProviderTokenUsage(value.usage, {
+      hasInputImages: Boolean(images?.length),
+    }),
   };
 }
 
@@ -683,7 +847,9 @@ async function generateGatewayImage({
       fetchImpl,
       responseImages: rawImages,
     }),
-    usage: extractImageProviderTokenUsage(value.usage),
+    usage: extractImageProviderTokenUsage(value.usage, {
+      hasInputImages: Boolean(images?.length),
+    }),
   };
 }
 

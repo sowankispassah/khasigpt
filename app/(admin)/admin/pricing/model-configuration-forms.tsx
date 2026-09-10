@@ -375,11 +375,24 @@ export function ImageModelConfigurationForm({
       <CommonFields model={model} prefix={prefix} provider="google" />
       <ImageCostPlusFields
         context={context}
+        initialCachedImageInputCost={Number(
+          model?.cachedImageInputProviderCostPerMillion ?? 0
+        )}
+        initialCachedTextInputCost={Number(
+          model?.cachedTextInputProviderCostPerMillion ?? 0
+        )}
         initialCostType={model?.providerCostType ?? "per_generation"}
-        initialInputCost={Number(model?.inputProviderCostPerMillion ?? 0)}
+        initialImageInputCost={Number(
+          model?.imageInputProviderCostPerMillion ?? 0
+        )}
+        initialImageOutputCost={Number(
+          model?.outputProviderCostPerMillion ?? 0
+        )}
         initialMarkup={Number(model?.markupMultiplier ?? 2)}
-        initialOutputCost={Number(model?.outputProviderCostPerMillion ?? 0)}
         initialProviderCost={Number(model?.providerCostPerOutputUsd ?? 0)}
+        initialTextInputCost={Number(
+          model?.inputProviderCostPerMillion ?? 0
+        )}
         prefix={prefix}
       />
       <CheckboxField

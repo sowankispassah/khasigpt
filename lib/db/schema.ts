@@ -240,13 +240,28 @@ export const imageModelConfig = pgTable(
       .$type<"per_generation" | "per_token">()
       .notNull()
       .default("per_generation"),
-    inputProviderCostPerMillion: doublePrecision(
-      "inputProviderCostPerMillion"
+    textInputProviderCostPerMillion: doublePrecision(
+      "textInputProviderCostPerMillion"
     )
       .notNull()
       .default(0),
-    outputProviderCostPerMillion: doublePrecision(
-      "outputProviderCostPerMillion"
+    imageOutputProviderCostPerMillion: doublePrecision(
+      "imageOutputProviderCostPerMillion"
+    )
+      .notNull()
+      .default(0),
+    imageInputProviderCostPerMillion: doublePrecision(
+      "imageInputProviderCostPerMillion"
+    )
+      .notNull()
+      .default(0),
+    cachedTextInputProviderCostPerMillion: doublePrecision(
+      "cachedTextInputProviderCostPerMillion"
+    )
+      .notNull()
+      .default(0),
+    cachedImageInputProviderCostPerMillion: doublePrecision(
+      "cachedImageInputProviderCostPerMillion"
     )
       .notNull()
       .default(0),
@@ -1679,6 +1694,15 @@ export const creditCharge = pgTable(
     requestKey: varchar("requestKey", { length: 191 }),
     inputTokens: integer("inputTokens").notNull().default(0),
     outputTokens: integer("outputTokens").notNull().default(0),
+    textInputTokens: integer("textInputTokens").notNull().default(0),
+    imageInputTokens: integer("imageInputTokens").notNull().default(0),
+    cachedTextInputTokens: integer("cachedTextInputTokens")
+      .notNull()
+      .default(0),
+    cachedImageInputTokens: integer("cachedImageInputTokens")
+      .notNull()
+      .default(0),
+    imageOutputTokens: integer("imageOutputTokens").notNull().default(0),
     unitCount: integer("unitCount").notNull().default(0),
     providerCostUsd: doublePrecision("providerCostUsd").notNull().default(0),
     usdToInr: doublePrecision("usdToInr").notNull().default(0),

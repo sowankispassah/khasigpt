@@ -45,11 +45,14 @@ const DEFAULT_VISIBLE_ROWS = 10;
 export type ModelType = "chat" | "image" | "live_voice";
 
 export type ModelPricingRow = {
+  cachedImageInputProviderCostUsd?: number | null;
+  cachedTextInputProviderCostUsd?: number | null;
   creditInputCharge: number | null;
   creditOutputCharge: number | null;
   customerInputChargeInr: number | null;
   customerOutputChargeInr: number | null;
   id: string;
+  imageInputProviderCostUsd?: number | null;
   isActive: boolean;
   isDefault: boolean;
   isEnabled: boolean;
@@ -293,8 +296,11 @@ export function ModelPricingManagementTable({
                         <td className="max-w-[250px] px-4 py-3"><span className="font-medium">{model.name}</span><span className="block truncate font-mono text-muted-foreground text-xs">{model.providerModelId}</span></td>
                         <td className="px-4 py-3">{model.providerLabel}</td>
                         <td className="px-4 py-3 text-right text-xs">
-                          {model.providerInputCostUsd !== null ? <span className="block">{translate("admin.pricing.input", "Input")}: {formatCurrency(model.providerInputCostUsd, "USD")}</span> : null}
-                          <span className="block">{tokenPriced ? `${translate("admin.pricing.output", "Output")}: ${formatCurrency(model.providerOutputCostUsd, "USD")}` : formatCurrency(model.providerOutputCostUsd, "USD")}</span>
+                          {model.providerInputCostUsd !== null ? <span className="block">{model.type === "image" ? translate("admin.pricing.text_input", "Text Input") : translate("admin.pricing.input", "Input")}: {formatCurrency(model.providerInputCostUsd, "USD")}</span> : null}
+                          {model.type === "image" && Number(model.imageInputProviderCostUsd ?? 0) > 0 ? <span className="block">{translate("admin.pricing.image_input", "Image Input")}: {formatCurrency(model.imageInputProviderCostUsd ?? null, "USD")}</span> : null}
+                          {model.type === "image" && Number(model.cachedTextInputProviderCostUsd ?? 0) > 0 ? <span className="block">{translate("admin.pricing.cached_text_input", "Cached Text Input")}: {formatCurrency(model.cachedTextInputProviderCostUsd ?? null, "USD")}</span> : null}
+                          {model.type === "image" && Number(model.cachedImageInputProviderCostUsd ?? 0) > 0 ? <span className="block">{translate("admin.pricing.cached_image_input", "Cached Image Input")}: {formatCurrency(model.cachedImageInputProviderCostUsd ?? null, "USD")}</span> : null}
+                          <span className="block">{tokenPriced ? `${model.type === "image" ? translate("admin.pricing.image_output", "Image Output") : translate("admin.pricing.output", "Output")}: ${formatCurrency(model.providerOutputCostUsd, "USD")}` : formatCurrency(model.providerOutputCostUsd, "USD")}</span>
                           <span className="block text-muted-foreground">{unitLabel}</span>
                         </td>
                         <td className="px-4 py-3 text-right font-medium">{model.markupMultiplier.toFixed(2)}×</td>
