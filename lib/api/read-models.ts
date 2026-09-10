@@ -163,7 +163,7 @@ export async function loadFeatureAccessReadModel({
   const imageGenerationAccessDegraded = Boolean(includeImageAccess && userId && !imageGenerationAccess);
   const getFeatureSetting = (
     key: string,
-    { failOpen = true }: { failOpen?: boolean } = {}
+    { failOpen = false }: { failOpen?: boolean } = {}
   ): string | boolean | null => {
     const value = getFeatureAccessModeSettingValue(featureAccessSettings, key, {
       unconfirmedFallback: failOpen
@@ -300,8 +300,8 @@ export async function loadFeatureAccessReadModel({
         }
       : featureAccessUnavailable
         ? {
-            enabled: true,
-            canGenerate: true,
+            enabled: false,
+            canGenerate: false,
             requiresPaidCredits: false,
           }
       : {

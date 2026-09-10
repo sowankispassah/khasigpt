@@ -203,7 +203,28 @@ export async function getLiteAppSettingsByKeysUncached(keys: string[]) {
   }
 }
 
-export async function getLiteAppSettingUncached<T>(key: string) {
+type PendingSettingRead = { resolve: (value: unknown) => void; reject: (error: unknown) => void };
+let pendingScalarReads = new Map<string, PendingSettingRead[]>();
+let scalarReadScheduled = false;
+
+async function flushScalarReads() {
+  const batch = pendingScalarReads;
+  pendingScalarReads = new Map();
+  scalarReadScheduled = false;
+  try {
+    const rows = await getLiteAppSettingsByKeysUncached([...batch.keys()]);
+    const values = new Map(rows.map((row) => [row.key, row.value]));
+    for (const [key, readers] of batch) {
+      for (const reader of readers) reader.resolve(values.get(key) ?? null);
+    }
+  } catch (error) {
+    for (const readers of batch.values()) {
+      for (const reader of readers) reader.reject(error);
+    }
+  }
+}
+
+export async function getLiteAppSettingUncached<T>(key: string): Promise<T | null> {
   const normalizedKey = key.trim();
   if (!normalizedKey) {
     return null;
@@ -212,21 +233,17 @@ export async function getLiteAppSettingUncached<T>(key: string) {
     return null;
   }
 
-  try {
-    const sql = getLiteSqlClient();
-    const rows = await sql<Array<{ value: T }>>`
-      select "value"
-      from "AppSetting"
-      where "key" = ${normalizedKey}
-      limit 1
-    `;
-    return rows[0]?.value ?? null;
-  } catch (error) {
-    if (isMissingRelationError(error)) {
-      return null;
+  // Coalesce the independent scalar reads made during one startup turn into
+  // a single indexed query. Nothing persists beyond the in-flight batch.
+  return new Promise<T | null>((resolve, reject) => {
+    const readers = pendingScalarReads.get(normalizedKey) ?? [];
+    readers.push({ resolve: (value) => resolve(value as T | null), reject });
+    pendingScalarReads.set(normalizedKey, readers);
+    if (!scalarReadScheduled) {
+      scalarReadScheduled = true;
+      setImmediate(() => { void flushScalarReads(); });
     }
-    throw error;
-  }
+  });
 }
 
 export async function setLiteAppSetting<T>({

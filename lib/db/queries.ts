@@ -47,6 +47,8 @@ import {
 import type { GenerationPricing } from "@/lib/billing/generation-budget";
 import { withAdminDatabase } from "@/lib/db/admin-database";
 import { normalizeAppSettingValueForWrite } from "@/lib/db/app-setting-validation";
+import { getLiteAppSettingUncached } from "@/lib/db/app-settings-lite";
+import { createManagedPool } from "@/lib/db/managed-client";
 import { claimPaidGeneration, releasePaidGeneration } from "@/lib/db/paid-generation-admission";
 import { lockUserWallet } from "@/lib/db/wallet-lock";
 import {
@@ -556,7 +558,8 @@ const poolConfig = {
 // surface naturally through actual query errors and timeouts.
 
 const client =
-  globalDbState.__khasigptMainPostgresClient ?? postgres(postgresUrl, poolConfig);
+  globalDbState.__khasigptMainPostgresClient ??
+  createManagedPool(() => postgres(postgresUrl, { ...poolConfig, max: 1 }), poolConfig.max);
 
 globalDbState.__khasigptMainPostgresClient ??= client;
 
@@ -5113,19 +5116,13 @@ async function getAppSettingRaw<T>(key: string): Promise<T | null> {
   }
 
   try {
-    const [setting] = await db
-      .select()
-      .from(appSetting)
-      .where(eq(appSetting.key, normalizedKey))
-      .limit(1);
-
-    if (!setting) {
+    const value = await getLiteAppSettingUncached<T>(normalizedKey);
+    if (value === null) {
       clearRememberedAppSetting(normalizedKey);
       return null;
     }
-
-    rememberAppSettingValue(normalizedKey, setting.value);
-    return setting.value as T;
+    rememberAppSettingValue(normalizedKey, value);
+    return value;
   } catch (_error) {
     if (isTableMissingError(_error)) {
       return null;
@@ -10204,20 +10201,6 @@ export async function hasAnySubscriptionForUser(
   }
 }
 
-async function getLatestSubscriptionForUser(
-  executor: any,
-  userId: string
-): Promise<UserSubscription | null> {
-  const [latest] = await executor
-    .select()
-    .from(userSubscription)
-    .where(eq(userSubscription.userId, userId))
-    .orderBy(desc(userSubscription.updatedAt))
-    .limit(1);
-
-  return latest ?? null;
-}
-
 async function createUserSubscriptionForPlan(
   executor: any,
   {
@@ -10562,26 +10545,10 @@ export async function getUserBalanceSummary(
 
   try {
     const activeSubscription = await getActiveSubscriptionForUser(userId);
-    const latestSubscription =
-      activeSubscription ?? (await getLatestSubscriptionForUser(db, userId));
-
-    if (!latestSubscription) {
-      return EMPTY_BALANCE;
-    }
-
+    // An inactive or absent subscription produces the same empty balance.
+    // Avoid a second historical lookup on every new user's startup.
     if (!activeSubscription) {
-      return {
-        subscription: null,
-        plan: null,
-        tokensRemaining: 0,
-        tokensTotal: 0,
-        creditsRemaining: 0,
-        creditsTotal: 0,
-        allocatedCredits: 0,
-        rechargedCredits: 0,
-        expiresAt: null,
-        startedAt: null,
-      };
+      return EMPTY_BALANCE;
     }
 
     const [plan] = await db
@@ -10589,7 +10556,7 @@ export async function getUserBalanceSummary(
       .from(pricingPlan)
       .where(
         and(
-          eq(pricingPlan.id, latestSubscription.planId),
+          eq(pricingPlan.id, activeSubscription.planId),
           isNull(pricingPlan.deletedAt)
         )
       )

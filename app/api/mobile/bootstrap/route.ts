@@ -128,25 +128,25 @@ const FALLBACK_FEATURE_SNAPSHOT: FeatureSnapshot = {
   // Render-only fallback for transient settings failures. Protected feature
   // routes still enforce access server-side; the shell should not lose the
   // whole sidebar because one optional settings read was slow.
-  calculator: true,
+  calculator: false,
   customKnowledge: false,
-  documentUploads: true,
+  documentUploads: false,
   exploreMeghalaya: false,
   forum: true,
-  jobs: true,
+  jobs: false,
   news: false,
   liveTranslation: false,
   liveTranslationAndroid: false,
   liveTranslationWeb: false,
-  study: true,
-  translate: true,
+  study: false,
+  translate: false,
   webSearch: false,
   voiceChat: false,
   voiceChatAndroid: false,
   voiceChatWeb: false,
   imageGeneration: {
-    enabled: true,
-    canGenerate: true,
+    enabled: false,
+    canGenerate: false,
     requiresPaidCredits: false,
   },
 };

@@ -139,7 +139,7 @@ export default async function Layout({
     featureAccessSettings?.status === "unavailable";
   const getFeatureSetting = (
     key: string,
-    { failOpen = true }: { failOpen?: boolean } = {}
+    { failOpen = false }: { failOpen?: boolean } = {}
   ) => {
     if (!featureAccessSettings) {
       return null;
@@ -152,10 +152,7 @@ export default async function Layout({
     if (value !== undefined) {
       return value;
     }
-    // Sidebar visibility is not an authorization boundary. If the feature
-    // settings read is temporarily unavailable, keep the app shell usable
-    // instead of hiding every optional feature until a warm retry succeeds.
-    return featureAccessUnavailable ? "enabled" : null;
+    return featureAccessUnavailable ? "admin_only" : null;
   };
   const studyModeSetting = getFeatureSetting(STUDY_MODE_FEATURE_FLAG_KEY);
   const calculatorSetting = getFeatureSetting(CALCULATOR_FEATURE_FLAG_KEY);

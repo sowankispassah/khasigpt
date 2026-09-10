@@ -216,7 +216,7 @@ export function getFeatureAccessModeSettingValue(
   snapshot: FeatureAccessSettingsSnapshot,
   key: string,
   {
-    unconfirmedFallback = "enabled",
+    unconfirmedFallback = "admin_only",
   }: {
     unconfirmedFallback?: FeatureAccessMode;
   } = {}

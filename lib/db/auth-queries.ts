@@ -163,7 +163,21 @@ export async function getAuthUsersByEmail(
   }
 }
 
-export async function getAuthUserById(
+const pendingUserReads = new Map<string, Promise<AuthDbUser | null>>();
+
+export function getAuthUserById(id: string): Promise<AuthDbUser | null> {
+  const pending = pendingUserReads.get(id);
+  if (pending) return pending;
+  // Coalesce the simultaneous requests made by one startup. This is not a
+  // session cache: every subsequent read still confirms the current DB user.
+  const read = loadAuthUserById(id).finally(() => {
+    if (pendingUserReads.get(id) === read) pendingUserReads.delete(id);
+  });
+  pendingUserReads.set(id, read);
+  return read;
+}
+
+async function loadAuthUserById(
   id: string
 ): Promise<AuthDbUser | null> {
   if (!isValidUUID(id)) {
