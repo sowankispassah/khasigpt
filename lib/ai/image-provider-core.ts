@@ -540,7 +540,6 @@ async function generateOpenAiImage({
     const form = new FormData();
     form.append("model", resolvedModelId);
     form.append("prompt", prompt);
-    form.append("response_format", "b64_json");
     for (const [index, image] of images.entries()) {
       form.append(
         images.length === 1 ? "image" : "image[]",
@@ -555,7 +554,6 @@ async function generateOpenAiImage({
       model: resolvedModelId,
       n: 1,
       prompt,
-      response_format: "b64_json",
     });
   }
 

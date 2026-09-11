@@ -18,7 +18,7 @@ export type RoutedImageIntent = Extract<
 >;
 
 export type ImageIntentResolution = {
-  decisionToken: string;
+  decisionToken?: string;
   intent: RoutedImageIntent;
 };
 
@@ -41,6 +41,30 @@ const VISUAL_CREATION_SIGNAL =
 
 const CONTEXTUAL_EDIT_SIGNAL =
   /\b(make|change|remove|add|replace|put|turn|edit|adjust|brighten|darken|enhance|use the same|another version|more realistic|less realistic)\b/i;
+
+const NON_VISUAL_REQUEST_PREFIX =
+  /^(?:who|what|when|where|why|how|which|is|are|was|were|do|does|did|can|could|would|should|tell|explain|describe|define|translate|write|compare|list|find|search|pynwad|batai|mano|aiu|mynno|hangno|balei|kumno)\b/i;
+
+const STANDALONE_VISUAL_COMPOSITION_SIGNAL =
+  /\b(?:as|kum)\s+(?:an?\s+)?\S+|\b(?:flying|wearing|dressed|standing|sitting|riding|holding|walking|running|beneath|amid|against)\b|\b(?:ba\s+her|ba\s+phong|jaiñsem|jainsem)\b|\b(?:in|ha)\s+(?:\S+\s+){0,4}(?:dress|attire|clothes|clothing|costume|uniform|jaiñsem|jainsem)\b/i;
+
+export function isStandaloneVisualComposition(message: string) {
+  const normalized = message.trim().replace(/\s+/g, " ");
+  if (
+    !normalized ||
+    normalized.endsWith("?") ||
+    NON_VISUAL_REQUEST_PREFIX.test(normalized)
+  ) {
+    return false;
+  }
+
+  const wordCount = normalized.split(" ").length;
+  return (
+    wordCount >= 3 &&
+    wordCount <= 30 &&
+    STANDALONE_VISUAL_COMPOSITION_SIGNAL.test(normalized)
+  );
+}
 
 export function parseImageIntent(value: unknown): ImageIntent | null {
   if (typeof value !== "string") {
@@ -69,6 +93,9 @@ export function fallbackImageIntent(input: ImageIntentInput): ImageIntent {
     return "normal_chat";
   }
   if (VISUAL_CREATION_SIGNAL.test(message)) {
+    return "image_generate";
+  }
+  if (isStandaloneVisualComposition(message)) {
     return "image_generate";
   }
   if (

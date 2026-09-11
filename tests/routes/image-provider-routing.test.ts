@@ -203,17 +203,45 @@ test.describe("hybrid image provider routing", () => {
     expect(requests[0]?.url).toBe(
       "https://api.openai.com/v1/images/generations"
     );
+    const generationBody = JSON.parse(
+      String(requests[0]?.body)
+    ) as Record<string, unknown>;
+    expect(generationBody).toEqual({
+      model: "gpt-image-2",
+      n: 1,
+      prompt: "A hill station at sunrise",
+    });
+    expect(generationBody).not.toHaveProperty("response_format");
     expect(requests[1]?.url).toBe("https://api.openai.com/v1/images/edits");
     expect(requests[1]?.body).toBeInstanceOf(FormData);
     const editForm = requests[1]?.body as FormData;
     expect(editForm.get("model")).toBe("gpt-image-2");
     expect(editForm.get("image")).toBeInstanceOf(Blob);
+    expect(editForm.has("response_format")).toBe(false);
     expect(generated.usage).toEqual({
       cachedImageInputTokens: 100,
       cachedTextInputTokens: 50,
       imageInputTokens: 200,
       imageOutputTokens: 600,
       textInputTokens: 150,
+    });
+  });
+
+  test("normalizes GPT Image 2.5 modality usage without double-counting", () => {
+    expect(
+      extractImageProviderTokenUsage({
+        input_tokens: 13,
+        input_tokens_details: { image_tokens: 0, text_tokens: 13 },
+        output_tokens: 196,
+        output_tokens_details: { image_tokens: 196, text_tokens: 0 },
+        total_tokens: 209,
+      })
+    ).toEqual({
+      cachedImageInputTokens: 0,
+      cachedTextInputTokens: 0,
+      imageInputTokens: 0,
+      imageOutputTokens: 196,
+      textInputTokens: 13,
     });
   });
 

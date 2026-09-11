@@ -45,7 +45,7 @@ test.describe("image intent routing", () => {
     ).toBe(true);
   });
 
-  test("sends open-ended and multilingual prompts for semantic classification without keyword gating", () => {
+  test("keeps standalone visual compositions on the image path if semantic routing is unavailable", () => {
     for (const message of [
       "Jessie Lyngdoh in Khasi traditional dress",
       "Tirot Sing flying as Superman",
@@ -55,7 +55,17 @@ test.describe("image intent routing", () => {
     ]) {
       const input = intentInput(message);
       expect(shouldClassifyImageIntent(input)).toBe(true);
-      expect(fallbackImageIntent(input)).toBe("normal_chat");
+      expect(fallbackImageIntent(input)).toBe("image_generate");
+    }
+  });
+
+  test("does not mistake factual questions or non-visual role requests for image prompts", () => {
+    for (const message of [
+      "Who is Jessie Lyngdoh?",
+      "Explain Jessie Lyngdoh as a leader",
+      "How can I work as a doctor?",
+    ]) {
+      expect(fallbackImageIntent(intentInput(message))).toBe("normal_chat");
     }
   });
 
@@ -217,6 +227,7 @@ test.describe("image intent routing", () => {
     );
     expect(inputSource).toContain("onManualInputChange?.()");
     expect(chatSource).toContain('fetch("/api/images/intent"');
+    expect(chatSource).toContain("fallbackImageIntent(intentInput)");
     expect(classifierSource).toContain(
       "Classify by meaning and conversational context in any language"
     );

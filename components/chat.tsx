@@ -52,6 +52,7 @@ import type {
   IconPromptSuggestion,
 } from "@/lib/icon-prompts";
 import {
+  fallbackImageIntent,
   type ImageIntentContextMessage,
   type ImageIntentResolution,
   parseImageIntent,
@@ -1512,6 +1513,14 @@ export function Chat({
         console.warn("[chat] Unable to resolve image intent.", {
           error: error instanceof Error ? error.message : String(error),
         });
+        const fallbackIntent = fallbackImageIntent(intentInput);
+        if (
+          imageGeneration.enabled &&
+          (fallbackIntent === "image_generate" ||
+            fallbackIntent === "image_edit")
+        ) {
+          return { intent: fallbackIntent };
+        }
         return null;
       } finally {
         window.clearTimeout(timeoutId);
