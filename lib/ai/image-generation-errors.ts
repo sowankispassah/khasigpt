@@ -12,6 +12,8 @@ const SAFETY_REJECTION_MARKERS = [
   "content policy",
   "finishreason=safety",
   "moderation block",
+  "moderation_blocked",
+  "rejected by the safety system",
   "safety check",
   "safety filter",
   "safety=",

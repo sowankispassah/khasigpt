@@ -27,6 +27,14 @@ test.describe("image generation failure recovery", () => {
         )
       )
     ).toBe(true);
+    expect(
+      isImageGenerationSafetyRejection(
+        new ChatSDKError(
+          "bad_request:api",
+          "Image request failed: Your request was rejected by the safety system (code=moderation_blocked)."
+        )
+      )
+    ).toBe(true);
     expect(IMAGE_GENERATION_SAFETY_ERROR_CODE).toBe(
       "image_generation_safety_rejected"
     );
