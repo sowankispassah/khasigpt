@@ -23,6 +23,15 @@ test("the product identity stays KhasiGPT across configurable prompts", () => {
   expect(KHASIGPT_IDENTITY_FINAL_REMINDER).toContain(
     "Do not infer or answer additional questions",
   );
+  expect(KHASIGPT_IDENTITY_INSTRUCTION).toContain(
+    "Do not introduce, identify, describe, or promote KhasiGPT",
+  );
+  expect(KHASIGPT_IDENTITY_FINAL_REMINDER).toContain(
+    "Never begin with a self-introduction",
+  );
+  expect(KHASIGPT_IDENTITY_FINAL_REMINDER).toContain(
+    "Nga long ka KhasiGPT",
+  );
 
   const instruction = buildKhasiGptSystemInstruction(
     "You are a large language model trained by Google.",

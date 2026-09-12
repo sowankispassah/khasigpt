@@ -2678,6 +2678,7 @@ export async function getPresenceDetails({
 }
 
 export type LiveUserRow = {
+  chatCount: number;
   userId: string;
   email: string | null;
   firstName: string | null;
@@ -2715,7 +2716,8 @@ export async function listLiveUsers({
   ).toISOString();
   const resolvedLimit = Math.min(Math.max(limit, 1), 100);
   const resolvedOffset = Math.max(offset, 0);
-  type RawLiveUserRow = Omit<LiveUserRow, "lastSeenAt"> & {
+  type RawLiveUserRow = Omit<LiveUserRow, "chatCount" | "lastSeenAt"> & {
+    chatCount: number | string | null;
     lastSeenAt: Date | string;
   };
   type RawLiveUsersPage = {
@@ -2800,6 +2802,12 @@ export async function listLiveUsers({
             account."firstName",
             account."lastName",
             account."role"::text AS "role",
+            (
+              SELECT COUNT(*)::integer
+              FROM "Chat" user_chat
+              WHERE user_chat."userId" = presence."userId"
+                AND user_chat."deletedAt" IS NULL
+            ) AS "chatCount",
             presence."lastSeenAt",
             presence."lastPath",
             presence."device",
@@ -2832,6 +2840,7 @@ export async function listLiveUsers({
       offset: resolvedOffset,
       users: rows.map((row) => ({
         ...row,
+        chatCount: Math.max(0, toInteger(row.chatCount)),
         lastSeenAt: new Date(row.lastSeenAt),
       })),
     };

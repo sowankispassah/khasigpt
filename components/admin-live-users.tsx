@@ -4,6 +4,7 @@ import { formatDistanceToNow } from "date-fns";
 import { Loader2 } from "lucide-react";
 import { memo, type ReactNode, useEffect, useState } from "react";
 import useSWR from "swr";
+import { AdminUserChatsButton } from "@/components/admin-user-chats-button";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import {
 import { fetcher } from "@/lib/utils";
 
 type LiveUserRow = {
+  chatCount: number;
   userId: string;
   email: string | null;
   firstName: string | null;
@@ -113,7 +115,7 @@ const LiveUsersTable = memo(function LiveUsersTable({
   return (
     <>
       <div className="hidden overflow-x-auto md:block">
-        <table className="w-full min-w-[900px] table-fixed text-sm">
+        <table className="w-full min-w-[1000px] table-fixed text-sm">
           <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
             <tr>
               <th className="px-4 py-3 text-left font-medium">
@@ -135,6 +137,13 @@ const LiveUsersTable = memo(function LiveUsersTable({
                   defaultText="Role"
                   description="Role column in the admin live users table."
                   translationKey="admin.live_users.table.role"
+                />
+              </th>
+              <th className="px-4 py-3 text-left font-medium">
+                <EditableTranslation
+                  defaultText="Chats"
+                  description="Chat count column in the admin live users table."
+                  translationKey="admin.live_users.table.chats"
                 />
               </th>
               <th className="px-4 py-3 text-left font-medium">
@@ -195,6 +204,12 @@ const LiveUsersTable = memo(function LiveUsersTable({
                     <span className="block truncate">{user.email ?? "—"}</span>
                   </td>
                   <td className="px-4 py-3 capitalize">{user.role ?? "—"}</td>
+                  <td className="px-4 py-3">
+                    <AdminUserChatsButton
+                      chatCount={user.chatCount ?? 0}
+                      userId={user.userId}
+                    />
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">
                     {user.lastSeenAt
                       ? formatDistanceToNow(new Date(user.lastSeenAt), {
@@ -288,6 +303,21 @@ const LiveUsersTable = memo(function LiveUsersTable({
                   <p className="mt-1 font-medium capitalize">
                     {user.device ?? "—"}
                   </p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-muted-foreground uppercase tracking-wide">
+                    <EditableTranslation
+                      defaultText="Chats"
+                      description="Chat count label on a mobile live-user card."
+                      translationKey="admin.live_users.table.chats"
+                    />
+                  </p>
+                  <div className="mt-1">
+                    <AdminUserChatsButton
+                      chatCount={user.chatCount ?? 0}
+                      userId={user.userId}
+                    />
+                  </div>
                 </div>
                 <div className="col-span-2">
                   <p className="text-muted-foreground uppercase tracking-wide">

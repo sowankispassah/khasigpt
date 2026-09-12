@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { auth } from "@/app/(auth)/auth";
 import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
+import { AdminUserChatsButton } from "@/components/admin-user-chats-button";
 import {
   AdminUsersBulkDeleteButton,
   AdminUsersSelectionCheckbox,
@@ -25,10 +26,7 @@ import {
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
 import { AddCreditsForm } from "./add-credits-form";
-import {
-  AdminUserChatsButton,
-  AdminUsersTable,
-} from "./admin-users-table";
+import { AdminUsersTable } from "./admin-users-table";
 
 export const dynamic = "force-dynamic";
 

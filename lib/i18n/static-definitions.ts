@@ -401,6 +401,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Role column in the admin live users table.",
   },
   {
+    key: "admin.live_users.table.chats",
+    defaultText: "Chats",
+    description: "Chat count column in the admin live users table.",
+  },
+  {
     key: "admin.live_users.table.last_seen",
     defaultText: "Last seen",
     description: "Last seen column in the admin live users table.",

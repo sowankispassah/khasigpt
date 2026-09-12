@@ -88,6 +88,10 @@ test.describe("admin database recovery", () => {
 
     expect(componentSource).toContain("ACTIVITY_RANGES");
     expect(componentSource).toContain("Last 30 days");
+    expect(componentSource).toContain("AdminUserChatsButton");
+    expect(componentSource).toContain(
+      'translationKey="admin.live_users.table.chats"'
+    );
     expect(componentSource).toContain(
       'createLiveUsersKey(activityWindow, activityOffset, "activity")'
     );
@@ -107,6 +111,8 @@ test.describe("admin database recovery", () => {
       "audit.\"action\" IN ('user.login', 'user.signup')"
     );
     expect(querySource).toContain("FULL OUTER JOIN matching_login");
+    expect(querySource).toContain('AS "chatCount"');
+    expect(querySource).toContain('user_chat."userId" = presence."userId"');
     expect(querySource).toContain(").toISOString()");
     expect(querySource).toContain("$" + "{since}::timestamptz");
     expect(querySource).toContain("LIMIT $" + "{resolvedLimit}");
