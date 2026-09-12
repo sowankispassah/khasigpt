@@ -2505,22 +2505,24 @@ export async function getPresenceSummary(): Promise<PresenceSummary> {
   const active60mSince = new Date(now - 60 * 60 * 1000);
 
   try {
-    const [row] = await db
-      .select({
-        activeNow:
-          sql<number>`COUNT(*) FILTER (WHERE ${userPresence.lastSeenAt} >= ${activeNowSince})`.as(
-            "activeNow"
-          ),
-        active15m:
-          sql<number>`COUNT(*) FILTER (WHERE ${userPresence.lastSeenAt} >= ${active15mSince})`.as(
-            "active15m"
-          ),
-        active60m:
-          sql<number>`COUNT(*) FILTER (WHERE ${userPresence.lastSeenAt} >= ${active60mSince})`.as(
-            "active60m"
-          ),
-      })
-      .from(userPresence);
+    const [row] = await withAdminDatabase(
+      "activity.summary",
+      async (adminDb) =>
+        await adminDb
+          .select({
+            activeNow:
+              sql<number>`COUNT(*) FILTER (WHERE ${gte(userPresence.lastSeenAt, activeNowSince)})`.as(
+                "activeNow"
+              ),
+            active15m:
+              sql<number>`COUNT(*) FILTER (WHERE ${gte(userPresence.lastSeenAt, active15mSince)})`.as(
+                "active15m"
+              ),
+            active60m: count(),
+          })
+          .from(userPresence)
+          .where(gte(userPresence.lastSeenAt, active60mSince))
+    );
 
     return {
       activeNow: Number(row?.activeNow ?? 0),
@@ -2567,7 +2569,9 @@ export async function getPresenceDetails({
     }));
 
   try {
-    const [row] = await client<RawPresenceDetails[]>`
+    const [row] = await withAdminDatabase(
+      "activity.details",
+      (_adminDb, adminClient) => adminClient<RawPresenceDetails[]>`
       WITH recent AS (
         SELECT
           p."country",
@@ -2642,7 +2646,8 @@ export async function getPresenceDetails({
             LIMIT ${limit}
           ) rows
         ) AS "topPaths"
-    `;
+      `
+    );
 
     return {
       windowMinutes,

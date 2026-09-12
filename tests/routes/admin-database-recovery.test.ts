@@ -39,6 +39,8 @@ test.describe("admin database recovery", () => {
       "getAccountDeletionRequestCount",
       "getContactMessageCount",
       "getUnviewedAccountDeletionRequestCount",
+      "getPresenceSummary",
+      "getPresenceDetails",
       "getUserBalanceSummaries",
       "listActiveSubscriptionSummaries",
       "listChats",
@@ -56,6 +58,24 @@ test.describe("admin database recovery", () => {
     const grantSource = extractFunctionSource(source, "grantUserCredits");
     expect(grantSource).toContain('"users.grant-credits"');
     expect(grantSource).toContain("{ retry: false }");
+  });
+
+  test("encodes live activity dates and bounds the summary scan", async () => {
+    const source = await readWorkspaceFile("lib/db/queries.ts");
+    const summarySource = extractFunctionSource(source, "getPresenceSummary");
+
+    expect(summarySource).toContain(
+      "gte(userPresence.lastSeenAt, activeNowSince)"
+    );
+    expect(summarySource).toContain(
+      "gte(userPresence.lastSeenAt, active15mSince)"
+    );
+    expect(summarySource).toContain(
+      ".where(gte(userPresence.lastSeenAt, active60mSince))"
+    );
+    expect(summarySource).not.toContain(
+      String.raw`\${userPresence.lastSeenAt} >= \${activeNowSince}`
+    );
   });
 
   test("streams optional user sections after one compact primary snapshot", async () => {
