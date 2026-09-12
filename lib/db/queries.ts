@@ -2703,10 +2703,12 @@ export async function listLiveUsers({
   windowMinutes,
   limit = 100,
   offset = 0,
+  includeLoginEvents = false,
 }: {
   windowMinutes: number;
   limit?: number;
   offset?: number;
+  includeLoginEvents?: boolean;
 }): Promise<LiveUsersResult> {
   const since = new Date(
     Date.now() - windowMinutes * 60 * 1000
@@ -2723,7 +2725,7 @@ export async function listLiveUsers({
 
   try {
     const [page] = await withAdminDatabase(
-      "live-users.list",
+      includeLoginEvents ? "activity-users.list" : "live-users.list",
       (_adminDb, adminClient) => adminClient<RawLiveUsersPage[]>`
         WITH matching_presence AS MATERIALIZED (
           SELECT
@@ -2736,6 +2738,60 @@ export async function listLiveUsers({
             presence."country" AS "country"
           FROM "UserPresence" presence
           WHERE presence."lastSeenAt" >= ${since}::timestamptz
+        ),
+        matching_login AS MATERIALIZED (
+          SELECT DISTINCT ON (login_event."userId")
+            login_event."userId",
+            login_event."lastSeenAt",
+            login_event."device"
+          FROM (
+            SELECT
+              COALESCE(audit."subjectUserId", audit."actorId") AS "userId",
+              audit."createdAt" AS "lastSeenAt",
+              COALESCE(
+                audit."device",
+                CASE
+                  WHEN audit."clientSource" = 'android_native' THEN 'mobile'
+                  WHEN audit."clientSource" = 'desktop_browser' THEN 'desktop'
+                  ELSE NULL
+                END
+              ) AS "device"
+            FROM "AuditLog" audit
+            WHERE ${includeLoginEvents}::boolean
+              AND audit."action" IN ('user.login', 'user.signup')
+              AND audit."createdAt" >= ${since}::timestamptz
+          ) login_event
+          ORDER BY login_event."userId", login_event."lastSeenAt" DESC
+        ),
+        matching_activity AS MATERIALIZED (
+          SELECT
+            COALESCE(presence."userId", login."userId") AS "userId",
+            GREATEST(presence."lastSeenAt", login."lastSeenAt") AS "lastSeenAt",
+            CASE
+              WHEN login."lastSeenAt" > presence."lastSeenAt" THEN NULL
+              ELSE presence."lastPath"
+            END AS "lastPath",
+            CASE
+              WHEN presence."lastSeenAt" IS NULL
+                OR login."lastSeenAt" > presence."lastSeenAt"
+                THEN login."device"
+              ELSE presence."device"
+            END AS "device",
+            CASE
+              WHEN login."lastSeenAt" > presence."lastSeenAt" THEN NULL
+              ELSE presence."city"
+            END AS "city",
+            CASE
+              WHEN login."lastSeenAt" > presence."lastSeenAt" THEN NULL
+              ELSE presence."region"
+            END AS "region",
+            CASE
+              WHEN login."lastSeenAt" > presence."lastSeenAt" THEN NULL
+              ELSE presence."country"
+            END AS "country"
+          FROM matching_presence presence
+          FULL OUTER JOIN matching_login login
+            ON login."userId" = presence."userId"
         ),
         paged_users AS (
           SELECT
@@ -2750,14 +2806,14 @@ export async function listLiveUsers({
             presence."city",
             presence."region",
             presence."country"
-          FROM matching_presence presence
+          FROM matching_activity presence
           LEFT JOIN "User" account ON account."id" = presence."userId"
           ORDER BY presence."lastSeenAt" DESC
           LIMIT ${resolvedLimit}
           OFFSET ${resolvedOffset}
         )
         SELECT
-          (SELECT COUNT(*)::integer FROM matching_presence) AS "total",
+          (SELECT COUNT(*)::integer FROM matching_activity) AS "total",
           (
             SELECT COALESCE(
               jsonb_agg(to_jsonb(paged_users) ORDER BY "lastSeenAt" DESC),

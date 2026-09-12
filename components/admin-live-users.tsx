@@ -78,10 +78,15 @@ const ACTIVITY_RANGES = [
   },
 ] as const;
 
-function createLiveUsersKey(windowMinutes: number, offset: number) {
+function createLiveUsersKey(
+  windowMinutes: number,
+  offset: number,
+  scope: "activity" | "live"
+) {
   const params = new URLSearchParams({
     limit: String(PAGE_SIZE),
     offset: String(offset),
+    scope,
     window: String(windowMinutes),
   });
   return `/api/admin/live-users?${params.toString()}`;
@@ -539,12 +544,12 @@ export function AdminLiveUsers() {
   } as const;
 
   const live = useSWR<LiveUsersResponse>(
-    createLiveUsersKey(LIVE_NOW_WINDOW_MINUTES, liveOffset),
+    createLiveUsersKey(LIVE_NOW_WINDOW_MINUTES, liveOffset, "live"),
     fetcher,
     swrOptions
   );
   const activity = useSWR<LiveUsersResponse>(
-    createLiveUsersKey(activityWindow, activityOffset),
+    createLiveUsersKey(activityWindow, activityOffset, "activity"),
     fetcher,
     swrOptions
   );

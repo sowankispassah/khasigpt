@@ -1413,6 +1413,11 @@ export const auditLog = pgTable(
       table.subjectUserId,
       table.createdAt
     ),
+    loginActivityCreatedAtSubjectIdx: index(
+      "AuditLog_login_activity_createdAt_subject_idx"
+    )
+      .on(table.createdAt, table.subjectUserId)
+      .where(sql`${table.action} IN ('user.login', 'user.signup')`),
     createdAtIdx: index("AuditLog_createdAt_idx").on(table.createdAt),
   })
 );

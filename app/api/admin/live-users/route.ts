@@ -72,6 +72,7 @@ export async function GET(request: NextRequest) {
     DEFAULT_PAGE_SIZE
   );
   const offset = parseNumber(url.searchParams.get("offset"), 0);
+  const includeLoginEvents = url.searchParams.get("scope") === "activity";
   const resolvedWindow = ALLOWED_WINDOWS.has(windowMinutes)
     ? windowMinutes
     : DEFAULT_WINDOW_MINUTES;
@@ -80,6 +81,7 @@ export async function GET(request: NextRequest) {
     windowMinutes: resolvedWindow,
     limit,
     offset,
+    includeLoginEvents,
   });
 
   return NextResponse.json(

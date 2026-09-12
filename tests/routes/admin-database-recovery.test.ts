@@ -88,12 +88,25 @@ test.describe("admin database recovery", () => {
 
     expect(componentSource).toContain("ACTIVITY_RANGES");
     expect(componentSource).toContain("Last 30 days");
-    expect(componentSource).toContain("createLiveUsersKey(activityWindow");
+    expect(componentSource).toContain(
+      'createLiveUsersKey(activityWindow, activityOffset, "activity")'
+    );
+    expect(componentSource).toContain(
+      'createLiveUsersKey(LIVE_NOW_WINDOW_MINUTES, liveOffset, "live")'
+    );
     expect(componentSource).not.toContain("Active in last 15 minutes");
     expect(componentSource).not.toContain("Active in last 60 minutes");
     expect(apiSource).toContain("43_200");
+    expect(apiSource).toContain(
+      'url.searchParams.get("scope") === "activity"'
+    );
     expect(querySource).toContain('"live-users.list"');
     expect(querySource).toContain("WITH matching_presence AS MATERIALIZED");
+    expect(querySource).toContain("matching_login AS MATERIALIZED");
+    expect(querySource).toContain(
+      "audit.\"action\" IN ('user.login', 'user.signup')"
+    );
+    expect(querySource).toContain("FULL OUTER JOIN matching_login");
     expect(querySource).toContain(").toISOString()");
     expect(querySource).toContain("$" + "{since}::timestamptz");
     expect(querySource).toContain("LIMIT $" + "{resolvedLimit}");
