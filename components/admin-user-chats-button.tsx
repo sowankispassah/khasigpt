@@ -28,6 +28,9 @@ type AdminUserChatsApiResponse = {
   message?: string;
 };
 
+const CHAT_PAGE_SIZE = 5;
+type ChatTab = "active" | "deleted";
+
 function isAdminUserChat(value: unknown): value is AdminUserChat {
   if (!value || typeof value !== "object") {
     return false;
@@ -59,6 +62,7 @@ function ChatList({
   emptyTranslationKey,
   error,
   isLoading,
+  onLoadMore,
   onRetry,
   total,
 }: {
@@ -67,12 +71,13 @@ function ChatList({
   emptyTranslationKey: string;
   error: string | null;
   isLoading: boolean;
+  onLoadMore: () => void;
   onRetry: () => void;
   total: number;
 }) {
   const { translate } = useTranslation();
 
-  if (isLoading) {
+  if (isLoading && chats.length === 0) {
     return (
       <div className="flex items-center gap-2 py-6 text-muted-foreground text-sm">
         <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
@@ -85,7 +90,7 @@ function ChatList({
     );
   }
 
-  if (error) {
+  if (error && chats.length === 0) {
     return (
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
         <span role="alert">{error}</span>
@@ -144,15 +149,62 @@ function ChatList({
           </span>
         </Link>
       ))}
-      {total > chats.length ? (
+      {total > 0 ? (
         <p className="pt-2 text-muted-foreground text-xs">
           <EditableTranslation
-            defaultText="Showing the first {shown} of {total} chats."
-            description="Notice shown when the chat popup reaches its maximum loaded page size."
+            defaultText="Showing {shown} of {total} chats."
+            description="Count shown below a paginated user chat section."
             translationKey="admin.users.chats.showing"
             values={{ shown: chats.length, total }}
           />
         </p>
+      ) : null}
+      {error ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
+          <span role="alert">{error}</span>
+          <Button
+            className="cursor-pointer"
+            disabled={isLoading}
+            onClick={onRetry}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {isLoading ? (
+              <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
+            ) : null}
+            <EditableTranslation
+              defaultText="Retry"
+              description="Button that retries loading more of a user's chats."
+              translationKey="admin.users.chats.retry"
+            />
+          </Button>
+        </div>
+      ) : total > chats.length ? (
+        <Button
+          className="w-full cursor-pointer"
+          disabled={isLoading}
+          onClick={onLoadMore}
+          type="button"
+          variant="outline"
+        >
+          {isLoading ? (
+            <>
+              <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
+              <EditableTranslation
+                defaultText="Loading..."
+                description="Loading state while more user chats are fetched."
+                translationKey="admin.users.chats.loading_more"
+              />
+            </>
+          ) : (
+            <EditableTranslation
+              defaultText="Load more"
+              description="Button that loads the next page of a user's chats."
+              translationKey="admin.users.chats.load_more"
+            />
+          )}
+        </Button>
       ) : null}
     </div>
   );
@@ -167,10 +219,13 @@ export function AdminUserChatsButton({
 }) {
   const { translate } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [selectedTab, setSelectedTab] = useState<ChatTab>("active");
   const [activeChats, setActiveChats] = useState<AdminUserChat[]>([]);
   const [deletedChats, setDeletedChats] = useState<AdminUserChat[]>([]);
   const [activeTotal, setActiveTotal] = useState(0);
   const [deletedTotal, setDeletedTotal] = useState(0);
+  const [activePage, setActivePage] = useState(1);
+  const [deletedPage, setDeletedPage] = useState(1);
   const [activeLoading, setActiveLoading] = useState(false);
   const [deletedLoading, setDeletedLoading] = useState(false);
   const [activeError, setActiveError] = useState<string | null>(null);
@@ -193,15 +248,18 @@ export function AdminUserChatsButton({
   );
   const isLoading = activeLoading || deletedLoading;
 
-  async function loadChats(deleted: boolean) {
+  async function loadChats(deleted: boolean, append = false) {
     if (deleted ? deletedLoading : activeLoading) {
       return;
     }
 
+    const currentPage = deleted ? deletedPage : activePage;
+    const requestedPage = append ? currentPage + 1 : 1;
     const setLoading = deleted ? setDeletedLoading : setActiveLoading;
     const setError = deleted ? setDeletedError : setActiveError;
     const setChats = deleted ? setDeletedChats : setActiveChats;
     const setTotal = deleted ? setDeletedTotal : setActiveTotal;
+    const setPage = deleted ? setDeletedPage : setActivePage;
     const requestErrorMessage = deleted
       ? deletedLoadErrorMessage
       : loadErrorMessage;
@@ -216,7 +274,8 @@ export function AdminUserChatsButton({
 
     try {
       const params = new URLSearchParams({
-        limit: "100",
+        limit: String(CHAT_PAGE_SIZE),
+        page: String(requestedPage),
         userId,
       });
       if (deleted) {
@@ -237,7 +296,18 @@ export function AdminUserChatsButton({
       const items = Array.isArray(payload?.data?.items)
         ? payload.data.items.filter(isAdminUserChat)
         : [];
-      setChats(items);
+      setChats((current) => {
+        if (!append) {
+          return items;
+        }
+
+        const existingIds = new Set(current.map((chat) => chat.id));
+        return [
+          ...current,
+          ...items.filter((chat) => !existingIds.has(chat.id)),
+        ];
+      });
+      setPage(requestedPage);
       setTotal(
         typeof payload?.data?.total === "number" &&
           Number.isFinite(payload.data.total)
@@ -261,6 +331,7 @@ export function AdminUserChatsButton({
   function handleOpenChange(nextOpen: boolean) {
     setOpen(nextOpen);
     if (nextOpen) {
+      setSelectedTab("active");
       void loadChats(false);
       void loadChats(true);
     }
@@ -301,9 +372,58 @@ export function AdminUserChatsButton({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[65vh] overflow-y-auto pr-1">
-          <section>
-            <h3 className="mb-2 font-semibold text-sm">
+        <div
+          aria-label={translate(
+            "admin.users.chats.tabs.label",
+            "Chat status"
+          )}
+          className="flex gap-2 border-b pb-3"
+          role="tablist"
+        >
+          <Button
+            aria-controls="admin-user-active-chats-panel"
+            aria-selected={selectedTab === "active"}
+            className="cursor-pointer"
+            id="admin-user-active-chats-tab"
+            onClick={() => setSelectedTab("active")}
+            role="tab"
+            type="button"
+            variant={selectedTab === "active" ? "default" : "outline"}
+          >
+            <EditableTranslation
+              defaultText="Active chat ({count})"
+              description="Tab and count for a user's active chats in the admin popup."
+              translationKey="admin.users.chats.active.title"
+              values={{ count: activeTotal }}
+            />
+          </Button>
+          <Button
+            aria-controls="admin-user-deleted-chats-panel"
+            aria-selected={selectedTab === "deleted"}
+            className="cursor-pointer"
+            id="admin-user-deleted-chats-tab"
+            onClick={() => setSelectedTab("deleted")}
+            role="tab"
+            type="button"
+            variant={selectedTab === "deleted" ? "default" : "outline"}
+          >
+            <EditableTranslation
+              defaultText="Deleted chat ({count})"
+              description="Tab and count for a user's soft-deleted chats in the admin popup."
+              translationKey="admin.users.chats.deleted.title"
+              values={{ count: deletedTotal }}
+            />
+          </Button>
+        </div>
+
+        <div className="max-h-[65vh] overflow-y-auto pt-4 pr-1">
+          <section
+            aria-labelledby="admin-user-active-chats-tab"
+            hidden={selectedTab !== "active"}
+            id="admin-user-active-chats-panel"
+            role="tabpanel"
+          >
+            <h3 className="sr-only">
               <EditableTranslation
                 defaultText="Active chat ({count})"
                 description="Heading and count above a user's active chats in the admin popup."
@@ -317,13 +437,19 @@ export function AdminUserChatsButton({
               emptyTranslationKey="admin.users.chats.empty"
               error={activeError}
               isLoading={activeLoading}
-              onRetry={() => void loadChats(false)}
+              onLoadMore={() => void loadChats(false, true)}
+              onRetry={() => void loadChats(false, activeChats.length > 0)}
               total={activeTotal}
             />
           </section>
 
-          <section className="mt-6 border-t pt-5">
-            <h3 className="mb-2 font-semibold text-sm">
+          <section
+            aria-labelledby="admin-user-deleted-chats-tab"
+            hidden={selectedTab !== "deleted"}
+            id="admin-user-deleted-chats-panel"
+            role="tabpanel"
+          >
+            <h3 className="sr-only">
               <EditableTranslation
                 defaultText="Deleted chat ({count})"
                 description="Heading and count above a user's soft-deleted chats in the admin popup."
@@ -337,7 +463,8 @@ export function AdminUserChatsButton({
               emptyTranslationKey="admin.users.chats.deleted.empty"
               error={deletedError}
               isLoading={deletedLoading}
-              onRetry={() => void loadChats(true)}
+              onLoadMore={() => void loadChats(true, true)}
+              onRetry={() => void loadChats(true, deletedChats.length > 0)}
               total={deletedTotal}
             />
           </section>

@@ -170,6 +170,17 @@ test.describe("admin database recovery", () => {
     expect(popupSource).toContain('defaultText="Deleted chat ({count})"');
     expect(popupSource).toContain("setDeletedChats");
     expect(popupSource).toContain("setActiveChats");
+    expect(popupSource).toContain("const CHAT_PAGE_SIZE = 5");
+    expect(popupSource).toContain("page: String(requestedPage)");
+    expect(popupSource).toContain("onLoadMore");
+    expect(popupSource).toContain('useState<ChatTab>("active")');
+    expect(popupSource).toContain('role="tablist"');
+    expect(popupSource).toContain('role="tabpanel"');
+    expect(popupSource).toContain('hidden={selectedTab !== "deleted"}');
+    expect(popupSource).toContain('defaultText="Load more"');
+    expect(popupSource).toContain(
+      'defaultText="Showing {shown} of {total} chats."'
+    );
     expect(apiSource).toContain(
       'searchParams.get("deleted") === "true"'
     );

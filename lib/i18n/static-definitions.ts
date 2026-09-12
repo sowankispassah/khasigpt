@@ -729,6 +729,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Heading and count above a user's active chats in the admin popup.",
   },
   {
+    key: "admin.users.chats.tabs.label",
+    defaultText: "Chat status",
+    description: "Accessible label for the active and deleted chat tabs.",
+  },
+  {
     key: "admin.users.chats.deleted.title",
     defaultText: "Deleted chat ({count})",
     description: "Heading and count above a user's soft-deleted chats in the admin popup.",
@@ -760,9 +765,18 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "admin.users.chats.showing",
-    defaultText: "Showing the first {shown} of {total} chats.",
-    description:
-      "Notice shown when the chat popup reaches its maximum loaded page size.",
+    defaultText: "Showing {shown} of {total} chats.",
+    description: "Count shown below a paginated user chat section.",
+  },
+  {
+    key: "admin.users.chats.load_more",
+    defaultText: "Load more",
+    description: "Button that loads the next page of a user's chats.",
+  },
+  {
+    key: "admin.users.chats.loading_more",
+    defaultText: "Loading...",
+    description: "Loading state while more user chats are fetched.",
   },
   {
     key: "admin.users.selection.select_all",
