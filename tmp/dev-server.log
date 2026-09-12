@@ -1,0 +1,39 @@
+
+> ai-chatbot@3.1.0 dev
+> next dev
+
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://172.20.128.1:3000
+- Environments: .env
+
+✓ Starting...
+✓ Ready in 3.8s
+ GET /manifest.webmanifest 200 in 861ms (compile: 828ms, render: 34ms)
+ GET /manifest.webmanifest 200 in 19ms (compile: 9ms, render: 10ms)
+ GET /manifest.webmanifest 200 in 164ms (compile: 154ms, render: 9ms)
+ GET /api/public/site-launch 200 in 3.9s (compile: 2.1s, proxy.ts: 30ms, render: 1793ms)
+ GET /api/public/site-launch 200 in 3.9s (compile: 2.0s, proxy.ts: 29ms, render: 1846ms)
+○ Compiling /chat ...
+ GET /api/public/site-launch 200 in 19ms (compile: 6ms, proxy.ts: 7ms, render: 6ms)
+ GET /chat 200 in 35.4s (compile: 25.1s, proxy.ts: 4.1s, render: 6.1s)
+ GET /manifest.webmanifest 200 in 34ms (compile: 20ms, render: 14ms)
+ GET /chat 200 in 29.3s (compile: 21.1s, proxy.ts: 44ms, render: 8.1s)
+ GET /api/public/site-launch 200 in 2.0s (compile: 17ms, proxy.ts: 130ms, render: 1901ms)
+○ Compiling /api/activity/heartbeat ...
+ POST /api/activity/heartbeat 200 in 9.0s (compile: 7.2s, proxy.ts: 98ms, render: 1730ms)
+ GET /api/profile/avatar?v=2025-12-25T22%3A45%3A43.553Z 200 in 5.0s (compile: 3.4s, proxy.ts: 22ms, render: 1512ms)
+ GET /api/public/site-launch 200 in 48ms (compile: 12ms, proxy.ts: 18ms, render: 17ms)
+ GET /api/history?limit=20 200 in 8.9s (compile: 7.3s, proxy.ts: 14ms, render: 1598ms)
+ POST /api/jobs/auto-trigger 200 in 9.9s (compile: 8.5s, proxy.ts: 125ms, render: 1303ms)
+ GET /api/billing/balance 200 in 6.4s (compile: 3.6s, proxy.ts: 22ms, render: 2.7s)
+[admin] Query "chat count" succeeded in 365ms.
+[admin] Query "contact message count" succeeded in 365ms.
+[admin] Query "user count" succeeded in 368ms.
+ GET /manifest.webmanifest 200 in 16ms (compile: 9ms, render: 7ms)
+[admin] Query "recent users" succeeded in 433ms.
+[admin] Query "recent chats" succeeded in 435ms.
+ GET /api/jobs/list 200 in 13.7s (compile: 7.6s, proxy.ts: 23ms, render: 6.0s)
+[admin] Query "recent contact messages" succeeded in 1778ms.
+[admin] Query "recent audit log entries" succeeded in 1934ms.
+[?25h

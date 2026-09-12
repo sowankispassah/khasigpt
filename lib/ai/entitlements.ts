@@ -8,6 +8,9 @@ export const entitlementsByUserRole: Record<UserRole, Entitlements> = {
   regular: {
     maxMessagesPerDay: 100,
   },
+  creator: {
+    maxMessagesPerDay: 100,
+  },
   admin: {
     maxMessagesPerDay: null,
   },

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Push Native App"
+  short_description: "Push the native Android app folder to its separate GitHub repo."
+  default_prompt: "Push the native folder to git."

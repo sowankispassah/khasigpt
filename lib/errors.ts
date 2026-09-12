@@ -11,6 +11,7 @@ export type Surface =
   | "chat"
   | "auth"
   | "api"
+  | "coupon"
   | "stream"
   | "database"
   | "history"
@@ -19,9 +20,11 @@ export type Surface =
   | "suggestions"
   | "activate_gateway"
   | "credits"
+  | "free_messages"
   | "pricing_plan"
   | "usage"
-  | "configuration";
+  | "configuration"
+  | "forum";
 
 export type ErrorCode = `${ErrorType}:${Surface}`;
 
@@ -33,15 +36,18 @@ export const visibilityBySurface: Record<Surface, ErrorVisibility> = {
   auth: "response",
   stream: "response",
   api: "response",
+  coupon: "response",
   history: "response",
   vote: "response",
   document: "response",
   suggestions: "response",
   activate_gateway: "response",
   credits: "response",
+  free_messages: "response",
   pricing_plan: "response",
   usage: "response",
   configuration: "response",
+  forum: "response",
 };
 
 export class ChatSDKError extends Error {
@@ -105,7 +111,8 @@ export function getMessageByErrorCode(errorCode: ErrorCode): string {
   switch (errorCode) {
     case "bad_request:api":
       return "The request couldn't be processed. Please check your input and try again.";
-
+    case "bad_request:coupon":
+      return "Coupon is invalid or expired.";
     case "bad_request:activate_gateway":
       return "AI Gateway requires a valid credit card on file to service requests. Please visit https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%3Fmodal%3Dadd-credit-card to add a card and unlock your free credits.";
 
@@ -118,6 +125,8 @@ export function getMessageByErrorCode(errorCode: ErrorCode): string {
       return "You have exceeded your maximum number of messages for the day. Please try again later.";
     case "payment_required:credits":
       return "You have no active credits remaining. Please recharge to continue.";
+    case "payment_required:free_messages":
+      return "You have used your 3 free chats for today. Recharge or upgrade to keep chatting.";
     case "not_found:chat":
       return "The requested chat was not found. Please check the chat ID and try again.";
     case "forbidden:chat":
@@ -137,6 +146,10 @@ export function getMessageByErrorCode(errorCode: ErrorCode): string {
       return "The request to create or update the document was invalid. Please check your input and try again.";
     case "bad_request:configuration":
       return "A required configuration value is missing or invalid. Please review your setup.";
+    case "bad_request:forum":
+      return "The forum request could not be processed. Please verify the category or parameters.";
+    case "not_found:forum":
+      return "The requested forum resource was not found.";
 
     default:
       return "Something went wrong. Please try again later.";
@@ -163,4 +176,3 @@ function getStatusCodeByType(type: ErrorType) {
       return 500;
   }
 }
-

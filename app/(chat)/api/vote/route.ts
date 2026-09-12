@@ -1,6 +1,12 @@
-import { auth } from "@/app/(auth)/auth";
-import { getChatById, getVotesByChatId, voteMessage } from "@/lib/db/queries";
+import {
+  clearMessageVote,
+  getChatById,
+  getMessageById,
+  getVotesByChatId,
+  voteMessage,
+} from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -13,7 +19,7 @@ export async function GET(request: Request) {
     ).toResponse();
   }
 
-  const session = await auth();
+  const session = await getMobileSession(request);
 
   if (!session?.user) {
     return new ChatSDKError("unauthorized:vote").toResponse();
@@ -39,17 +45,17 @@ export async function PATCH(request: Request) {
     chatId,
     messageId,
     type,
-  }: { chatId: string; messageId: string; type: "up" | "down" } =
+  }: { chatId: string; messageId: string; type: "up" | "down" | "clear" } =
     await request.json();
 
-  if (!chatId || !messageId || !type) {
+  if (!chatId || !messageId || !["up", "down", "clear"].includes(type)) {
     return new ChatSDKError(
       "bad_request:api",
-      "Parameters chatId, messageId, and type are required."
+      "Parameters chatId, messageId, and a valid type are required."
     ).toResponse();
   }
 
-  const session = await auth();
+  const session = await getMobileSession(request);
 
   if (!session?.user) {
     return new ChatSDKError("unauthorized:vote").toResponse();
@@ -65,11 +71,29 @@ export async function PATCH(request: Request) {
     return new ChatSDKError("forbidden:vote").toResponse();
   }
 
-  await voteMessage({
-    chatId,
-    messageId,
-    type,
-  });
+  let messageExists = false;
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const [message] = await getMessageById({ id: messageId });
+    if (message?.chatId === chatId) {
+      messageExists = true;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
 
-  return new Response("Message voted", { status: 200 });
+  if (!messageExists) {
+    return new ChatSDKError("not_found:vote").toResponse();
+  }
+
+  if (type === "clear") {
+    await clearMessageVote({ chatId, messageId });
+  } else {
+    await voteMessage({
+      chatId,
+      messageId,
+      type,
+    });
+  }
+
+  return Response.json({ ok: true }, { status: 200 });
 }

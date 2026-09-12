@@ -1,0 +1,4 @@
+interface:
+  display_name: "Run DB Migrations"
+  short_description: "Run migrations whenever DB schema changes are made."
+  default_prompt: "Use this skill when database tables, columns, indexes, enums, or migrations are added or changed."

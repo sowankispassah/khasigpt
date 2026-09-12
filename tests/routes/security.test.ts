@@ -31,10 +31,12 @@ test.describe("/api/billing/balance", () => {
     expect(["object"]).toContain(typeof summary.plan);
 
     const allowedKeys = [
+      "allocatedCredits",
       "tokensRemaining",
       "tokensTotal",
       "creditsRemaining",
       "creditsTotal",
+      "rechargedCredits",
       "expiresAt",
       "startedAt",
       "plan",
@@ -80,7 +82,7 @@ test.describe("/api/profile/avatar", () => {
     const payload = await response.json();
     expect(payload).toMatchObject({
       code: "bad_request:api",
-      message: expect.stringContaining("Only PNG, JPG, or WEBP images"),
+      message: "The request couldn't be processed. Please check your input and try again.",
     });
   });
 });

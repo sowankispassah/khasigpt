@@ -1,0 +1,4 @@
+interface:
+  display_name: "New Feature Admin Default"
+  short_description: "Keep new feature flags admin-only by default."
+  default_prompt: "When adding a new feature, make its feature access setting admin-only by default and register the admin controls, guards, and fallbacks consistently."
