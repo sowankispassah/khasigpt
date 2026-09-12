@@ -993,6 +993,10 @@ export const chat = pgTable(
     deletedCreatedAtIdx: index("Chat_deleted_createdAt_idx")
       .on(table.createdAt)
       .where(sql`${table.deletedAt} IS NOT NULL`),
+    userIdx: index("Chat_user_idx").on(table.userId),
+    userCreatedAtDeletedIdx: index("Chat_user_createdAt_deleted_idx")
+      .on(table.userId, table.createdAt, table.id)
+      .where(sql`${table.deletedAt} IS NOT NULL`),
     userCreatedAtActiveIdx: index("Chat_user_createdAt_active_idx")
       .on(table.userId, table.createdAt)
       .where(sql`${table.deletedAt} IS NULL`),

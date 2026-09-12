@@ -2806,7 +2806,6 @@ export async function listLiveUsers({
               SELECT COUNT(*)::integer
               FROM "Chat" user_chat
               WHERE user_chat."userId" = presence."userId"
-                AND user_chat."deletedAt" IS NULL
             ) AS "chatCount",
             presence."lastSeenAt",
             presence."lastPath",
@@ -4430,7 +4429,6 @@ const adminUserChatCountExpression = sql<number>`(
   SELECT COUNT(*)::integer
   FROM ${chat} c
   WHERE c."userId" = ${user.id}
-    AND c."deletedAt" IS NULL
 )`;
 const adminUserIsOnlineExpression = sql<boolean>`COALESCE(
   ${userPresence.lastSeenAt} >= NOW() - INTERVAL '5 minutes',
@@ -4767,7 +4765,6 @@ export async function getAdminUsersSnapshot({
                 SELECT COUNT(*)::integer
                 FROM "Chat" c
                 WHERE c."userId" = u."id"
-                  AND c."deletedAt" IS NULL
               ) AS "chatCount",
               p."lastSeenAt",
               COALESCE(
@@ -4846,7 +4843,6 @@ export async function getAdminUsersPageSnapshot({
             SELECT COUNT(*)::integer
             FROM "Chat" c
             WHERE c."userId" = u."id"
-              AND c."deletedAt" IS NULL
           ) AS "chatCount",
           p."lastSeenAt",
           COALESCE(

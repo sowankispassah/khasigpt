@@ -157,6 +157,26 @@ test.describe("admin database recovery", () => {
     expect(querySource).toContain('search?: string | null');
   });
 
+  test("shows active and soft-deleted chats in the shared user popup", async () => {
+    const [popupSource, apiSource, querySource, schemaSource] = await Promise.all([
+      readWorkspaceFile("components/admin-user-chats-button.tsx"),
+      readWorkspaceFile("app/api/admin/[section]/route.ts"),
+      readWorkspaceFile("lib/db/queries.ts"),
+      readWorkspaceFile("lib/db/schema.ts"),
+    ]);
+
+    expect(popupSource).toContain('params.set("deleted", "true")');
+    expect(popupSource).toContain('defaultText="Active chat ({count})"');
+    expect(popupSource).toContain('defaultText="Deleted chat ({count})"');
+    expect(popupSource).toContain("setDeletedChats");
+    expect(popupSource).toContain("setActiveChats");
+    expect(apiSource).toContain(
+      'searchParams.get("deleted") === "true"'
+    );
+    expect(querySource).toContain("isNotNull(chat.deletedAt)");
+    expect(schemaSource).toContain('index("Chat_user_idx")');
+  });
+
   test("supports online presence, role/status filters, and stable user sorting", async () => {
     const [pageSource, tableSource, apiSource, querySource, trackerSource] =
       await Promise.all([

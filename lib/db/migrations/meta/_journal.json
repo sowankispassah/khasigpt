@@ -729,6 +729,13 @@
       "when": 1788998400004,
       "tag": "0101_login_activity_index",
       "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1788998400005,
+      "tag": "0102_chat_user_history_indexes",
+      "breakpoints": true
     }
   ]
 }

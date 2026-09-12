@@ -720,8 +720,33 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "admin.users.chats.empty",
-    defaultText: "No chats found.",
+    defaultText: "No active chats found.",
     description: "Empty state shown when a user has no active chats.",
+  },
+  {
+    key: "admin.users.chats.active.title",
+    defaultText: "Active chat ({count})",
+    description: "Heading and count above a user's active chats in the admin popup.",
+  },
+  {
+    key: "admin.users.chats.deleted.title",
+    defaultText: "Deleted chat ({count})",
+    description: "Heading and count above a user's soft-deleted chats in the admin popup.",
+  },
+  {
+    key: "admin.users.chats.deleted.empty",
+    defaultText: "No deleted chats found.",
+    description: "Empty state shown when a user has no soft-deleted chats.",
+  },
+  {
+    key: "admin.users.chats.deleted.load_error",
+    defaultText: "Unable to load this user's deleted chats.",
+    description: "Error shown when a user's soft-deleted chats cannot be loaded.",
+  },
+  {
+    key: "admin.users.chats.deleted.timeout",
+    defaultText: "Loading this user's deleted chats timed out.",
+    description: "Error shown when a user's soft-deleted chat request times out.",
   },
   {
     key: "admin.users.chats.untitled",
