@@ -2708,7 +2708,9 @@ export async function listLiveUsers({
   limit?: number;
   offset?: number;
 }): Promise<LiveUsersResult> {
-  const since = new Date(Date.now() - windowMinutes * 60 * 1000);
+  const since = new Date(
+    Date.now() - windowMinutes * 60 * 1000
+  ).toISOString();
   const resolvedLimit = Math.min(Math.max(limit, 1), 100);
   const resolvedOffset = Math.max(offset, 0);
   type RawLiveUserRow = Omit<LiveUserRow, "lastSeenAt"> & {
@@ -2733,7 +2735,7 @@ export async function listLiveUsers({
             presence."region" AS "region",
             presence."country" AS "country"
           FROM "UserPresence" presence
-          WHERE presence."lastSeenAt" >= ${since}
+          WHERE presence."lastSeenAt" >= ${since}::timestamptz
         ),
         paged_users AS (
           SELECT

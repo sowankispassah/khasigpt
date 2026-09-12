@@ -94,6 +94,8 @@ test.describe("admin database recovery", () => {
     expect(apiSource).toContain("43_200");
     expect(querySource).toContain('"live-users.list"');
     expect(querySource).toContain("WITH matching_presence AS MATERIALIZED");
+    expect(querySource).toContain(").toISOString()");
+    expect(querySource).toContain("$" + "{since}::timestamptz");
     expect(querySource).toContain("LIMIT $" + "{resolvedLimit}");
     expect(querySource).toContain("OFFSET $" + "{resolvedOffset}");
   });
