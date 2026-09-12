@@ -304,6 +304,153 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
       "Button label shown while an admin section is being retried.",
   },
   {
+    key: "admin.live_users.page.title",
+    defaultText: "Live users",
+    description: "Title of the admin live users page.",
+  },
+  {
+    key: "admin.live_users.page.description",
+    defaultText:
+      "Track who is currently online and review recent activity with one time-range filter. Data refreshes automatically every 30 seconds.",
+    description: "Description below the admin live users page title.",
+  },
+  {
+    key: "admin.live_users.live.title",
+    defaultText: "Live now",
+    description: "Heading for users who are currently online.",
+  },
+  {
+    key: "admin.live_users.live.subtitle",
+    defaultText: "Users active in the last 5 minutes.",
+    description: "Helper text below the Live now heading.",
+  },
+  {
+    key: "admin.live_users.activity.title",
+    defaultText: "Recent activity",
+    description: "Heading for the filtered admin user activity table.",
+  },
+  {
+    key: "admin.live_users.activity.subtitle",
+    defaultText:
+      "Users whose latest activity falls within the selected period.",
+    description: "Helper text below the recent activity heading.",
+  },
+  {
+    key: "admin.live_users.filter.label",
+    defaultText: "Activity time range",
+    description: "Accessible label for the live user activity range filter.",
+  },
+  {
+    key: "admin.live_users.range.last_15_minutes",
+    defaultText: "Last 15 minutes",
+    description: "Fifteen-minute option in the live user activity range filter.",
+  },
+  {
+    key: "admin.live_users.range.last_1_hour",
+    defaultText: "Last 1 hour",
+    description: "One-hour option in the live user activity range filter.",
+  },
+  {
+    key: "admin.live_users.range.last_24_hours",
+    defaultText: "Last 24 hours",
+    description: "Twenty-four-hour option in the live user activity range filter.",
+  },
+  {
+    key: "admin.live_users.range.last_2_days",
+    defaultText: "Last 2 days",
+    description: "Two-day option in the live user activity range filter.",
+  },
+  {
+    key: "admin.live_users.range.last_7_days",
+    defaultText: "Last 7 days",
+    description: "Seven-day option in the live user activity range filter.",
+  },
+  {
+    key: "admin.live_users.range.last_30_days",
+    defaultText: "Last 30 days",
+    description: "Thirty-day option in the live user activity range filter.",
+  },
+  {
+    key: "admin.live_users.status.refreshing",
+    defaultText: "Refreshing...",
+    description: "Status shown while a live users table refreshes.",
+  },
+  {
+    key: "admin.live_users.status.updated",
+    defaultText: "Updated {time}",
+    description: "Timestamp showing when a live users table was refreshed.",
+  },
+  {
+    key: "admin.live_users.count",
+    defaultText: "{count} users",
+    description: "Count badge on an admin live users table.",
+  },
+  {
+    key: "admin.live_users.table.name",
+    defaultText: "Name",
+    description: "Name column in the admin live users table.",
+  },
+  {
+    key: "admin.live_users.table.email",
+    defaultText: "Email",
+    description: "Email column in the admin live users table.",
+  },
+  {
+    key: "admin.live_users.table.role",
+    defaultText: "Role",
+    description: "Role column in the admin live users table.",
+  },
+  {
+    key: "admin.live_users.table.last_seen",
+    defaultText: "Last seen",
+    description: "Last seen column in the admin live users table.",
+  },
+  {
+    key: "admin.live_users.table.path",
+    defaultText: "Path",
+    description: "Last visited path column in the admin live users table.",
+  },
+  {
+    key: "admin.live_users.table.device",
+    defaultText: "Device",
+    description: "Device column in the admin live users table.",
+  },
+  {
+    key: "admin.live_users.table.location",
+    defaultText: "Location",
+    description: "Location column in the admin live users table.",
+  },
+  {
+    key: "admin.live_users.value.unknown",
+    defaultText: "Unknown",
+    description: "Fallback when a live user's name or location is unavailable.",
+  },
+  {
+    key: "admin.live_users.error",
+    defaultText: "Unable to load live users right now.",
+    description: "Error shown when an admin live users table cannot be loaded.",
+  },
+  {
+    key: "admin.live_users.loading",
+    defaultText: "Loading users...",
+    description: "Loading state for an admin live users table.",
+  },
+  {
+    key: "admin.live_users.empty.live",
+    defaultText: "No users are live now.",
+    description: "Empty state when no users are currently online.",
+  },
+  {
+    key: "admin.live_users.empty.activity",
+    defaultText: "No users were active during this period.",
+    description: "Empty state when the selected activity range has no users.",
+  },
+  {
+    key: "admin.live_users.pagination.summary",
+    defaultText: "Showing {first}-{last} of {total} users",
+    description: "Pagination summary below an admin live users table.",
+  },
+  {
     key: "admin.users.search.label",
     defaultText: "Search users",
     description: "Label for the admin user keyword search field.",

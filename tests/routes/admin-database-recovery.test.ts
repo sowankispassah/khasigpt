@@ -41,6 +41,7 @@ test.describe("admin database recovery", () => {
       "getUnviewedAccountDeletionRequestCount",
       "getPresenceSummary",
       "getPresenceDetails",
+      "listLiveUsers",
       "getUserBalanceSummaries",
       "listActiveSubscriptionSummaries",
       "listChats",
@@ -76,6 +77,25 @@ test.describe("admin database recovery", () => {
     expect(summarySource).not.toContain(
       String.raw`\${userPresence.lastSeenAt} >= \${activeNowSince}`
     );
+  });
+
+  test("uses one paginated table for selectable live-user activity ranges", async () => {
+    const [componentSource, apiSource, querySource] = await Promise.all([
+      readWorkspaceFile("components/admin-live-users.tsx"),
+      readWorkspaceFile("app/api/admin/live-users/route.ts"),
+      readWorkspaceFile("lib/db/queries.ts"),
+    ]);
+
+    expect(componentSource).toContain("ACTIVITY_RANGES");
+    expect(componentSource).toContain("Last 30 days");
+    expect(componentSource).toContain("createLiveUsersKey(activityWindow");
+    expect(componentSource).not.toContain("Active in last 15 minutes");
+    expect(componentSource).not.toContain("Active in last 60 minutes");
+    expect(apiSource).toContain("43_200");
+    expect(querySource).toContain('"live-users.list"');
+    expect(querySource).toContain("WITH matching_presence AS MATERIALIZED");
+    expect(querySource).toContain("LIMIT $" + "{resolvedLimit}");
+    expect(querySource).toContain("OFFSET $" + "{resolvedOffset}");
   });
 
   test("streams optional user sections after one compact primary snapshot", async () => {

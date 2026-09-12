@@ -2709,42 +2709,73 @@ export async function listLiveUsers({
   offset?: number;
 }): Promise<LiveUsersResult> {
   const since = new Date(Date.now() - windowMinutes * 60 * 1000);
-  const resolvedLimit = Math.min(Math.max(limit, 1), 200);
+  const resolvedLimit = Math.min(Math.max(limit, 1), 100);
   const resolvedOffset = Math.max(offset, 0);
+  type RawLiveUserRow = Omit<LiveUserRow, "lastSeenAt"> & {
+    lastSeenAt: Date | string;
+  };
+  type RawLiveUsersPage = {
+    total: number | string | null;
+    users: RawLiveUserRow[] | null;
+  };
 
   try {
-    const [countRow] = await db
-      .select({ total: count() })
-      .from(userPresence)
-      .where(gte(userPresence.lastSeenAt, since));
-
-    const rows = await db
-      .select({
-        userId: userPresence.userId,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
-        lastSeenAt: userPresence.lastSeenAt,
-        lastPath: userPresence.lastPath,
-        device: userPresence.device,
-        city: userPresence.city,
-        region: userPresence.region,
-        country: userPresence.country,
-      })
-      .from(userPresence)
-      .leftJoin(user, eq(userPresence.userId, user.id))
-      .where(gte(userPresence.lastSeenAt, since))
-      .orderBy(desc(userPresence.lastSeenAt))
-      .limit(resolvedLimit)
-      .offset(resolvedOffset);
+    const [page] = await withAdminDatabase(
+      "live-users.list",
+      (_adminDb, adminClient) => adminClient<RawLiveUsersPage[]>`
+        WITH matching_presence AS MATERIALIZED (
+          SELECT
+            presence."userId" AS "userId",
+            presence."lastSeenAt" AS "lastSeenAt",
+            presence."lastPath" AS "lastPath",
+            presence."device" AS "device",
+            presence."city" AS "city",
+            presence."region" AS "region",
+            presence."country" AS "country"
+          FROM "UserPresence" presence
+          WHERE presence."lastSeenAt" >= ${since}
+        ),
+        paged_users AS (
+          SELECT
+            presence."userId",
+            account."email",
+            account."firstName",
+            account."lastName",
+            account."role"::text AS "role",
+            presence."lastSeenAt",
+            presence."lastPath",
+            presence."device",
+            presence."city",
+            presence."region",
+            presence."country"
+          FROM matching_presence presence
+          LEFT JOIN "User" account ON account."id" = presence."userId"
+          ORDER BY presence."lastSeenAt" DESC
+          LIMIT ${resolvedLimit}
+          OFFSET ${resolvedOffset}
+        )
+        SELECT
+          (SELECT COUNT(*)::integer FROM matching_presence) AS "total",
+          (
+            SELECT COALESCE(
+              jsonb_agg(to_jsonb(paged_users) ORDER BY "lastSeenAt" DESC),
+              '[]'::jsonb
+            )
+            FROM paged_users
+          ) AS "users"
+      `
+    );
+    const rows = page?.users ?? [];
 
     return {
       windowMinutes,
-      total: Number(countRow?.total ?? 0),
+      total: Number(page?.total ?? 0),
       limit: resolvedLimit,
       offset: resolvedOffset,
-      users: rows,
+      users: rows.map((row) => ({
+        ...row,
+        lastSeenAt: new Date(row.lastSeenAt),
+      })),
     };
   } catch (error) {
     if (isTableMissingError(error)) {

@@ -10,7 +10,9 @@ const LIVE_USERS_RATE_LIMIT = {
   windowMs: 60 * 1000,
 };
 
-const ALLOWED_WINDOWS = new Set([5, 15, 60]);
+const DEFAULT_WINDOW_MINUTES = 15;
+const DEFAULT_PAGE_SIZE = 50;
+const ALLOWED_WINDOWS = new Set([5, 15, 60, 1440, 2880, 10_080, 43_200]);
 
 export const runtime = "nodejs";
 
@@ -61,10 +63,18 @@ export async function GET(request: NextRequest) {
   }
 
   const url = new URL(request.url);
-  const windowMinutes = parseNumber(url.searchParams.get("window"), 5);
-  const limit = parseNumber(url.searchParams.get("limit"), 100);
+  const windowMinutes = parseNumber(
+    url.searchParams.get("window"),
+    DEFAULT_WINDOW_MINUTES
+  );
+  const limit = parseNumber(
+    url.searchParams.get("limit"),
+    DEFAULT_PAGE_SIZE
+  );
   const offset = parseNumber(url.searchParams.get("offset"), 0);
-  const resolvedWindow = ALLOWED_WINDOWS.has(windowMinutes) ? windowMinutes : 5;
+  const resolvedWindow = ALLOWED_WINDOWS.has(windowMinutes)
+    ? windowMinutes
+    : DEFAULT_WINDOW_MINUTES;
 
   const result = await listLiveUsers({
     windowMinutes: resolvedWindow,
