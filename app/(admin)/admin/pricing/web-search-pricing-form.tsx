@@ -662,7 +662,7 @@ export function WebSearchPricingForm({
           {isSaving ? <LoaderIcon /> : null}
           {isSaving
             ? label("common.saving", "Saving...")
-            : label("common.save", "Save settings")}
+            : label("admin.web_search.save", "Save settings")}
         </Button>
       </div>
     </div>

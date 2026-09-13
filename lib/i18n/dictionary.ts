@@ -187,7 +187,12 @@ export async function registerTranslationKeys(
   }
 
   try {
-    const keys = definitions.map((definition) => definition.key);
+    const uniqueDefinitions = Array.from(
+      new Map(
+        definitions.map((definition) => [definition.key, definition] as const)
+      ).values()
+    );
+    const keys = uniqueDefinitions.map((definition) => definition.key);
 
     const existing = await db
       .select({
@@ -208,7 +213,7 @@ export async function registerTranslationKeys(
       ])
     );
 
-    const definitionsToSync = definitions.filter((definition) => {
+    const definitionsToSync = uniqueDefinitions.filter((definition) => {
       const current = existingMap.get(definition.key);
       const description = definition.description ?? null;
 

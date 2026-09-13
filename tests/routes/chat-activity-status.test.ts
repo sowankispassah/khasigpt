@@ -1,12 +1,19 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
 
 const repoRoot = process.cwd();
 
 async function readWorkspaceFile(relativePath: string) {
   return readFile(path.join(repoRoot, relativePath), "utf8");
 }
+
+test("static translation keys are unique", () => {
+  const keys = STATIC_TRANSLATION_DEFINITIONS.map(({ key }) => key);
+
+  expect(new Set(keys).size).toBe(keys.length);
+});
 
 test("web chat uses stable accessible animated text instead of thinking spinners", async () => {
   const [animatedStatus, thinkingStatus, messages, message, styles] =

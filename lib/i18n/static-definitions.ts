@@ -5551,9 +5551,9 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Error toast after Web Search settings fail to save.",
   },
   {
-    key: "common.save",
+    key: "admin.web_search.save",
     defaultText: "Save settings",
-    description: "Generic settings save button label.",
+    description: "Button label that saves Web Search settings.",
   },
   {
     key: "common.saving",
