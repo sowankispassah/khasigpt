@@ -112,3 +112,31 @@ test("the scroll-to-bottom control remains functional but no longer overlays the
   expect(messages).toContain("right-4 bottom-4");
   expect(messages).toContain('onClick={() => scrollToBottom("smooth")}');
 });
+
+test("all response-generation labels use editable translation keys with English fallbacks", async () => {
+  const [reasoning, messages, imageEditor, definitions, translationsPage, nativeChat, nativeReasoning, nativeRich] =
+    await Promise.all([
+      readWorkspaceFile("components/elements/reasoning.tsx"),
+      readWorkspaceFile("components/messages.tsx"),
+      readWorkspaceFile("components/image-editor.tsx"),
+      readWorkspaceFile("lib/i18n/static-definitions.ts"),
+      readWorkspaceFile("app/(admin)/admin/translations/page.tsx"),
+      readWorkspaceFile("native/src/screens/ChatScreen.tsx"),
+      readWorkspaceFile("native/src/components/ReasoningDisclosure.tsx"),
+      readWorkspaceFile("native/src/components/RichMessage.tsx"),
+    ]);
+
+  expect(reasoning).toContain('"chat.reasoning.thinking"');
+  expect(reasoning).toContain('"chat.reasoning.thought_for"');
+  expect(reasoning).not.toContain("<p>Thinking...</p>");
+  expect(messages).toContain('translationKey="image.generate.loading"');
+  expect(imageEditor).toContain('translationKey="image.generate.loading"');
+  expect(definitions).toContain('key: "chat.reasoning.thinking"');
+  expect(definitions).toContain('key: "chat.reasoning.thought_for"');
+  expect(translationsPage).toContain('label: "Chat & Response Generation"');
+  expect(translationsPage).toContain('prefixes: ["chat.", "voice.", "news."]');
+  expect(nativeChat).toContain('translationKey="image.generate.loading"');
+  expect(nativeChat).not.toContain("Generating image...");
+  expect(nativeReasoning).toContain('translationKey="chat.reasoning.label"');
+  expect(nativeRich).toContain('translationKey="chat.thinking"');
+});

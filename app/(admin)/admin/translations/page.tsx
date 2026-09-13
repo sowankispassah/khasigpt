@@ -65,6 +65,13 @@ const TRANSLATION_SECTION_DEFINITIONS: SectionDefinition[] = [
     prefixes: ["subscriptions.", "recharge.", "billing."],
   },
   {
+    id: "chat",
+    label: "Chat & Response Generation",
+    description:
+      "Chat controls, thinking and reasoning labels, voice states, and live response progress.",
+    prefixes: ["chat.", "voice.", "news."],
+  },
+  {
     id: "image",
     label: "Image Generation",
     description: "Chat image generation labels, prompts, and states.",

@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "@/components/language-provider";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { useMessages } from "@/hooks/use-messages";
 import type { Vote } from "@/lib/db/schema";
 import type { IconPromptAction } from "@/lib/icon-prompts";
@@ -757,7 +758,11 @@ function PureMessages({
                       <span className="inline-flex size-4 animate-spin items-center justify-center">
                         <LoaderIcon size={14} />
                       </span>
-                      {translate("image.generate.loading", "Generating...")}
+                      <EditableTranslation
+                        defaultText="Generating..."
+                        description="Loading label while an image is being generated."
+                        translationKey="image.generate.loading"
+                      />
                     </div>
                   </div>
                 </div>
