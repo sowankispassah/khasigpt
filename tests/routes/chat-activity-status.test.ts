@@ -31,8 +31,15 @@ test("web chat uses stable accessible animated text instead of thinking spinners
   expect(animatedStatus).not.toContain("setInterval");
   expect(styles).toContain("@media (prefers-reduced-motion: reduce)");
   expect(styles).toContain("grid-template-columns: repeat(3");
-  expect(thinkingStatus).toContain('defaultText = "Thinking"');
-  expect(thinkingStatus).toContain('translationKey = "chat.status.thinking"');
+  expect(thinkingStatus).toContain('defaultText: "Thinking"');
+  expect(thinkingStatus).toContain('key: "chat.status.thinking"');
+  expect(thinkingStatus).toContain("Understanding your request");
+  expect(thinkingStatus).toContain("Preparing a response");
+  expect(thinkingStatus).toContain("Working through the details");
+  expect(thinkingStatus).toContain("Finalizing the response");
+  expect(thinkingStatus).toContain("elapsedMs >= 2_000");
+  expect(thinkingStatus).toContain("elapsedMs >= 12_000");
+  expect(thinkingStatus).toContain("window.clearInterval(timer)");
   expect(messages).toContain("<ChatThinkingStatus />");
   expect(message).toContain("<ChatThinkingStatus");
   expect(message).not.toContain("showStreamingSpinner");
@@ -121,7 +128,7 @@ test("the scroll-to-bottom control remains functional but no longer overlays the
 });
 
 test("all response-generation labels use editable translation keys with English fallbacks", async () => {
-  const [reasoning, messages, imageEditor, definitions, translationsPage, nativeChat, nativeReasoning, nativeRich] =
+  const [reasoning, messages, imageEditor, definitions, translationsPage, nativeChat, nativeThinking, nativeReasoning, nativeRich, nativeJobs] =
     await Promise.all([
       readWorkspaceFile("components/elements/reasoning.tsx"),
       readWorkspaceFile("components/messages.tsx"),
@@ -129,8 +136,10 @@ test("all response-generation labels use editable translation keys with English 
       readWorkspaceFile("lib/i18n/static-definitions.ts"),
       readWorkspaceFile("app/(admin)/admin/translations/page.tsx"),
       readWorkspaceFile("native/src/screens/ChatScreen.tsx"),
+      readWorkspaceFile("native/src/components/ChatThinkingStatusText.tsx"),
       readWorkspaceFile("native/src/components/ReasoningDisclosure.tsx"),
       readWorkspaceFile("native/src/components/RichMessage.tsx"),
+      readWorkspaceFile("native/src/components/jobs/JobsChatPopup.tsx"),
     ]);
 
   expect(reasoning).toContain('"chat.reasoning.thinking"');
@@ -140,10 +149,21 @@ test("all response-generation labels use editable translation keys with English 
   expect(imageEditor).toContain('translationKey="image.generate.loading"');
   expect(definitions).toContain('key: "chat.reasoning.thinking"');
   expect(definitions).toContain('key: "chat.reasoning.thought_for"');
+  expect(definitions).toContain('key: "chat.status.understanding_request"');
+  expect(definitions).toContain('key: "chat.status.preparing_response"');
+  expect(definitions).toContain('key: "chat.status.working_through_details"');
+  expect(definitions).toContain('key: "chat.status.finalizing_response"');
   expect(translationsPage).toContain('label: "Chat & Response Generation"');
   expect(translationsPage).toContain('prefixes: ["chat.", "voice.", "news."]');
   expect(nativeChat).toContain('translationKey="image.generate.loading"');
   expect(nativeChat).not.toContain("Generating image...");
+  expect(nativeChat).toContain("<ChatThinkingStatusText");
+  expect(nativeThinking).toContain("Understanding your request");
+  expect(nativeThinking).toContain("Preparing a response");
+  expect(nativeThinking).toContain("Working through the details");
+  expect(nativeThinking).toContain("Finalizing the response");
+  expect(nativeThinking).toContain("clearInterval(timer)");
   expect(nativeReasoning).toContain('translationKey="chat.reasoning.label"');
-  expect(nativeRich).toContain('translationKey="chat.thinking"');
+  expect(nativeRich).toContain("<ChatThinkingStatusText");
+  expect(nativeJobs).toContain("<ChatThinkingStatusText");
 });
