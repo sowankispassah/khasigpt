@@ -39,6 +39,9 @@ import { loadUserFeatureAccessOverrides } from "@/lib/settings/user-feature-acce
 
 export type IconPromptBehavior = "append" | "replace";
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export type IconPromptSuggestion = {
   label: string;
   prompt: string;
@@ -63,7 +66,14 @@ export type IconPromptItem = {
   suggestionsByLanguage?: Record<string, string[]>;
   suggestionPromptsByLanguage?: Record<string, string[]>;
   suggestionEditableByLanguage?: Record<string, boolean[]>;
+  modelConfigId: string | null;
+  systemPrompt: string;
   targetId: string | null;
+};
+
+export type IconPromptExecutionConfig = {
+  modelConfigId: string | null;
+  systemPrompt: string | null;
 };
 
 export type IconPromptAction = {
@@ -107,6 +117,8 @@ type StoredIconPromptItem = {
   suggestionsByLanguage?: unknown;
   suggestionPromptsByLanguage?: unknown;
   suggestionEditableByLanguage?: unknown;
+  modelConfigId?: unknown;
+  systemPrompt?: unknown;
   targetId?: unknown;
 };
 
@@ -296,6 +308,15 @@ export function normalizeIconPromptSettings(
     const suggestionEditableByLanguage = normalizeOptionalBooleanMap(
       entry.suggestionEditableByLanguage
     );
+    const modelConfigId =
+      typeof entry.modelConfigId === "string" &&
+      UUID_PATTERN.test(entry.modelConfigId.trim())
+        ? entry.modelConfigId.trim().slice(0, 128)
+        : null;
+    const systemPrompt =
+      typeof entry.systemPrompt === "string"
+        ? entry.systemPrompt.trim().slice(0, 12_000)
+        : "";
     const targetId =
       typeof entry.targetId === "string" && entry.targetId.trim().length > 0
         ? entry.targetId.trim()
@@ -333,11 +354,38 @@ export function normalizeIconPromptSettings(
       suggestionsByLanguage,
       suggestionPromptsByLanguage,
       suggestionEditableByLanguage,
+      modelConfigId,
+      systemPrompt,
       targetId,
     });
   }
 
   return { enabled, items };
+}
+
+export function resolveIconPromptExecutionConfig(
+  rawSettings: unknown,
+  actionId: string | null | undefined
+): IconPromptExecutionConfig | null {
+  const normalizedActionId = actionId?.trim();
+  if (!normalizedActionId) {
+    return null;
+  }
+
+  const item = normalizeIconPromptSettings(rawSettings, true).items.find(
+    (candidate) =>
+      candidate.id === normalizedActionId &&
+      candidate.actionType === "prompt" &&
+      candidate.isActive
+  );
+  if (!item) {
+    return null;
+  }
+
+  return {
+    modelConfigId: item.modelConfigId,
+    systemPrompt: item.systemPrompt || null,
+  };
 }
 
 function resolveLocalizedValue(

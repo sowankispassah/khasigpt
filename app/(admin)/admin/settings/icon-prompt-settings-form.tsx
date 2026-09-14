@@ -29,6 +29,11 @@ import type {
 type IconPromptSettingsFormProps = {
   initialItems: IconPromptItem[];
   languages: LanguageOption[];
+  models: Array<{
+    id: string;
+    isEnabled: boolean;
+    name: string;
+  }>;
   onSubmit: (formData: FormData) => Promise<
     | {
         success: true;
@@ -56,6 +61,8 @@ type EditableItem = {
   suggestionsByLanguage: Record<string, string[]>;
   suggestionPromptsByLanguage: Record<string, string[]>;
   suggestionEditableByLanguage: Record<string, boolean[]>;
+  modelConfigId: string | null;
+  systemPrompt: string;
   targetId: string | null;
 };
 
@@ -80,6 +87,8 @@ function createEmptyItem(defaultLabel = "", defaultPrompt = ""): EditableItem {
     suggestionsByLanguage: {},
     suggestionPromptsByLanguage: {},
     suggestionEditableByLanguage: {},
+    modelConfigId: null,
+    systemPrompt: "",
     targetId: null,
   };
 }
@@ -103,6 +112,8 @@ function normalizeItems(items: IconPromptItem[]): EditableItem[] {
     suggestionsByLanguage: item.suggestionsByLanguage ?? {},
     suggestionPromptsByLanguage: item.suggestionPromptsByLanguage ?? {},
     suggestionEditableByLanguage: item.suggestionEditableByLanguage ?? {},
+    modelConfigId: item.modelConfigId ?? null,
+    systemPrompt: item.systemPrompt ?? "",
     targetId: item.targetId ?? null,
   }));
 }
@@ -122,6 +133,7 @@ function isValidIconUrl(value: string | null): value is string {
 export function IconPromptSettingsForm({
   initialItems,
   languages,
+  models,
   onSubmit,
 }: IconPromptSettingsFormProps) {
   const { translate } = useTranslation();
@@ -208,6 +220,8 @@ export function IconPromptSettingsForm({
           suggestionsByLanguage: suggestionPayloadByLanguage,
           suggestionPromptsByLanguage: hiddenPayloadByLanguage,
           suggestionEditableByLanguage: editablePayloadByLanguage,
+          modelConfigId: item.modelConfigId,
+          systemPrompt: item.systemPrompt,
           targetId: item.targetId,
         };
       }),
@@ -1049,6 +1063,97 @@ export function IconPromptSettingsForm({
                   <p className="text-muted-foreground text-xs">
                     Used when suggestions are disabled or empty.
                   </p>
+                </div>
+              ) : null}
+
+              {item.actionType === "prompt" ? (
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label
+                      className="font-medium text-sm"
+                      htmlFor={`icon-prompt-${item.id}-model`}
+                    >
+                      {translate(
+                        "admin.icon_prompts.dedicated_model.label",
+                        "Dedicated model (optional)"
+                      )}
+                    </label>
+                    <select
+                      className="w-full cursor-pointer rounded-md border bg-background px-3 py-2 text-sm"
+                      id={`icon-prompt-${item.id}-model`}
+                      onChange={(event) =>
+                        updateItem(item.id, {
+                          modelConfigId: event.target.value || null,
+                        })
+                      }
+                      value={item.modelConfigId ?? ""}
+                    >
+                      <option value="">
+                        {translate(
+                          "admin.icon_prompts.dedicated_model.default",
+                          "Use the normal chat model"
+                        )}
+                      </option>
+                      {item.modelConfigId &&
+                      !models.some((model) => model.id === item.modelConfigId) ? (
+                        <option value={item.modelConfigId}>
+                          {translate(
+                            "admin.icon_prompts.dedicated_model.unavailable",
+                            "Unavailable model"
+                          )}
+                        </option>
+                      ) : null}
+                      {models.map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.name}
+                          {model.isEnabled
+                            ? ""
+                            : translate(
+                                "admin.icon_prompts.dedicated_model.disabled_suffix",
+                                " (disabled)"
+                              )}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-muted-foreground text-xs">
+                      {translate(
+                        "admin.icon_prompts.dedicated_model.help",
+                        "This model is used only for messages started from this shortcut. If it is unavailable, the normal chat model is used."
+                      )}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <label
+                      className="font-medium text-sm"
+                      htmlFor={`icon-prompt-${item.id}-system-prompt`}
+                    >
+                      {translate(
+                        "admin.icon_prompts.system_prompt.label",
+                        "Dedicated system prompt (optional)"
+                      )}
+                    </label>
+                    <Textarea
+                      className="min-h-[132px]"
+                      id={`icon-prompt-${item.id}-system-prompt`}
+                      maxLength={12_000}
+                      onChange={(event) =>
+                        updateItem(item.id, {
+                          systemPrompt: event.target.value,
+                        })
+                      }
+                      placeholder={translate(
+                        "admin.icon_prompts.system_prompt.placeholder",
+                        "Add instructions for responses started from this shortcut"
+                      )}
+                      value={item.systemPrompt}
+                    />
+                    <p className="text-muted-foreground text-xs">
+                      {translate(
+                        "admin.icon_prompts.system_prompt.help",
+                        "Applied only to the next message launched from this shortcut and kept private from users."
+                      )}
+                    </p>
+                  </div>
                 </div>
               ) : null}
 

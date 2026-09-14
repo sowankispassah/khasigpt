@@ -3614,6 +3614,19 @@ export async function updateIconPromptsAction(formData: FormData) {
   const uniqueItems = normalized.items.filter((item, index, items) => {
     return items.findIndex((entry) => entry.id === item.id) === index;
   });
+  const dedicatedModelIds = Array.from(
+    new Set(
+      uniqueItems
+        .map((item) => item.modelConfigId)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+  const dedicatedModels = await Promise.all(
+    dedicatedModelIds.map((id) => getModelConfigById({ id }))
+  );
+  if (dedicatedModels.some((model) => !model)) {
+    throw new Error("One or more dedicated icon prompt models are unavailable");
+  }
 
   const startedAt = Date.now();
   console.info("[admin/icon-prompts] save:start", {

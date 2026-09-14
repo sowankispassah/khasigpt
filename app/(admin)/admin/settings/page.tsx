@@ -2400,6 +2400,11 @@ export default async function AdminSettingsPage({
                   <IconPromptSettingsForm
                     initialItems={iconPromptSettings.items}
                     languages={activeLanguagesList}
+                    models={activeModels.map((model) => ({
+                      id: model.id,
+                      isEnabled: model.isEnabled,
+                      name: model.displayName,
+                    }))}
                     onSubmit={updateIconPromptsAction}
                   />
                 )}

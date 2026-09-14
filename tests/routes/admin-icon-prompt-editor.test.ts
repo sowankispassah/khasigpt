@@ -54,6 +54,44 @@ test.describe("admin icon prompt editor", () => {
     );
   });
 
+  test("configures a private model and system prompt for prompt shortcuts", async () => {
+    const [form, settingsPage, iconPrompts, chatRoute, chatSchema, chatClient] =
+      await Promise.all([
+        readWorkspaceFile(
+          "app/(admin)/admin/settings/icon-prompt-settings-form.tsx"
+        ),
+        readWorkspaceFile("app/(admin)/admin/settings/page.tsx"),
+        readWorkspaceFile("lib/icon-prompts.ts"),
+        readWorkspaceFile("app/(chat)/api/chat/route.ts"),
+        readWorkspaceFile("app/(chat)/api/chat/schema.ts"),
+        readWorkspaceFile("components/chat.tsx"),
+      ]);
+
+    expect(form).toContain("Dedicated model (optional)");
+    expect(form).toContain("Dedicated system prompt (optional)");
+    expect(form).toContain("modelConfigId: item.modelConfigId");
+    expect(form).toContain("systemPrompt: item.systemPrompt");
+    expect(settingsPage).toContain("models={activeModels.map");
+    expect(iconPrompts).toContain("resolveIconPromptExecutionConfig");
+    expect(chatSchema).toContain("iconPromptActionId:");
+    expect(chatRoute).toContain("dedicatedModelConfig ??");
+    expect(chatRoute).toContain("iconPromptExecution?.systemPrompt ?? \"\"");
+    expect(chatRoute).toContain("ICON_PROMPTS_ENABLED_SETTING_KEY");
+    expect(chatClient).toContain("pendingIconPromptActionIdRef.current");
+    expect(chatClient).toContain("{ iconPromptActionId }");
+  });
+
+  test("keeps dedicated model details out of public shortcut actions", async () => {
+    const iconPrompts = await readWorkspaceFile("lib/icon-prompts.ts");
+    const publicActionType =
+      iconPrompts.match(
+        /export type IconPromptAction = \{([\s\S]*?)\n\};/
+      )?.[1] ?? "";
+
+    expect(publicActionType).not.toContain("modelConfigId");
+    expect(publicActionType).not.toContain("systemPrompt");
+  });
+
   test("bounds saves on the isolated admin database path", async () => {
     const actions = await readWorkspaceFile("app/(admin)/actions.ts");
     const queries = await readWorkspaceFile("lib/db/queries.ts");

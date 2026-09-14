@@ -46,6 +46,8 @@ import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DEFAULT_FREE_MESSAGES_PER_DAY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+  ICON_PROMPTS_ENABLED_SETTING_KEY,
+  ICON_PROMPTS_SETTING_KEY,
   isProductionEnvironment,
   JOBS_FEATURE_FLAG_KEY,
   NEWS_FEATURE_FLAG_KEY,
@@ -59,6 +61,7 @@ import {
   createStreamId,
   deleteChatById,
   getActiveSubscriptionForUser,
+  getAppSetting,
   getChatById,
   getLanguageByCodeRaw,
   getMessageCountByUserId,
@@ -79,6 +82,10 @@ import { searchExplorePlaces } from "@/lib/explore/places-service";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { getDefaultLanguage } from "@/lib/i18n/languages";
+import {
+  parseIconPromptsAccessModeSetting,
+  resolveIconPromptExecutionConfig,
+} from "@/lib/icon-prompts";
 import { shouldClassifyImageIntent } from "@/lib/image-intent";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import {
@@ -187,6 +194,7 @@ const CHAT_API_FEATURE_ACCESS_TIMEOUT_MS = 2_000;
 const CHAT_API_FEATURE_ACCESS_KEYS = [
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+  ICON_PROMPTS_ENABLED_SETTING_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   NEWS_FEATURE_FLAG_KEY,
@@ -1118,6 +1126,7 @@ export async function POST(request: Request) {
       selectedLanguage,
       selectedVisibilityType,
       hiddenPrompt,
+      iconPromptActionId,
       chatMode: chatModeInput,
       studyPaperId,
       studyQuizActive,
@@ -1131,6 +1140,7 @@ export async function POST(request: Request) {
       selectedLanguage?: string;
       selectedVisibilityType: VisibilityType;
       hiddenPrompt?: string;
+      iconPromptActionId?: string;
       chatMode?: "default" | "study" | "jobs" | "news";
       studyPaperId?: string | null;
       studyQuizActive?: boolean;
@@ -1175,6 +1185,17 @@ export async function POST(request: Request) {
           userId: session.user.id,
         })
       ),
+      measurePreModelStep("load_icon_prompt_execution", () =>
+        iconPromptActionId
+          ? getAppSetting<unknown>(ICON_PROMPTS_SETTING_KEY).catch((error) => {
+              console.warn(
+                "[icon-prompts] Dedicated execution settings unavailable; using normal chat routing.",
+                { error }
+              );
+              return null;
+            })
+          : Promise.resolve(null)
+      ),
     ]);
     const activeSubscriptionPromise = measurePreModelStep(
       "get_active_subscription",
@@ -1193,6 +1214,7 @@ export async function POST(request: Request) {
         featureAccessSettings,
         webSearchConfig,
         userAccess,
+        rawIconPromptSettings,
       ],
       activeSubscription,
       chat,
@@ -1230,12 +1252,34 @@ export async function POST(request: Request) {
     const enabledConfigs = registry.configs.filter(
       (config) => config.isEnabled
     );
-    // User-facing chats are controlled by the admin default model. Older web
-    // and native clients may still send selectedChatModel, but the server
-    // deliberately ignores it so model choice cannot be bypassed from a client.
-    // Existing chats do not store a durable model, so future sends consistently
-    // follow the current admin default while historical token usage remains as-is.
+    const iconPromptAccessMode = parseIconPromptsAccessModeSetting(
+      getFeatureAccessModeSettingValue(
+        featureAccessSettings,
+        ICON_PROMPTS_ENABLED_SETTING_KEY
+      )
+    );
+    const iconPromptExecution =
+      iconPromptActionId &&
+      isFeatureEnabledForRole(
+        iconPromptAccessMode,
+        userRole,
+        userAccess.values.get(ICON_PROMPTS_ENABLED_SETTING_KEY)
+      )
+        ? resolveIconPromptExecutionConfig(
+            rawIconPromptSettings,
+            iconPromptActionId
+          )
+        : null;
+    const dedicatedModelConfig = iconPromptExecution?.modelConfigId
+      ? enabledConfigs.find(
+          (config) => config.id === iconPromptExecution.modelConfigId
+        )
+      : null;
+    // User-facing chats use the admin default unless an active shortcut has an
+    // admin-assigned model. Older clients may still send selectedChatModel, but
+    // the server ignores it so model choice cannot be bypassed from a client.
     const modelConfig =
+      dedicatedModelConfig ??
       registry.defaultConfig ??
       enabledConfigs.find((config) => config.isDefault) ??
       enabledConfigs[0];
@@ -3088,6 +3132,7 @@ export async function POST(request: Request) {
     const systemInstructionParts = [
       typeof baseInstruction === "string" ? baseInstruction.trim() : "",
       languageSystemPrompt ?? "",
+      iconPromptExecution?.systemPrompt ?? "",
       documentInstruction ?? "",
       resolvedChatMode === "default" && customKnowledgeEnabled
         ? RAG_HYBRID_ANSWERING_INSTRUCTION

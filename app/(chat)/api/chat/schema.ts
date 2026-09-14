@@ -61,6 +61,7 @@ export const postRequestBodySchema = z.object({
     parts: z.array(partSchema),
   }),
   hiddenPrompt: z.string().trim().min(1).max(2000).optional(),
+  iconPromptActionId: z.string().trim().min(1).max(128).optional(),
   chatMode: z.enum(["default", "study", "jobs", "news"]).optional(),
   studyPaperId: z.string().uuid().optional().nullable(),
   studyQuizActive: z.boolean().optional(),

@@ -267,6 +267,10 @@ export function Chat({
     initialVisibilityType,
     historyMode,
   });
+  const iconPromptSuggestionActionIdRef = useRef<string | null>(null);
+  const pendingIconPromptActionIdRef = useRef<string | null>(null);
+  const pendingIconPromptEditedRef = useRef(false);
+  const pendingIconPromptTextRef = useRef<string | null>(null);
   const {
     translate,
     languages,
@@ -701,6 +705,10 @@ export function Chat({
   useEffect(() => {
     void id;
     setResumeDataPart(null);
+    iconPromptSuggestionActionIdRef.current = null;
+    pendingIconPromptActionIdRef.current = null;
+    pendingIconPromptEditedRef.current = false;
+    pendingIconPromptTextRef.current = null;
   }, [id]);
 
   useEffect(() => {
@@ -798,6 +806,10 @@ export function Chat({
       api: "/api/chat",
       fetch: fetchWithErrorHandlers,
       prepareSendMessagesRequest(request) {
+        const iconPromptActionId = pendingIconPromptActionIdRef.current;
+        pendingIconPromptActionIdRef.current = null;
+        pendingIconPromptEditedRef.current = false;
+        pendingIconPromptTextRef.current = null;
         const modePayload = isStudyMode
           ? {
               chatMode: resolvedChatMode,
@@ -820,6 +832,7 @@ export function Chat({
             selectedLanguage: currentLanguageCodeRef.current || undefined,
             selectedVisibilityType: visibilityType,
             ...request.body,
+            ...(iconPromptActionId ? { iconPromptActionId } : {}),
             ...modePayload,
           },
         };
@@ -1011,6 +1024,15 @@ export function Chat({
           : "text" in messageWithId && typeof messageWithId.text === "string"
             ? messageWithId.text
             : "";
+      if (
+        pendingIconPromptActionIdRef.current &&
+        !pendingIconPromptEditedRef.current &&
+        pendingIconPromptTextRef.current &&
+        messageText.trim() !== pendingIconPromptTextRef.current.trim()
+      ) {
+        pendingIconPromptActionIdRef.current = null;
+        pendingIconPromptTextRef.current = null;
+      }
       const shouldShowWebSearch =
         (options?.body as { toolIntent?: unknown } | undefined)?.toolIntent ===
           "web_search" ||
@@ -1355,6 +1377,10 @@ export function Chat({
     useState(false);
   const handleManualInputChange = useCallback(() => {
     setIconPromptSuggestions([]);
+    iconPromptSuggestionActionIdRef.current = null;
+    if (pendingIconPromptActionIdRef.current) {
+      pendingIconPromptEditedRef.current = true;
+    }
   }, []);
   const handleIconPromptSelect = useCallback(
     (item: IconPromptAction) => {
@@ -1365,6 +1391,10 @@ export function Chat({
           return;
         }
         setIconPromptSuggestions([]);
+        iconPromptSuggestionActionIdRef.current = null;
+        pendingIconPromptActionIdRef.current = null;
+        pendingIconPromptEditedRef.current = false;
+        pendingIconPromptTextRef.current = null;
         startGlobalProgress();
         router.push(target.webHref, { scroll: false });
         return;
@@ -1372,6 +1402,10 @@ export function Chat({
 
       if (actionType === "tool") {
         setIconPromptSuggestions([]);
+        iconPromptSuggestionActionIdRef.current = null;
+        pendingIconPromptActionIdRef.current = null;
+        pendingIconPromptEditedRef.current = false;
+        pendingIconPromptTextRef.current = null;
         if (item.targetId === "image_generation") {
           setIsImageMode(true);
           void refreshImageGenerationAccess();
@@ -1384,10 +1418,18 @@ export function Chat({
 
       const trimmedPrompt = item.prompt.trim();
       if (item.showSuggestions && item.suggestions.length > 0) {
+        pendingIconPromptActionIdRef.current = null;
+        pendingIconPromptEditedRef.current = false;
+        pendingIconPromptTextRef.current = null;
+        iconPromptSuggestionActionIdRef.current = item.id;
         setIconPromptSuggestions(item.suggestions);
       } else {
+        iconPromptSuggestionActionIdRef.current = null;
         setIconPromptSuggestions([]);
         if (trimmedPrompt) {
+          pendingIconPromptActionIdRef.current = item.id;
+          pendingIconPromptEditedRef.current = item.behavior === "append";
+          pendingIconPromptTextRef.current = trimmedPrompt;
           setInput((current) => {
             const existing = current ?? "";
             if (item.behavior === "append" && existing.trim().length > 0) {
@@ -1747,8 +1789,13 @@ export function Chat({
       }
 
       setIconPromptSuggestions([]);
+      const iconPromptActionId = iconPromptSuggestionActionIdRef.current;
+      iconPromptSuggestionActionIdRef.current = null;
+      pendingIconPromptActionIdRef.current = iconPromptActionId;
 
       const displayedPrompt = visibleText || hiddenText;
+      pendingIconPromptEditedRef.current = false;
+      pendingIconPromptTextRef.current = displayedPrompt;
       if (suggestion.isEditable) {
         setInput(displayedPrompt);
         return;
@@ -1761,6 +1808,9 @@ export function Chat({
           imageIntent?.intent === "image_generate" ||
           imageIntent?.intent === "image_edit"
         ) {
+          pendingIconPromptActionIdRef.current = null;
+          pendingIconPromptEditedRef.current = false;
+          pendingIconPromptTextRef.current = null;
           await generateImageFromPrompt(hiddenText, imageIntent, visibleText);
           return;
         }
