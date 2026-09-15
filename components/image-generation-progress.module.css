@@ -13,24 +13,36 @@
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 18px;
-  background: color-mix(in srgb, var(--muted) 72%, var(--background));
+  background: #1c343b;
 }
 
 .wash {
   position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, transparent 12%, color-mix(in srgb, white 40%, transparent) 50%, transparent 88%);
-  opacity: .42;
+  inset: -18%;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(185, 225, 255, 0.98) 0 14%, transparent 52%),
+    radial-gradient(circle at 78% 68%, rgba(60, 11, 10, 0.92) 0 18%, transparent 52%),
+    radial-gradient(circle at 88% 14%, rgba(0, 128, 153, 0.95) 0 19%, transparent 56%),
+    linear-gradient(135deg, #a7d7f4 0%, #4b858e 45%, #102b32 100%);
+  filter: blur(30px) saturate(135%);
+  opacity: .94;
+  transform: scale(1.12);
 }
 
 .progressWash {
   position: absolute;
-  inset: 0;
+  inset: -12%;
   transform-origin: top center;
-  transform: scaleY(0);
-  background: linear-gradient(to bottom, color-mix(in srgb, var(--background) 40%, transparent), color-mix(in srgb, var(--background) 68%, transparent) 88%, transparent);
-  filter: blur(10px);
-  animation: image-generation-progress 26s cubic-bezier(.22, .7, .2, 1) forwards;
+  transform: scaleY(.02);
+  background:
+    linear-gradient(to bottom, rgba(246, 251, 255, .86), rgba(195, 231, 239, .7) 58%, rgba(49, 74, 82, .42) 88%, rgba(18, 35, 40, .16)),
+    radial-gradient(circle at 22% 22%, rgba(255, 255, 255, .58), transparent 46%);
+  border-bottom: 1px solid rgba(255, 255, 255, .28);
+  backdrop-filter: blur(26px) saturate(150%);
+  -webkit-backdrop-filter: blur(26px) saturate(150%);
+  filter: blur(16px);
+  animation: image-generation-progress 45s linear forwards;
+  transition: transform 350ms ease-out;
   will-change: transform;
 }
 
@@ -52,10 +64,10 @@
 
 @keyframes image-generation-progress {
   0% { transform: scaleY(.02); }
-  55% { transform: scaleY(.72); }
+  75% { transform: scaleY(.72); }
   100% { transform: scaleY(.94); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .progressWash { animation: none; transform: scaleY(.9); will-change: auto; }
+  .progressWash { animation: none; transform: scaleY(.94); will-change: auto; }
 }

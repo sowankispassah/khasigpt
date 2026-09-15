@@ -81,11 +81,15 @@ test.describe("image generation failure recovery", () => {
       readFile(path.join(repoRoot, "components/messages.tsx"), "utf8"),
       readFile(path.join(repoRoot, "components/message.tsx"), "utf8"),
     ]);
-    expect(progress).toContain("Math.min(0.94");
+    expect(progress).toContain("IMAGE_GENERATION_PROGRESS_CAP");
+    expect(progress).toContain("IMAGE_GENERATION_EXPECTED_DURATION_MS = 45_000");
     expect(progress).not.toContain("src={");
+    expect(styles).toContain("image-generation-progress 45s");
     expect(styles).toContain("scaleY(.94)");
+    expect(styles).toContain("backdrop-filter: blur(26px)");
     expect(styles).toContain("forwards");
     expect(messages).toContain("<ImageGenerationProgress />");
-    expect(message).toContain("isPendingImage && <ImageGenerationProgress />");
+    expect(message).toContain("isPendingImage && (");
+    expect(message).toContain("<ImageGenerationProgress startedAt=");
   });
 });

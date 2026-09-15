@@ -218,7 +218,9 @@ const PurePreviewMessage = ({
               message.role === "user" && mode !== "edit",
           })}
         >
-          {isPendingImage && <ImageGenerationProgress />}
+          {isPendingImage && (
+            <ImageGenerationProgress startedAt={imageGenerationStatus?.updatedAt} />
+          )}
           {isStaleImage && (
             <span className="text-muted-foreground text-sm">
               <EditableTranslation
