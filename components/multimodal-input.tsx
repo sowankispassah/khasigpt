@@ -307,6 +307,7 @@ function PureMultimodalInput({
   onBeforeSubmit,
   onGenerateImage,
   onIntentResolutionChange,
+  onNonImageIntent,
   onManualInputChange,
   onResolveImageIntent,
   onToggleImageMode,
@@ -347,7 +348,8 @@ function PureMultimodalInput({
     resolution: ImageIntentResolution,
     submission: OptimisticChatSubmission
   ) => Promise<void>;
-  onIntentResolutionChange?: (isResolving: boolean) => void;
+  onIntentResolutionChange?: (isResolving: boolean, prompt?: string) => void;
+  onNonImageIntent?: () => void;
   onManualInputChange?: () => void;
   onResolveImageIntent?: (
     prompt: string
@@ -665,7 +667,7 @@ function PureMultimodalInput({
 
     isResolvingIntentRef.current = true;
     setIsResolvingIntent(true);
-    onIntentResolutionChange?.(true);
+    onIntentResolutionChange?.(true, submission.prompt);
     try {
       const resolution = await onResolveImageIntent?.(submission.prompt);
       if (
@@ -675,6 +677,7 @@ function PureMultimodalInput({
         await onGenerateImage(resolution, submission);
         return;
       }
+      onNonImageIntent?.();
       await submitCommittedMessage(submission, resolution);
     } catch (_error) {
       rollbackSubmission(submission);
@@ -693,6 +696,7 @@ function PureMultimodalInput({
     commitSubmission,
     onGenerateImage,
     onIntentResolutionChange,
+    onNonImageIntent,
     onResolveImageIntent,
     rollbackSubmission,
     submitCommittedMessage,

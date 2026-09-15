@@ -12,6 +12,7 @@ import {
   type ImageIntentInput,
   normalizeImageIntent,
   shouldClassifyImageIntent,
+  shouldShowImageLoading,
 } from "@/lib/image-intent";
 
 const repoRoot = process.cwd();
@@ -56,6 +57,36 @@ test.describe("image intent routing", () => {
       const input = intentInput(message);
       expect(shouldClassifyImageIntent(input)).toBe(true);
       expect(fallbackImageIntent(input)).toBe("image_generate");
+    }
+  });
+
+  test("selected image mode resolves terse multilingual scenes without image keywords", () => {
+    for (const message of [
+      "Shillong Police Bazar ha ka snem 2050",
+      "A market in the year 2050",
+      "Sohra ha ka snem 2050",
+    ]) {
+      const selected = intentInput(message, { imageHintSelected: true });
+      expect(normalizeImageIntent("normal_chat", selected)).toBe(
+        "image_generate"
+      );
+      expect(shouldShowImageLoading(selected)).toBe(true);
+      expect(shouldShowImageLoading(intentInput(message))).toBe(false);
+    }
+  });
+
+  test("image mode does not turn explicit text requests into chargeable images", () => {
+    for (const message of [
+      "Who is Jessie Lyngdoh?",
+      "Write a poem about rain",
+      "Thoh ka poem shaphang u slap",
+      "Thanks, that's exactly what I wanted.",
+      "Good morning",
+      "Make it brighter",
+    ]) {
+      const selected = intentInput(message, { imageHintSelected: true });
+      expect(normalizeImageIntent("normal_chat", selected)).toBe("normal_chat");
+      expect(shouldShowImageLoading(selected)).toBe(false);
     }
   });
 
@@ -138,6 +169,9 @@ test.describe("image intent routing", () => {
 
     expect(shouldClassifyImageIntent(input)).toBe(true);
     expect(fallbackImageIntent(input)).toBe("image_edit");
+    expect(
+      normalizeImageIntent("normal_chat", { ...input, imageHintSelected: true })
+    ).toBe("image_edit");
   });
 
   test("Flow D treats an explicit new subject as a new generation", () => {
@@ -154,6 +188,9 @@ test.describe("image intent routing", () => {
   test("an edit decision without an available image fails safely", () => {
     const input = intentInput("Make it brighter.");
     expect(normalizeImageIntent("image_edit", input)).toBe("normal_chat");
+    expect(
+      normalizeImageIntent("normal_chat", { ...input, imageHintSelected: true })
+    ).toBe("normal_chat");
   });
 
   test("submission is intent-driven and the API confirms intent before credits", async () => {
@@ -207,7 +244,9 @@ test.describe("image intent routing", () => {
     expect(inputSource).toContain("messageId: submission.messageId");
     expect(chatSource).not.toContain("ensureChatExistsBeforeNavigation");
     expect(chatSource).not.toContain("ensureChatExistsAction");
-    expect(inputSource).toContain("onIntentResolutionChange?.(true)");
+    expect(inputSource).toContain(
+      "onIntentResolutionChange?.(true, submission.prompt)"
+    );
     expect(inputSource).toContain("onIntentResolutionChange?.(false)");
     expect(inputSource).not.toContain("pendingAssistantMessageId");
     expect(messagesSource).toContain("isResolvingIntent ||");
@@ -215,13 +254,12 @@ test.describe("image intent routing", () => {
       'data-testid="message-assistant-loading"'
     );
     expect(messagesSource).toContain("<ChatThinkingStatus />");
-    expect(thinkingStatusSource).toContain(
-      'translationKey = "chat.status.thinking"'
-    );
-    expect(thinkingStatusSource).toContain('defaultText = "Thinking"');
+    expect(thinkingStatusSource).toContain('key: "chat.status.thinking"');
+    expect(thinkingStatusSource).toContain('defaultText: "Thinking"');
     expect(chatSource).toContain(
-      "onIntentResolutionChange={setIsResolvingSubmissionIntent}"
+      "onNonImageIntent={() => setIsImageMode(false)}"
     );
+    expect(inputSource).toContain("onNonImageIntent?.()");
     expect(inputSource).not.toContain(
       "if (imageGenerationSelected) {\n            onGenerateImage();"
     );

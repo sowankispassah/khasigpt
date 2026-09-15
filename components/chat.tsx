@@ -55,8 +55,10 @@ import {
   fallbackImageIntent,
   type ImageIntentContextMessage,
   type ImageIntentResolution,
+  normalizeImageIntent,
   parseImageIntent,
   shouldClassifyImageIntent,
+  shouldShowImageLoading,
 } from "@/lib/image-intent";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
 import type {
@@ -1555,7 +1557,10 @@ export function Chat({
         console.warn("[chat] Unable to resolve image intent.", {
           error: error instanceof Error ? error.message : String(error),
         });
-        const fallbackIntent = fallbackImageIntent(intentInput);
+        const fallbackIntent = normalizeImageIntent(
+          fallbackImageIntent(intentInput),
+          intentInput
+        );
         if (
           imageGeneration.enabled &&
           (fallbackIntent === "image_generate" ||
@@ -1804,7 +1809,19 @@ export function Chat({
       }
 
       setIsResolvingImageSuggestion(true);
-      setIsGeneratingImage(true);
+      setIsGeneratingImage(
+        shouldShowImageLoading({
+          message: hiddenText,
+          imageHintSelected: isImageMode,
+          hasImageAttachment: attachments.some((attachment) =>
+            attachment.contentType?.startsWith("image/")
+          ),
+          hasPriorGeneratedImage: Boolean(
+            getLatestAssistantImageUrl(imageIntentMessagesRef.current)
+          ),
+          recentMessages: [],
+        })
+      );
       try {
         const imageIntent = await resolveImageIntentForPrompt(hiddenText);
         if (
@@ -1819,6 +1836,7 @@ export function Chat({
         }
 
         syncCurrentChatUrl();
+        setIsImageMode(false);
 
         const messageParts = [
           ...attachments.map((attachment) => ({
@@ -1863,6 +1881,7 @@ export function Chat({
       attachments, 
       generateImageFromPrompt, 
       isGeneratingImage, 
+      isImageMode,
       isResolvingImageSuggestion,
       resolveImageIntentForPrompt,
       sendMessageWithWebSearchStatus,
@@ -2339,12 +2358,29 @@ export function Chat({
                       )
                     }
                     onManualInputChange={handleManualInputChange}
-                    onIntentResolutionChange={(pending) => {
+                    onIntentResolutionChange={(pending, prompt) => {
                       setIsResolvingSubmissionIntent(pending);
                       if (isImageMode && !isStudyMode) {
-                        setIsGeneratingImage(pending);
+                        setIsGeneratingImage(
+                          pending &&
+                            shouldShowImageLoading({
+                              message: prompt ?? "",
+                              imageHintSelected: true,
+                              hasImageAttachment: attachments.some(
+                                (attachment) =>
+                                  attachment.contentType?.startsWith("image/")
+                              ),
+                              hasPriorGeneratedImage: Boolean(
+                                getLatestAssistantImageUrl(
+                                  imageIntentMessagesRef.current
+                                )
+                              ),
+                              recentMessages: [],
+                            })
+                        );
                       }
                     }}
+                    onNonImageIntent={() => setIsImageMode(false)}
                     onResolveImageIntent={resolveImageIntentForPrompt}
                     jobTitleReference={jobTitleReference}
                     onClearJobTitleReference={clearJobContext}

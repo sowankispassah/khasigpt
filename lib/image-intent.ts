@@ -42,8 +42,29 @@ const VISUAL_CREATION_SIGNAL =
 const CONTEXTUAL_EDIT_SIGNAL =
   /\b(make|change|remove|add|replace|put|turn|edit|adjust|brighten|darken|enhance|use the same|another version|more realistic|less realistic)\b/i;
 
+const SOURCE_DEPENDENT_EDIT_SIGNAL =
+  /\b(?:make|change|edit|adjust|remove|replace|turn|brighten|darken)\b[\s\S]{0,80}\b(?:it|this|that|same|previous|last|existing)\b/i;
+
 const NON_VISUAL_REQUEST_PREFIX =
   /^(?:who|what|when|where|why|how|which|is|are|was|were|do|does|did|can|could|would|should|tell|explain|describe|define|translate|write|compare|list|find|search|pynwad|batai|mano|aiu|mynno|hangno|balei|kumno)\b/i;
+
+const EXPLICIT_TEXT_REQUEST_PREFIX =
+  /^(?:please\s+)?(?:write|compose|draft|summarize|explain|describe|translate|thoh|batai|pynshai|pynkylla)\b|^(?:i|we|nga|ngi)\s+(?:bought|purchased|have|had|like|love|think|feel|thied|sngewtynnad)\b/i;
+
+/** A selected image control disambiguates a terse scene without an image verb. */
+export function isImageModeScenePrompt(message: string) {
+  const normalized = message.trim().replace(/\s+/g, " ");
+  const wordCount = normalized ? normalized.split(" ").length : 0;
+  return (
+    wordCount >= 2 &&
+    wordCount <= 40 &&
+    !normalized.endsWith("?") &&
+    !isConversationalAcknowledgement(normalized) &&
+    !isConversationalGreeting(normalized) &&
+    !NON_VISUAL_REQUEST_PREFIX.test(normalized) &&
+    !EXPLICIT_TEXT_REQUEST_PREFIX.test(normalized)
+  );
+}
 
 const STANDALONE_VISUAL_COMPOSITION_SIGNAL =
   /\b(?:as|kum)\s+(?:an?\s+)?\S+|\b(?:flying|wearing|dressed|standing|sitting|riding|holding|walking|running|beneath|amid|against)\b|\b(?:ba\s+her|ba\s+phong|jaiñsem|jainsem)\b|\b(?:in|ha)\s+(?:\S+\s+){0,4}(?:dress|attire|clothes|clothing|costume|uniform|jaiñsem|jainsem)\b/i;
@@ -118,6 +139,24 @@ export function normalizeImageIntent(
     return "normal_chat";
   }
   if (
+    intent === "normal_chat" &&
+    input.imageHintSelected &&
+    isImageModeScenePrompt(input.message)
+  ) {
+    const fallback = fallbackImageIntent(input);
+    if (fallback === "image_edit") {
+      return "image_edit";
+    }
+    if (
+      !input.hasImageAttachment &&
+      !input.hasPriorGeneratedImage &&
+      SOURCE_DEPENDENT_EDIT_SIGNAL.test(input.message)
+    ) {
+      return "normal_chat";
+    }
+    return "image_generate";
+  }
+  if (
     intent === "image_edit" &&
     !(input.hasImageAttachment || input.hasPriorGeneratedImage)
   ) {
@@ -126,4 +165,13 @@ export function normalizeImageIntent(
       : "normal_chat";
   }
   return intent;
+}
+
+/** Only show the image tile before routing when the local intent is visual. */
+export function shouldShowImageLoading(input: ImageIntentInput) {
+  if (!input.imageHintSelected) {
+    return false;
+  }
+  const intent = normalizeImageIntent(fallbackImageIntent(input), input);
+  return intent === "image_generate" || intent === "image_edit";
 }

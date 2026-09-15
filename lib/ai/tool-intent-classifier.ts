@@ -177,7 +177,7 @@ export async function classifyToolIntent(
           "Use image_generate only when the user asks to create a new visual. A terse scene or composition can be an image request without a command verb or image noun.",
           "For example, 'Tirot Sing flying as Superman' and Khasi 'U Tirot Sing ba her kum u Superman' are both image_generate.",
           "Use image_edit only when the user asks to modify an attached image or a prior generated image. A new subject or explicitly different image is image_generate.",
-          "The current message has priority over the selected image UI hint. The hint expresses preference but never forces an image intent.",
+          "Selected image mode is strong user intent. A standalone scene description in that mode, including a place in a future year, is image_generate even without an image verb or noun. Do not turn greetings, acknowledgments, factual questions, explicit writing requests, or web searches into images.",
           "Only choose web_search with high or medium confidence. If uncertain, choose normal_chat with low confidence.",
           "For non-web intents, kind and query must be null.",
         ].join("\n"),
@@ -192,6 +192,18 @@ export async function classifyToolIntent(
     if (!parsed || typeof parsed.intent !== "string") {
       return fallback;
     }
+    if (
+      parsed.intent !== "image_generate" &&
+      parsed.intent !== "image_edit"
+    ) {
+      const selectedIntent = normalizeImageIntent("normal_chat", input);
+      if (
+        selectedIntent === "image_generate" ||
+        selectedIntent === "image_edit"
+      ) {
+        return { intent: selectedIntent, webSearch: null };
+      }
+    }
     const webSearch = parseWebSearchDecision(parsed, input);
     if (parsed.intent === "web_search") {
       return webSearch
@@ -205,7 +217,10 @@ export async function classifyToolIntent(
     if (parsed.intent === "other_tool") {
       return { intent: "other_tool", webSearch: null };
     }
-    return { intent: "normal_chat", webSearch: null };
+    return {
+      intent: normalizeImageIntent("normal_chat", input),
+      webSearch: null,
+    };
   } catch (error) {
     console.warn("[tool-intent] Semantic classification unavailable.", {
       reason: error instanceof Error ? error.name : "classification_failed",
