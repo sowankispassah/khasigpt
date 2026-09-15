@@ -73,4 +73,19 @@ test.describe("image generation failure recovery", () => {
       })
     );
   });
+
+  test("keeps visual progress separate from the final image", async () => {
+    const [progress, styles, messages, message] = await Promise.all([
+      readFile(path.join(repoRoot, "components/image-generation-progress.tsx"), "utf8"),
+      readFile(path.join(repoRoot, "components/image-generation-progress.module.css"), "utf8"),
+      readFile(path.join(repoRoot, "components/messages.tsx"), "utf8"),
+      readFile(path.join(repoRoot, "components/message.tsx"), "utf8"),
+    ]);
+    expect(progress).toContain("Math.min(0.94");
+    expect(progress).not.toContain("src={");
+    expect(styles).toContain("scaleY(.94)");
+    expect(styles).toContain("forwards");
+    expect(messages).toContain("<ImageGenerationProgress />");
+    expect(message).toContain("isPendingImage && <ImageGenerationProgress />");
+  });
 });

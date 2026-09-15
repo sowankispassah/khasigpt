@@ -11,7 +11,6 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "@/components/language-provider";
-import { EditableTranslation } from "@/components/translation-edit-provider";
 import { useMessages } from "@/hooks/use-messages";
 import type { Vote } from "@/lib/db/schema";
 import type { IconPromptAction } from "@/lib/icon-prompts";
@@ -23,7 +22,7 @@ import { cn } from "@/lib/utils";
 import { ChatThinkingStatus } from "./chat-thinking-status";
 import { Greeting } from "./greeting";
 import { IconPromptActions } from "./icon-prompt-actions";
-import { LoaderIcon } from "./icons";
+import { ImageGenerationProgress } from "./image-generation-progress";
 import { PreviewMessage } from "./message";
 import { SuggestedActions } from "./suggested-actions";
 import type { VisibilityType } from "./visibility-selector";
@@ -747,26 +746,7 @@ function PureMessages({
 
           {isGeneratingImage && (
             <div className="flex w-full items-start justify-start gap-2 md:gap-3">
-              <div className="flex flex-col gap-2">
-                <div className="relative h-60 w-60 overflow-hidden rounded-xl border bg-muted/60">
-                  <div
-                    aria-hidden="true"
-                    className="absolute inset-0 animate-pulse bg-muted/70"
-                  />
-                  <div className="relative z-10 flex h-full w-full items-center justify-center">
-                    <div className="flex items-center gap-2 rounded-full bg-background/85 px-3 py-1 text-muted-foreground text-xs shadow-sm">
-                      <span className="inline-flex size-4 animate-spin items-center justify-center">
-                        <LoaderIcon size={14} />
-                      </span>
-                      <EditableTranslation
-                        defaultText="Generating..."
-                        description="Loading label while an image is being generated."
-                        translationKey="image.generate.loading"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <ImageGenerationProgress />
             </div>
           )}
 

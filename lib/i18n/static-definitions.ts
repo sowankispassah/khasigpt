@@ -2774,6 +2774,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Loading label while an image is being generated.",
   },
   {
+    key: "chat.image_generation.incomplete_title",
+    defaultText: "This image generation did not complete.",
+    description: "Status for an image generation left pending after navigation or an interrupted request.",
+  },
+  {
     key: "image.generate.failed",
     defaultText: "Image generation failed. Please try again.",
     description: "Fallback error message when generation fails.",

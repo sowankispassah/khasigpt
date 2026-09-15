@@ -1583,7 +1583,9 @@ export function Chat({
       displayPrompt?: string,
       optimisticSubmission?: OptimisticChatSubmission
     ) => {
+      setIsGeneratingImage(true);
       if (!(await confirmImageGenerationAccess())) {
+        setIsGeneratingImage(false);
         if (optimisticSubmission) {
           setMessages((prev) =>
             prev.filter(
@@ -1604,6 +1606,7 @@ export function Chat({
 
       const trimmedPrompt = prompt.trim();
       if (!trimmedPrompt) {
+        setIsGeneratingImage(false);
         toast({
           type: "error",
           description: translate(
@@ -1672,7 +1675,6 @@ export function Chat({
 
       setInput("");
       setAttachments([]);
-      setIsGeneratingImage(true);
 
       try {
         const response = await fetch("/api/images", {
@@ -1802,6 +1804,7 @@ export function Chat({
       }
 
       setIsResolvingImageSuggestion(true);
+      setIsGeneratingImage(true);
       try {
         const imageIntent = await resolveImageIntentForPrompt(hiddenText);
         if (
@@ -1853,6 +1856,7 @@ export function Chat({
         setAttachments([]);
       } finally {
         setIsResolvingImageSuggestion(false);
+        setIsGeneratingImage(false);
       }
     },
     [
@@ -2335,7 +2339,12 @@ export function Chat({
                       )
                     }
                     onManualInputChange={handleManualInputChange}
-                    onIntentResolutionChange={setIsResolvingSubmissionIntent}
+                    onIntentResolutionChange={(pending) => {
+                      setIsResolvingSubmissionIntent(pending);
+                      if (isImageMode && !isStudyMode) {
+                        setIsGeneratingImage(pending);
+                      }
+                    }}
                     onResolveImageIntent={resolveImageIntentForPrompt}
                     jobTitleReference={jobTitleReference}
                     onClearJobTitleReference={clearJobContext}

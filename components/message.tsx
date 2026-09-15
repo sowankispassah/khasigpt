@@ -16,10 +16,12 @@ import { cn } from "@/lib/utils";
 import { ChatThinkingStatus } from "./chat-thinking-status";
 import { MessageContent } from "./elements/message";
 import { Response } from "./elements/response";
+import { ImageGenerationProgress } from "./image-generation-progress";
 import { MessageActions } from "./message-actions";
 import { MessageEditor } from "./message-editor";
 import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
+import { EditableTranslation } from "./translation-edit-provider";
 
 const JobCards = dynamic(
   () => import("./jobs/job-cards").then((module) => module.JobCards),
@@ -147,6 +149,15 @@ const PurePreviewMessage = ({
     }
     return part.data;
   }, null);
+  const imageUpdatedAt = imageGenerationStatus?.updatedAt
+    ? Date.parse(imageGenerationStatus.updatedAt)
+    : Number.NaN;
+  const isStaleImage =
+    imageGenerationStatus?.status === "pending" &&
+    (!Number.isFinite(imageUpdatedAt) ||
+      Date.now() - imageUpdatedAt >= 10 * 60 * 1000);
+  const isPendingImage =
+    imageGenerationStatus?.status === "pending" && !isStaleImage;
   const hasWebSearchStatus = message.parts.some(
     (part) => part.type === "data-webSearchStatus"
   );
@@ -207,7 +218,19 @@ const PurePreviewMessage = ({
               message.role === "user" && mode !== "edit",
           })}
         >
-          {messageAttachments.length > 0 && (
+          {isPendingImage && <ImageGenerationProgress />}
+          {isStaleImage && (
+            <span className="text-muted-foreground text-sm">
+              <EditableTranslation
+                defaultText="This image generation did not complete."
+                description="Status for an image generation left pending after navigation or an interrupted request."
+                translationKey="chat.image_generation.incomplete_title"
+              />
+            </span>
+          )}
+
+          {messageAttachments.length > 0 &&
+            imageGenerationStatus?.status !== "pending" && (
             <div
               className={cn(
                 "flex gap-2",
@@ -384,6 +407,9 @@ const PurePreviewMessage = ({
             }
 
             if (type === "text") {
+              if ((isPendingImage || isStaleImage) && isAssistantMessage) {
+                return null;
+              }
               const displayText = isAssistantMessage
                 ? imageGenerationStatus?.reason === "safety" &&
                   part.text === imageGenerationStatus.message

@@ -29,6 +29,7 @@ export const PreviewAttachment = ({
   const { name, url, contentType } = attachment;
   const isImage = Boolean(contentType?.startsWith("image"));
   const [open, setOpen] = useState(false);
+  const [thumbnailLoaded, setThumbnailLoaded] = useState(false);
   const [dimensions, setDimensions] = useState<{
     width: number;
     height: number;
@@ -123,8 +124,13 @@ export const PreviewAttachment = ({
           >
             <Image
               alt={name ?? "An image attachment"}
-              className="size-full object-cover"
+              className={cn(
+                "size-full object-cover transition-opacity duration-200",
+                showDownload && !thumbnailLoaded && "opacity-0"
+              )}
               height={resolvedPreviewSize}
+              onError={() => setThumbnailLoaded(true)}
+              onLoad={() => setThumbnailLoaded(true)}
               src={url}
               unoptimized
               width={resolvedPreviewSize}
