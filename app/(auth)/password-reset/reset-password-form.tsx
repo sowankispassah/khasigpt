@@ -1,16 +1,13 @@
 "use client";
 
-import { useActionState, useState } from "react";
 import Link from "next/link";
+import { useActionState, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-import {
-  type ResetPasswordState,
-  resetPasswordAction,
-} from "./actions";
+import { type ResetPasswordState, resetPasswordAction } from "./actions";
 
 const initialState: ResetPasswordState = { status: "idle" };
 
@@ -38,32 +35,32 @@ export function ResetPasswordForm({ token }: { token: string }) {
   }
 
   return (
-    <form className="space-y-4" action={formAction}>
+    <form action={formAction} className="space-y-4">
       <input name="token" type="hidden" value={token} />
       <div className="space-y-2">
         <Label htmlFor="password">New password</Label>
         <Input
           autoComplete="new-password"
+          disabled={isDisabled}
           id="password"
           minLength={8}
           name="password"
           placeholder="Enter a strong password"
           required
           type={showPassword ? "text" : "password"}
-          disabled={isDisabled}
         />
       </div>
       <div className="space-y-2">
         <Label htmlFor="confirmPassword">Confirm password</Label>
         <Input
           autoComplete="new-password"
+          disabled={isDisabled}
           id="confirmPassword"
           minLength={8}
           name="confirmPassword"
           placeholder="Re-enter your password"
           required
           type={showPassword ? "text" : "password"}
-          disabled={isDisabled}
         />
       </div>
       <div className="flex items-center justify-between text-sm">
@@ -71,13 +68,13 @@ export function ResetPasswordForm({ token }: { token: string }) {
           <input
             checked={showPassword}
             className="h-4 w-4 rounded border-input"
+            disabled={isDisabled}
             onChange={(event) => setShowPassword(event.target.checked)}
             type="checkbox"
-            disabled={isDisabled}
           />
           <span className="text-muted-foreground">Show password</span>
         </label>
-        <Link className="text-sm text-muted-foreground underline" href="/login">
+        <Link className="text-muted-foreground text-sm underline" href="/login">
           Back to sign in
         </Link>
       </div>

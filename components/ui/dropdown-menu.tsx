@@ -1,8 +1,8 @@
 "use client"
 
-import * as React from "react"
-import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
 import { Check, ChevronRight, Circle } from "lucide-react"
+import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
+import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
@@ -21,9 +21,10 @@ const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup
 const DropdownMenuSubTrigger = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.SubTrigger>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubTrigger> & {
+    chevronOpen?: boolean
     inset?: boolean
   }
->(({ className, inset, children, ...props }, ref) => (
+>(({ chevronOpen, className, inset, children, ...props }, ref) => (
   <DropdownMenuPrimitive.SubTrigger
     ref={ref}
     className={cn(
@@ -34,7 +35,10 @@ const DropdownMenuSubTrigger = React.forwardRef<
     {...props}
   >
     {children}
-    <ChevronRight className="ml-auto" />
+    <ChevronRight
+      className={cn("ml-auto transition-transform", chevronOpen && "rotate-90")}
+      style={{ transform: chevronOpen ? "rotate(90deg)" : undefined }}
+    />
   </DropdownMenuPrimitive.SubTrigger>
 ))
 DropdownMenuSubTrigger.displayName =

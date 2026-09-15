@@ -1,9 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect } from "react";
-import type { ChatMessage } from "@/lib/types";
-import type { VisibilityType } from "./visibility-selector";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import type { ChatPageLoaderPayload } from "@/lib/chat/page-payload";
+import { doneGlobalProgress } from "@/lib/ui/global-progress";
+import { generateUUID } from "@/lib/utils";
 
 const ChatSkeleton = () => (
   <div className="flex h-dvh flex-col gap-4 px-3 py-6 md:px-6">
@@ -13,83 +15,103 @@ const ChatSkeleton = () => (
       <div className="h-6 w-full rounded-full bg-muted/80" />
       <div className="mt-auto flex flex-col gap-2">
         <div className="h-9 rounded-2xl bg-muted" />
-        <div className="h-16 rounded-xl border border-dashed border-muted-foreground/40" />
+        <div className="h-16 rounded-xl border border-muted-foreground/40 border-dashed" />
       </div>
     </div>
   </div>
 );
 
-type ChatLoaderProps = {
-  id: string;
-  initialMessages: ChatMessage[];
-  initialChatModel: string;
-  initialVisibilityType: VisibilityType;
-  isReadonly: boolean;
-  autoResume: boolean;
-  suggestedPrompts: string[];
-};
+export type ChatLoaderProps = ChatPageLoaderPayload;
 
-let chatModulePromise: Promise<typeof import("./chat")> | null = null;
-
-function loadChatModule() {
-  if (!chatModulePromise) {
-    chatModulePromise = import("./chat");
-  }
-  return chatModulePromise;
-}
-
-export function preloadChat() {
-  if (typeof window === "undefined") {
-    return;
-  }
-  void loadChatModule();
-}
-
+// Keep chat split from other routes while letting Next preload its chunk and
+// render the greeting/composer in the server response, before hydration.
 const ChatClient = dynamic<ChatLoaderProps>(
-  () => loadChatModule().then((module) => module.Chat),
-  {
-    ssr: false,
-    loading: ChatSkeleton,
-  }
+  () => import("./chat").then((module) => module.Chat),
+  { loading: ChatSkeleton }
 );
 
+export function preloadChat() {
+  if (typeof window !== "undefined") {
+    void import("./chat").catch((error) => {
+      console.warn("Chat module preload failed", error);
+    });
+  }
+}
+
 export function ChatLoader(props: ChatLoaderProps) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [optimisticSession, setOptimisticSession] = useState<{
+    chatMode: ChatLoaderProps["chatMode"];
+    id: string;
+  } | null>(null);
+  const lastOptimisticRouteRef = useRef<string | null>(null);
+  const isRootChatShellPath = pathname === "/" || pathname === "/chat";
+  const optimisticChatPath = optimisticSession ? `/chat/${optimisticSession.id}` : null;
+  const isOptimisticChatPath =
+    typeof optimisticChatPath === "string" && pathname === optimisticChatPath;
+  const canContinueOptimisticSession =
+    isRootChatShellPath || isOptimisticChatPath;
+
+  const requestedMode = searchParams.get("mode");
+  const newChatFlag = searchParams.get("new");
+  const pendingChatId = searchParams.get("pendingChatId");
+  const requestedChatMode =
+    requestedMode === "study"
+      ? "study"
+      : requestedMode === "jobs"
+        ? "jobs"
+        : requestedMode === "news"
+          ? "news"
+        : "default";
+
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return undefined;
+    if (!canContinueOptimisticSession) {
+      lastOptimisticRouteRef.current = null;
+      setOptimisticSession(null);
+      return;
     }
 
-    let idleId: number | null = null;
-    let timeoutId: number | null = null;
+    if (!isRootChatShellPath || !newChatFlag) {
+      return;
+    }
 
-    const anyWindow = window as typeof window & {
-      requestIdleCallback?: (callback: () => void) => number;
-      cancelIdleCallback?: (handle: number) => void;
-    };
+    const routeKey = `${pathname}?${searchParams.toString()}`;
+    if (lastOptimisticRouteRef.current === routeKey) {
+      return;
+    }
 
-    const schedulePreload = () => {
-      if (typeof anyWindow.requestIdleCallback === "function") {
-        idleId = anyWindow.requestIdleCallback(() => {
-          preloadChat();
-        });
-      } else {
-        timeoutId = window.setTimeout(() => {
-          preloadChat();
-        }, 200);
+    lastOptimisticRouteRef.current = routeKey;
+    setOptimisticSession({
+      chatMode: requestedChatMode,
+      id: pendingChatId?.trim() || generateUUID(),
+    });
+  }, [
+    canContinueOptimisticSession,
+    isRootChatShellPath,
+    newChatFlag,
+    pendingChatId,
+    pathname,
+    requestedChatMode,
+    searchParams,
+  ]);
+
+  const activeProps = optimisticSession && canContinueOptimisticSession
+    ? {
+        ...props,
+        autoResume: false,
+        chatMode: optimisticSession.chatMode,
+        id: optimisticSession.id,
+        initialHasMoreHistory: false,
+        initialJobContext: null,
+        initialMessages: [],
+        initialOldestMessageAt: null,
       }
-    };
+    : props;
 
-    schedulePreload();
-
-    return () => {
-      if (idleId !== null && typeof anyWindow.cancelIdleCallback === "function") {
-        anyWindow.cancelIdleCallback(idleId);
-      }
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
-      }
-    };
+  useEffect(() => {
+    doneGlobalProgress();
   }, []);
 
-  return <ChatClient {...props} />;
+  return <ChatClient key={`${activeProps.id}:${activeProps.chatMode}`} {...activeProps} />;
 }

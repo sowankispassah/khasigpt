@@ -1,5 +1,6 @@
 import type { Geo } from "@vercel/functions";
 import type { ArtifactKind } from "@/components/artifact";
+import { buildKhasiGptSystemPrompt } from "@/lib/ai/identity";
 
 export type RequestHints = {
   latitude: Geo["latitude"];
@@ -9,16 +10,12 @@ export type RequestHints = {
 };
 
 export const systemPrompt = ({
-  selectedChatModel,
-  requestHints,
   modelSystemPrompt,
 }: {
-  selectedChatModel: string;
   requestHints: RequestHints;
   modelSystemPrompt: string | null;
-}): string | null => {
-  const trimmedPrompt = modelSystemPrompt?.trim();
-  return trimmedPrompt && trimmedPrompt.length > 0 ? trimmedPrompt : null;
+}): string => {
+  return buildKhasiGptSystemPrompt(modelSystemPrompt);
 };
 
 export const buildUpdatePrompt = (

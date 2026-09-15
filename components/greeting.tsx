@@ -1,40 +1,67 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 
 import { useTranslation } from "@/components/language-provider";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 
-export const Greeting = () => {
+export const Greeting = ({
+  title,
+  subtitle,
+}: {
+  title?: string;
+  subtitle?: string;
+}) => {
   const { translate } = useTranslation();
-  const [isVisible, setIsVisible] = useState(false);
+  const { data: session } = useSession();
+  const firstName =
+    typeof session?.user?.firstName === "string"
+      ? session.user.firstName.trim()
+      : "";
 
-  useEffect(() => {
-    const timer =
-      typeof window !== "undefined"
-        ? window.setTimeout(() => setIsVisible(true), 50)
-        : undefined;
-
-    return () => {
-      if (typeof timer === "number") {
-        window.clearTimeout(timer);
-      }
-    };
-  }, []);
-
-  const baseClasses =
-    "transition-all duration-500 ease-out will-change-transform";
+  const defaultTitle = firstName
+    ? translate("greeting.title", "Hi, {name}").replaceAll("{name}", firstName)
+    : translate("greeting.title", "Hi, {name}")
+        .replaceAll("{name}", "")
+        .replace(/\s{2,}/g, " ")
+        .replace(/(^[,\s]+|[,\s]+$)/g, "")
+        .trim();
+  const greetingTitle = title ?? defaultTitle;
+  const greetingSubtitle =
+    subtitle ?? translate("greeting.subtitle", "How can I help you today?");
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col items-center justify-center gap-2 px-4 text-center sm:gap-3" key="overview">
+    <div
+      className="mx-auto flex w-full max-w-3xl flex-col items-center justify-center gap-2 px-4 text-center sm:gap-3"
+      key="overview"
+      data-testid="chat-greeting"
+    >
       <div
-        className={`${baseClasses} font-semibold text-xl md:text-2xl ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"}`}
+        className="font-semibold text-xl md:text-2xl"
       >
-        {translate("greeting.title", "Hello there!")}
+        {title ? (
+          greetingTitle
+        ) : (
+          <EditableTranslation
+            defaultText="Hi, {name}"
+            description="Greeting headline above the chat input. Use {name} as the placeholder for the user's first name."
+            translationKey="greeting.title"
+            values={{ name: firstName }}
+          />
+        )}
       </div>
       <div
-        className={`${baseClasses} text-xl text-muted-foreground md:text-2xl delay-75 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"}`}
+        className="text-muted-foreground text-xl md:text-2xl"
       >
-        {translate("greeting.subtitle", "How can I help you today?")}
+        {subtitle ? (
+          greetingSubtitle
+        ) : (
+          <EditableTranslation
+            defaultText="How can I help you today?"
+            description="Secondary greeting line beneath the hero title."
+            translationKey="greeting.subtitle"
+          />
+        )}
       </div>
     </div>
   );

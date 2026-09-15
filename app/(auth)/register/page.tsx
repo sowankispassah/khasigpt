@@ -1,12 +1,16 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
-import { useActionState, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 
 import { AuthForm } from "@/components/auth-form";
+import { useTranslation } from "@/components/language-provider";
 import { SubmitButton } from "@/components/submit-button";
 import { toast } from "@/components/toast";
-import { useTranslation } from "@/components/language-provider";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 
 import { type RegisterActionState, register } from "../actions";
 import { GoogleSignInSection } from "../google-sign-in-button";
@@ -21,10 +25,14 @@ export default function Page() {
 }
 
 function RegisterContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { data: session, status } = useSession();
   const { callbackUrl } = useAuthCallback();
   const { translate } = useTranslation();
   const [email, setEmail] = useState("");
-  const [showEmailFields, setShowEmailFields] = useState(false);
+  const credentialsParam = searchParams?.get("credentials") === "1";
+  const [showEmailFields, setShowEmailFields] = useState(credentialsParam);
   const [isSuccessful, setIsSuccessful] = useState(false);
 
   const [state, formAction] = useActionState<RegisterActionState, FormData>(
@@ -35,6 +43,15 @@ function RegisterContent() {
   );
 
   useEffect(() => {
+    if (status === "authenticated" && session?.user) {
+      router.replace(callbackUrl);
+    }
+  }, [callbackUrl, router, session?.user, status]);
+
+  useEffect(() => {
+    if (credentialsParam) {
+      setShowEmailFields(true);
+    }
     if (state.status === "user_exists") {
       setShowEmailFields(true);
       toast({
@@ -71,6 +88,15 @@ function RegisterContent() {
           "You must accept the Terms of Service and Privacy Policy to continue."
         ),
       });
+    } else if (state.status === "rate_limited") {
+      setShowEmailFields(true);
+      toast({
+        type: "error",
+        description: translate(
+          "register.error.rate_limited",
+          "Too many sign-up attempts. Please try again later."
+        ),
+      });
     } else if (state.status === "verification_sent") {
       setShowEmailFields(true);
       toast({
@@ -83,7 +109,14 @@ function RegisterContent() {
       setIsSuccessful(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.status]);
+  }, [credentialsParam, state.status, translate]);
+
+  const credentialsHref = useMemo(() => {
+    const params = new URLSearchParams(searchParams?.toString());
+    params.set("credentials", "1");
+    const query = params.toString();
+    return query ? `/register?${query}` : "/register?credentials=1";
+  }, [searchParams]);
 
   const handleSubmit = (formData: FormData) => {
     setEmail(formData.get("email") as string);
@@ -93,38 +126,44 @@ function RegisterContent() {
   };
 
   return (
-    <>
-      <div className="flex h-dvh w-screen items-start justify-center bg-background pt-12 md:items-center md:pt-0">
-        <div className="flex w-full max-w-md flex-col gap-4 overflow-hidden rounded-2xl">
-          <div className="flex flex-col items-center justify-center gap-2 px-4 text-center sm:px-16">
-            <p className="text-muted-foreground text-sm">
-              {translate(
-                "auth.subtitle",
-                "KhasiGPT is your smart AI assistant designed to understand and speak Khasi language."
-              )}
-            </p>
-            <img
-              alt="KhasiGPT logo"
-              className="mt-4 h-7 w-auto dark:invert dark:brightness-150"
-              src="/images/khasigptlogo.png"
+    <div className="flex h-dvh w-screen items-start justify-center bg-background pt-12 md:items-center md:pt-0">
+      <div className="flex w-full max-w-md flex-col gap-4 overflow-hidden rounded-2xl">
+        <div className="flex flex-col items-center justify-center gap-2 px-4 text-center sm:px-16">
+          <p className="text-muted-foreground text-sm">
+            <EditableTranslation
+              defaultText="KhasiGPT is your smart AI assistant designed to understand and speak Khasi language."
+              translationKey="auth.subtitle"
             />
-            <h3 className="font-semibold text-xl dark:text-zinc-50">
-              {translate("register.title", "Sign Up To KhasiGPT")}
-            </h3>
-          </div>
-          <AuthForm
-            action={handleSubmit}
-            credentialsVisible={showEmailFields}
-            defaultEmail={email}
-            lead={
-              <GoogleSignInSection callbackUrl={callbackUrl} mode="register" />
-            }
-            emailButtonLabel={translate(
-              "register.continue_with_email",
-              "Sign up with Email"
-            )}
-            onShowCredentials={() => setShowEmailFields(true)}
-          >
+          </p>
+          <Image
+            alt="KhasiGPT logo"
+            className="mt-4 h-7 w-auto dark:brightness-150 dark:invert"
+            height={32}
+            priority
+            src="/images/khasigptlogo.png"
+            width={160}
+          />
+          <h3 className="font-semibold text-xl dark:text-zinc-50">
+            <EditableTranslation
+              defaultText="Sign Up To KhasiGPT"
+              translationKey="register.title"
+            />
+          </h3>
+        </div>
+        <AuthForm
+          action={handleSubmit}
+          credentialsVisible={showEmailFields}
+          defaultEmail={email}
+          emailButtonLabel={translate(
+            "register.continue_with_email",
+            "Sign up with Email"
+          )}
+          credentialsHref={credentialsHref}
+          lead={
+            <GoogleSignInSection callbackUrl={callbackUrl} mode="register" />
+          }
+          onShowCredentials={() => setShowEmailFields(true)}
+        >
           <div className="flex items-start gap-3 rounded-md border border-input bg-muted/40 px-3 py-3 text-muted-foreground text-sm dark:bg-muted/60">
             <input
               className="mt-1 h-4 w-4 shrink-0 rounded border border-input"
@@ -135,24 +174,42 @@ function RegisterContent() {
             />
             <label className="space-y-1" htmlFor="acceptTerms">
               <span className="font-medium text-foreground">
-                {translate("register.terms_statement_prefix", "I agree to the")}{" "}
+                <EditableTranslation
+                  defaultText="I agree to the"
+                  translationKey="register.terms_statement_prefix"
+                />{" "}
                 <Link
                   className="text-primary underline"
                   href="/terms-of-service"
                 >
-                  {translate("register.terms_terms", "Terms of Service")}
+                  <EditableTranslation
+                    defaultText="Terms of Service"
+                    translationKey="register.terms_terms"
+                  />
                 </Link>{" "}
-                {translate("register.terms_statement_and", "and")}{" "}
+                <EditableTranslation
+                  defaultText="and"
+                  translationKey="register.terms_statement_and"
+                />{" "}
                 <Link className="text-primary underline" href="/privacy-policy">
-                  {translate("register.terms_privacy", "Privacy Policy")}
+                  <EditableTranslation
+                    defaultText="Privacy Policy"
+                    translationKey="register.terms_privacy"
+                  />
                 </Link>
-                {translate("register.terms_statement_suffix", ".")}
+                <EditableTranslation
+                  defaultText="."
+                  translationKey="register.terms_statement_suffix"
+                />
               </span>
             </label>
           </div>
           <div className="flex flex-col gap-1.5">
             <SubmitButton isSuccessful={isSuccessful}>
-              {translate("register.cta", "Sign Up")}
+              <EditableTranslation
+                defaultText="Sign Up"
+                translationKey="register.cta"
+              />
             </SubmitButton>
             {state.status === "verification_sent" ? (
               <p className="rounded-md bg-muted/50 px-3 py-2 text-center text-muted-foreground text-sm">
@@ -165,21 +222,25 @@ function RegisterContent() {
           </div>
         </AuthForm>
         <p className="mt-4 px-4 text-center text-gray-600 text-sm sm:px-16 dark:text-zinc-400">
-          {translate(
-            "register.login_prompt_prefix",
-            "Already have an account?"
-          )}{" "}
+          <EditableTranslation
+            defaultText="Already have an account?"
+            translationKey="register.login_prompt_prefix"
+          />{" "}
           <Link
             className="font-semibold text-gray-800 hover:underline dark:text-zinc-200"
             href="/login"
           >
-            {translate("register.login_prompt_link", "Sign in")}
-          </Link>
-          {" "}
-          {translate("register.login_prompt_suffix", "instead.")}
+            <EditableTranslation
+              defaultText="Sign in"
+              translationKey="register.login_prompt_link"
+            />
+          </Link>{" "}
+          <EditableTranslation
+            defaultText="instead."
+            translationKey="register.login_prompt_suffix"
+          />
         </p>
       </div>
     </div>
-    </>
   );
 }
