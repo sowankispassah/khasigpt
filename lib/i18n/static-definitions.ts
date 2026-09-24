@@ -5737,6 +5737,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   { key: "admin.icon_prompts.save_list", defaultText: "Save icon prompts", description: "Admin icon shortcut list save button." },
   { key: "admin.icon_prompts.saving", defaultText: "Saving...", description: "Admin icon shortcut save pending label." },
   { key: "admin.icon_prompts.status.feature_access", defaultText: "Feature access applies", description: "Admin icon shortcut permission-gated status." },
+  { key: "admin.icon_prompts.image_access.label", defaultText: "Follow AI image generation access", description: "Admin image-mode prompt shortcut visibility option." },
+  { key: "admin.icon_prompts.image_access.help", defaultText: "Show this shortcut only to users allowed to generate images.", description: "Admin image-mode prompt shortcut visibility explanation." },
   { key: "admin.icon_prompts.platform.both_suffix", defaultText: " (Web + Android)", description: "Admin icon shortcut platform suffix." },
   { key: "admin.icon_prompts.platform.web_suffix", defaultText: " (Web only)", description: "Admin icon shortcut platform suffix." },
   { key: "admin.icon_prompts.platform.android_suffix", defaultText: " (Android only)", description: "Admin icon shortcut platform suffix." },

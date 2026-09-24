@@ -52,6 +52,7 @@ type EditableItem = {
   isActive: boolean;
   behavior: IconPromptBehavior;
   selectImageMode: boolean;
+  requiresImageGenerationAccess: boolean;
   showSuggestions: boolean;
   suggestions: string[];
   suggestionPrompts: string[];
@@ -78,6 +79,7 @@ function createEmptyItem(defaultLabel = "", defaultPrompt = ""): EditableItem {
     isActive: true,
     behavior: DEFAULT_BEHAVIOR,
     selectImageMode: false,
+    requiresImageGenerationAccess: false,
     showSuggestions: false,
     suggestions: [],
     suggestionPrompts: [],
@@ -103,6 +105,7 @@ function normalizeItems(items: IconPromptItem[]): EditableItem[] {
     isActive: item.isActive,
     behavior: item.behavior,
     selectImageMode: item.selectImageMode,
+    requiresImageGenerationAccess: item.requiresImageGenerationAccess,
     showSuggestions: item.showSuggestions,
     suggestions: item.suggestions ?? [],
     suggestionPrompts: item.suggestionPrompts ?? [],
@@ -211,6 +214,7 @@ export function IconPromptSettingsForm({
           isActive: item.isActive,
           behavior: item.behavior,
           selectImageMode: item.selectImageMode,
+          requiresImageGenerationAccess: item.requiresImageGenerationAccess,
           showSuggestions: item.showSuggestions,
           suggestions: sanitized.suggestions,
           suggestionPrompts: sanitized.suggestionPrompts,
@@ -712,6 +716,15 @@ export function IconPromptSettingsForm({
                             Image mode
                           </span>
                         ) : null}
+                        {item.actionType === "prompt" &&
+                        item.requiresImageGenerationAccess ? (
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800 text-xs dark:bg-amber-950 dark:text-amber-200">
+                            {translate(
+                              "admin.icon_prompts.status.feature_access",
+                              "Feature access applies"
+                            )}
+                          </span>
+                        ) : null}
                         {item.actionType !== "prompt" &&
                         !getHomeShortcutTarget(item.targetId) ? (
                           <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-800 text-xs dark:bg-red-950 dark:text-red-200">
@@ -839,6 +852,7 @@ export function IconPromptSettingsForm({
                         onChange={(event) =>
                           updateItem(item.id, {
                             selectImageMode: event.target.checked,
+                            requiresImageGenerationAccess: event.target.checked,
                           })
                         }
                         type="checkbox"
@@ -847,6 +861,34 @@ export function IconPromptSettingsForm({
                     </label>
                   ) : null}
                 </div>
+                {item.actionType === "prompt" && item.selectImageMode ? (
+                  <label className="flex cursor-pointer items-start gap-2 text-sm">
+                    <input
+                      checked={item.requiresImageGenerationAccess}
+                      className="mt-1 cursor-pointer"
+                      onChange={(event) =>
+                        updateItem(item.id, {
+                          requiresImageGenerationAccess: event.target.checked,
+                        })
+                      }
+                      type="checkbox"
+                    />
+                    <span>
+                      <span className="block font-medium">
+                        {translate(
+                          "admin.icon_prompts.image_access.label",
+                          "Follow AI image generation access"
+                        )}
+                      </span>
+                      <span className="block text-muted-foreground text-xs">
+                        {translate(
+                          "admin.icon_prompts.image_access.help",
+                          "Show this shortcut only to users allowed to generate images."
+                        )}
+                      </span>
+                    </span>
+                  </label>
+                ) : null}
               </div>
 
               <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">

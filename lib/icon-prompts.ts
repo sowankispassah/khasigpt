@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { parseImageGenerationAccessModeSetting } from "@/lib/ai/image-generation";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
   EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
@@ -57,6 +58,7 @@ export type IconPromptItem = {
   isActive: boolean;
   behavior: IconPromptBehavior;
   selectImageMode: boolean;
+  requiresImageGenerationAccess: boolean;
   showSuggestions: boolean;
   suggestions: string[];
   suggestionPrompts?: string[];
@@ -84,6 +86,7 @@ export type IconPromptAction = {
   iconUrl: string | null;
   behavior: IconPromptBehavior;
   selectImageMode: boolean;
+  requiresImageGenerationAccess: boolean;
   showSuggestions: boolean;
   suggestions: IconPromptSuggestion[];
   targetId: string | null;
@@ -108,6 +111,7 @@ type StoredIconPromptItem = {
   isActive?: unknown;
   behavior?: unknown;
   selectImageMode?: unknown;
+  requiresImageGenerationAccess?: unknown;
   showSuggestions?: unknown;
   suggestions?: unknown;
   suggestionPrompts?: unknown;
@@ -291,6 +295,10 @@ export function normalizeIconPromptSettings(
       typeof entry.isActive === "boolean" ? entry.isActive : true;
     const behavior = normalizeBehavior(entry.behavior);
     const selectImageMode = normalizeBoolean(entry.selectImageMode, false);
+    const requiresImageGenerationAccess =
+      actionType === "prompt" &&
+      selectImageMode &&
+      normalizeBoolean(entry.requiresImageGenerationAccess, true);
     const showSuggestions = normalizeBoolean(entry.showSuggestions, false);
     const suggestions = normalizeStringArray(entry.suggestions);
     const suggestionPrompts = normalizeOptionalStringArray(
@@ -345,6 +353,7 @@ export function normalizeIconPromptSettings(
       isActive,
       behavior,
       selectImageMode,
+      requiresImageGenerationAccess,
       showSuggestions,
       suggestions,
       suggestionPrompts,
@@ -458,6 +467,7 @@ export function getDefaultIconPromptActions(
         iconUrl: null,
         behavior: "replace",
         selectImageMode: true,
+        requiresImageGenerationAccess: true,
         showSuggestions: true,
         suggestions: buildPromptSuggestions([
           { label: "Tirot Sing kum u briew Shisha" },
@@ -473,6 +483,7 @@ export function getDefaultIconPromptActions(
         iconUrl: null,
         behavior: "replace",
         selectImageMode: false,
+        requiresImageGenerationAccess: false,
         showSuggestions: true,
         suggestions: buildPromptSuggestions([
           { label: "Jingrwai shaphang ka jingitynnad ka Meghalaya" },
@@ -492,6 +503,7 @@ export function getDefaultIconPromptActions(
       iconUrl: null,
       behavior: "replace",
       selectImageMode: true,
+      requiresImageGenerationAccess: true,
       showSuggestions: true,
       suggestions: buildPromptSuggestions([
         { label: "Tirot Sing as a real person" },
@@ -507,6 +519,7 @@ export function getDefaultIconPromptActions(
       iconUrl: null,
       behavior: "replace",
       selectImageMode: false,
+      requiresImageGenerationAccess: false,
       showSuggestions: true,
       suggestions: buildPromptSuggestions([
         { label: "Lyrics about the beauty of Meghalaya" },
@@ -590,6 +603,14 @@ async function fetchIconPromptActions(
     return [];
   }
 
+  const imageGenerationAccessEnabled = isFeatureEnabledForRole(
+    parseImageGenerationAccessModeSetting(
+      featureSettings.get(IMAGE_GENERATION_FEATURE_FLAG_KEY)
+    ),
+    userRole,
+    userAccess.values.get(IMAGE_GENERATION_FEATURE_FLAG_KEY)
+  );
+
   const defaultLanguage =
     languages.find((language) => language.isDefault) ?? languages[0] ?? null;
   const defaultCode = defaultLanguage?.code ?? null;
@@ -642,7 +663,10 @@ async function fetchIconPromptActions(
         return false;
       }
       if (item.actionType === "prompt") {
-        return true;
+        return (
+          !item.requiresImageGenerationAccess ||
+          imageGenerationAccessEnabled
+        );
       }
       const target = getHomeShortcutTarget(item.targetId);
       return Boolean(
@@ -673,6 +697,8 @@ async function fetchIconPromptActions(
       behavior: item.actionType === "prompt" ? item.behavior : "replace",
       selectImageMode:
         item.actionType === "prompt" && item.selectImageMode,
+      requiresImageGenerationAccess:
+        item.actionType === "prompt" && item.requiresImageGenerationAccess,
       showSuggestions:
         item.actionType === "prompt" && item.showSuggestions,
       suggestions: item.actionType === "prompt" && item.showSuggestions
@@ -726,7 +752,10 @@ async function fetchIconPromptActions(
     console.warn(
       `[icon-prompts] Using render-only defaults after unconfirmed settings read for language "${activeLanguage.code}".`
     );
-    return getDefaultIconPromptActions(activeLanguage.code);
+    return getDefaultIconPromptActions(activeLanguage.code).filter(
+      (item) =>
+        !item.requiresImageGenerationAccess || imageGenerationAccessEnabled
+    );
   }
 
   console.info(

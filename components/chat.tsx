@@ -387,7 +387,11 @@ export function Chat({
   const resolvedSuggestedPrompts =
     promptActionsData?.prompts ?? suggestedPrompts;
   const resolvedIconPromptActions =
-    promptActionsData?.iconPromptActions ?? iconPromptActions;
+    (promptActionsData?.iconPromptActions ?? iconPromptActions).filter(
+      (action) =>
+        !(action.requiresImageGenerationAccess ?? action.selectImageMode) ||
+        imageGeneration.enabled
+    );
   const historyRevalidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
@@ -1387,6 +1391,20 @@ export function Chat({
   const handleIconPromptSelect = useCallback(
     (item: IconPromptAction) => {
       const actionType = item.actionType ?? "prompt";
+      if (
+        ((actionType === "tool" && item.targetId === "image_generation") ||
+          (actionType === "prompt" && item.selectImageMode)) &&
+        !imageGeneration.enabled
+      ) {
+        toast({
+          type: "error",
+          description: translate(
+            "image.disabled",
+            "Image generation is currently unavailable."
+          ),
+        });
+        return;
+      }
       if (actionType === "feature") {
         const target = getHomeShortcutTarget(item.targetId);
         if (!target?.webHref) {
@@ -1450,7 +1468,7 @@ export function Chat({
         setIsImageMode(false);
       }
     },
-    [refreshImageGenerationAccess, router]
+    [imageGeneration.enabled, refreshImageGenerationAccess, router, translate]
   );
 
   const resolveImageIntentForPrompt = useCallback(
