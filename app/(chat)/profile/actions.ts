@@ -3,11 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { signOut } from "@/app/(auth)/auth";
+import { updateAuthUserProfileFields } from "@/lib/db/auth-queries";
 import {
   createAuditLogEntry,
   updateUserActiveState,
   updateUserLocation,
-  updateUserName,
   updateUserPassword,
 } from "@/lib/db/queries";
 import {
@@ -36,8 +36,8 @@ export type UpdatePasswordState =
 
 export type UpdateProfileNameState =
   | { status: "idle" }
-  | { status: "error"; message: string }
-  | { status: "success"; message: string };
+  | { status: "error"; reason: "invalid" | "unavailable" }
+  | { status: "success"; firstName: string; lastName: string };
 
 export type DeactivateAccountState =
   | { status: "idle" }
@@ -113,33 +113,56 @@ export async function updateNameAction(
   });
 
   if (!parsed.success) {
-    const firstIssue = parsed.error.issues.at(0);
     return {
       status: "error",
-      message: firstIssue?.message ?? "Invalid input.",
+      reason: "invalid",
     };
   }
 
-  const clientInfo = await getClientInfoFromHeaders();
-  await updateUserName({
-    id: user.id,
-    firstName: parsed.data.firstName,
-    lastName: parsed.data.lastName,
-  });
+  let updated: Awaited<ReturnType<typeof updateAuthUserProfileFields>>;
+  try {
+    updated = await updateAuthUserProfileFields({
+      id: user.id,
+      firstName: parsed.data.firstName,
+      lastName: parsed.data.lastName,
+    });
+  } catch (error) {
+    console.error("[profile/name] Failed to save name.", {
+      userId: user.id,
+      error,
+    });
+    return { status: "error", reason: "unavailable" };
+  }
 
-  await createAuditLogEntry({
-    actorId: user.id,
-    action: "user.profile.name.update",
-    target: { userId: user.id },
-    subjectUserId: user.id,
-    ...clientInfo,
-  });
+  if (!updated) {
+    return { status: "error", reason: "unavailable" };
+  }
 
-  revalidatePath("/profile");
+  try {
+    const clientInfo = await getClientInfoFromHeaders();
+    void createAuditLogEntry({
+      actorId: user.id,
+      action: "user.profile.name.update",
+      target: { userId: user.id },
+      subjectUserId: user.id,
+      ...clientInfo,
+    }).catch((error) => {
+      console.error("[profile/name] Failed to write audit log.", {
+        userId: user.id,
+        error,
+      });
+    });
+  } catch (error) {
+    console.error("[profile/name] Failed to read audit context.", {
+      userId: user.id,
+      error,
+    });
+  }
 
   return {
     status: "success",
-    message: "Profile updated successfully.",
+    firstName: updated.firstName ?? parsed.data.firstName,
+    lastName: updated.lastName ?? parsed.data.lastName,
   };
 }
 

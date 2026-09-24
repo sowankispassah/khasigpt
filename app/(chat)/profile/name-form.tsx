@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
+import { updateNameAction } from "./actions";
 
 type NameFormProps = {
   initialFirstName: string | null;
@@ -32,46 +33,44 @@ export function NameForm({ initialFirstName, initialLastName }: NameFormProps) {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSaving) {
+      return;
+    }
+    const formData = new FormData(event.currentTarget);
     setIsSaving(true);
     setStatus(null);
 
     try {
-      const response = await fetch("/api/mobile/profile", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          firstName,
-          lastName,
-        }),
-      });
-
-      const body = (await response.json().catch(() => null)) as
-        | { error?: string; ok?: boolean }
-        | null;
-
-      if (!response.ok || body?.ok === false) {
+      const result = await updateNameAction({ status: "idle" }, formData);
+      if (result.status !== "success") {
         setStatus({
           message:
-            body?.error ??
-            translate("profile.name.error", "Unable to update profile."),
+            result.status === "error" && result.reason === "invalid"
+              ? translate(
+                  "profile.name.invalid",
+                  "Enter a first and last name of up to 64 characters each."
+                )
+              : translate("profile.name.error", "Unable to update profile."),
           type: "error",
         });
         return;
       }
 
-      await updateSession({
-        firstName,
-        lastName,
-        name: [firstName, lastName].filter(Boolean).join(" "),
-      });
+      setFirstName(result.firstName);
+      setLastName(result.lastName);
       setStatus({
         message: translate(
           "profile.name.success",
           "Profile details updated successfully."
         ),
         type: "success",
+      });
+      void updateSession({
+        firstName: result.firstName,
+        lastName: result.lastName,
+        name: [result.firstName, result.lastName].join(" "),
+      }).catch((error) => {
+        console.error("[profile/name] Failed to refresh session.", error);
       });
     } catch {
       setStatus({
@@ -116,6 +115,7 @@ export function NameForm({ initialFirstName, initialLastName }: NameFormProps) {
           <input
             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             id="profile-first-name"
+            maxLength={64}
             name="firstName"
             onChange={(event) => setFirstName(event.target.value)}
             required
@@ -133,6 +133,7 @@ export function NameForm({ initialFirstName, initialLastName }: NameFormProps) {
           <input
             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             id="profile-last-name"
+            maxLength={64}
             name="lastName"
             onChange={(event) => setLastName(event.target.value)}
             required

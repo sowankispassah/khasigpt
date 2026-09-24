@@ -2862,6 +2862,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Error shown when profile details cannot be updated.",
   },
   {
+    key: "profile.name.invalid",
+    defaultText: "Enter a first and last name of up to 64 characters each.",
+    description: "Validation error shown for an invalid profile name.",
+  },
+  {
     key: "profile.name.saving",
     defaultText: "Saving...",
     description: "Button label while name update is saving.",
