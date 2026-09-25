@@ -1445,6 +1445,7 @@ export default async function AdminJobsPage({
       </CollapsibleSectionCard>
       ) : null}
 
+      {runnerMode === "project" ? (
       <CollapsibleSectionCard contentClassName="space-y-4 text-sm" title="PDF Extraction">
           {jobSettingsUnavailable ? (
             <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-700 text-sm">
@@ -1518,6 +1519,7 @@ export default async function AdminJobsPage({
             </p>
           </div>
       </CollapsibleSectionCard>
+      ) : null}
 
       <Suspense fallback={<JobsPanelFallback rows={6} title="Scraping History" />}>
         <JobsScrapeHistorySection

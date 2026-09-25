@@ -491,9 +491,9 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Label for the ChatGPT desktop jobs import schedule.",
   },
   {
-    key: "admin.jobs.runner.chatgpt_details",
-    defaultText: "This computer checks every 15 minutes while ChatGPT is open. It imports at 6:00 AM India time, or catches up after a missed run. Site scrapes are blocked.",
-    description: "Description of the ChatGPT desktop jobs runner mode.",
+    key: "admin.jobs.runner.chatgpt_codex_details",
+    defaultText: "The ChatGPT desktop task finds jobs on the web at its scheduled time or when you press Run now. KhasiGPT only validates and saves the listings; its web scraper and Google PDF extraction are not used.",
+    description: "Description of the Codex-gathered jobs runner mode.",
   },
   {
     key: "admin.jobs.runner.save",

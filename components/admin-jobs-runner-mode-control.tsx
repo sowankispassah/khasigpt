@@ -90,9 +90,9 @@ export function AdminJobsRunnerModeControl({
                 </span>
                 <span className="block text-muted-foreground text-xs">
                   <EditableTranslation
-                    translationKey="admin.jobs.runner.chatgpt_details"
-                    defaultText="This computer checks every 15 minutes while ChatGPT is open. It imports at 6:00 AM India time, or catches up after a missed run. Site scrapes are blocked."
-                    description="Description of the ChatGPT desktop jobs runner mode."
+                    translationKey="admin.jobs.runner.chatgpt_codex_details"
+                    defaultText="The ChatGPT desktop task finds jobs on the web at its scheduled time or when you press Run now. KhasiGPT only validates and saves the listings; its web scraper and Google PDF extraction are not used."
+                    description="Description of the Codex-gathered jobs runner mode."
                   />
                 </span>
               </span>
