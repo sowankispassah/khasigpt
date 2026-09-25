@@ -65,6 +65,7 @@ function writeSkipped(skipReason: string, dueAt: Date | null = null) {
 }
 
 async function main() {
+  const forceManualRun = process.argv.includes("--force");
   if (process.argv.includes("--check")) {
     const [runnerMode, sources, lastSuccessAt] = await Promise.all([
       getJobsScrapeRunnerModeUncached(),
@@ -98,7 +99,7 @@ async function main() {
   const dueAt = getLatestDailyDueAt(now);
   const lastSuccessAt = await getLastSuccessfulRunAt();
   const satisfiedDueReason = getSatisfiedDueReason(lastSuccessAt, now, dueAt);
-  if (satisfiedDueReason) {
+  if (satisfiedDueReason && !forceManualRun) {
     writeSkipped(satisfiedDueReason, dueAt);
     return;
   }
@@ -119,6 +120,7 @@ async function main() {
   process.stdout.write(
     `${JSON.stringify({
       ok: result.ok,
+      forceManualRun,
       skipped: result.skipped,
       skipReason: result.skipReason,
       startedAt: result.startedAt,
