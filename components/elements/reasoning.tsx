@@ -4,6 +4,7 @@ import { useControllableState } from "@radix-ui/react-use-controllable-state";
 import { BrainIcon, ChevronDownIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
+import { useTranslation } from "@/components/language-provider";
 import {
   Collapsible,
   CollapsibleContent,
@@ -115,6 +116,7 @@ export type ReasoningTriggerProps = ComponentProps<typeof CollapsibleTrigger>;
 export const ReasoningTrigger = memo(
   ({ className, children, ...props }: ReasoningTriggerProps) => {
     const { isStreaming, isOpen, duration } = useReasoning();
+    const { translate } = useTranslation();
 
     return (
       <CollapsibleTrigger
@@ -128,9 +130,14 @@ export const ReasoningTrigger = memo(
           <>
             <BrainIcon className="size-4" />
             {isStreaming || duration === 0 ? (
-              <p>Thinking...</p>
+              <p>{translate("chat.reasoning.thinking", "Thinking...")}</p>
             ) : (
-              <p>Thought for {duration}s</p>
+              <p>
+                {translate(
+                  "chat.reasoning.thought_for",
+                  "Thought for {duration}s"
+                ).replace("{duration}", String(duration))}
+              </p>
             )}
             <ChevronDownIcon
               className={cn(

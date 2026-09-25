@@ -1,0 +1,4 @@
+interface:
+  display_name: "Shared RAG Retrieval"
+  short_description: "Protect the shared multilingual RAG pipeline"
+  default_prompt: "Use $shared-rag-retrieval to review or change KhasiGPT knowledge retrieval safely."

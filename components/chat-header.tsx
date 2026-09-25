@@ -1,77 +1,108 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { memo, useTransition } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { memo, useCallback, useEffect, useState } from "react";
 import { useWindowSize } from "usehooks-ts";
-
 import { SidebarToggle } from "@/components/sidebar-toggle";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
+import { buildPendingChatHref } from "@/lib/chat/navigation";
+import { startGlobalProgress } from "@/lib/ui/global-progress";
+import { generateUUID } from "@/lib/utils";
 
-import { LoaderIcon, PlusIcon } from "./icons";
+import { PlusIcon } from "./icons";
 import { useSidebar } from "./ui/sidebar";
 import { VisibilitySelector, type VisibilityType } from "./visibility-selector";
-
-
 
 function PureChatHeader({
   chatId,
   selectedVisibilityType,
   isReadonly,
+  showInlineControls = true,
 }: {
   chatId: string;
   selectedVisibilityType: VisibilityType;
   isReadonly: boolean;
+  showInlineControls?: boolean;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { open } = useSidebar();
-  const [isPending, startTransition] = useTransition();
+  const [isOpeningNewChat, setIsOpeningNewChat] = useState(false);
 
   const { width: windowWidth } = useWindowSize();
+  const isChatShellPath = pathname === "/" || pathname.startsWith("/chat");
+  const isChatDetailPage = pathname.startsWith("/chat/");
+
+  useEffect(() => {
+    setIsOpeningNewChat(false);
+  }, []);
+
+  const handleNewChatClick = useCallback(() => {
+    if (isOpeningNewChat) {
+      return;
+    }
+    setIsOpeningNewChat(true);
+    startGlobalProgress();
+    const nextHref = buildPendingChatHref({
+      href: "/chat?new=1",
+      pendingChatId: generateUUID(),
+    });
+    if (typeof window !== "undefined" && isChatShellPath) {
+      window.history.pushState(null, "", nextHref);
+      return;
+    }
+    router.push(nextHref, { scroll: false });
+  }, [isChatShellPath, isOpeningNewChat, router]);
 
   return (
-    <header className="sticky top-0 flex items-center gap-2 bg-background px-2 py-1.5 pr-[5rem] md:px-2 md:pr-[5rem]">
+    <header className="sticky top-0 flex items-center gap-1.5 bg-background px-1.5 py-1.5 pr-[5rem] sm:gap-2 sm:px-2">
       <SidebarToggle />
 
-      {!isReadonly && (
-        <VisibilitySelector
-          chatId={chatId}
-          className="order-1 md:order-2"
-          selectedVisibilityType={selectedVisibilityType}
-        />
+      {isChatDetailPage ? null : (
+        <span className="min-w-0 truncate font-semibold text-sm">
+          <EditableTranslation
+            defaultText="KhasiGPT"
+            description="Application brand name beside the chat sidebar toggle."
+            translationKey="app.brand"
+          />
+        </span>
       )}
 
-      <div className="order-2 ml-auto -mr-2 flex items-center gap-3 md:order-3">
-        {(!open || windowWidth < 768) && (
+      {isChatDetailPage && !isReadonly && showInlineControls ? (
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <VisibilitySelector
+            chatId={chatId}
+            showOnMobile
+            selectedVisibilityType={selectedVisibilityType}
+          />
+        </div>
+      ) : null}
+
+      <div className="order-2 ml-auto flex items-center gap-1.5 sm:-mr-2 md:order-3 md:gap-3">
+        {isChatDetailPage && (!open || windowWidth < 768) ? (
           <Button
-            aria-busy={isPending}
-            className="h-8 px-2 md:h-fit md:px-2"
-            disabled={isPending}
-            onClick={() => {
-              if (isPending) {
-                return;
-              }
-              startTransition(() => {
-                router.push("/");
-                router.refresh();
-              });
-            }}
+            className="h-8 gap-1.5 px-2 text-sm md:h-fit md:px-2"
+            disabled={isOpeningNewChat}
+            onClick={handleNewChatClick}
             variant="outline"
           >
-            {isPending ? (
-              <span className="flex items-center gap-1">
-                <span className="flex h-4 w-4 items-center justify-center animate-spin">
-                  <LoaderIcon size={14} />
-                </span>
-                <span className="md:sr-only">Loading</span>
-              </span>
-            ) : (
-              <>
-                <PlusIcon />
-                <span className="md:sr-only">New Chat</span>
-              </>
-            )}
+            <PlusIcon />
+            <span className="md:sr-only">
+              {isOpeningNewChat ? (
+                <EditableTranslation
+                  defaultText="Opening..."
+                  translationKey="navigation.opening"
+                />
+              ) : (
+                <EditableTranslation
+                  defaultText="New Chat"
+                  translationKey="chat.header.new_chat"
+                />
+              )}
+            </span>
           </Button>
-        )}
+        ) : null}
       </div>
     </header>
   );
@@ -81,6 +112,7 @@ export const ChatHeader = memo(PureChatHeader, (prevProps, nextProps) => {
   return (
     prevProps.chatId === nextProps.chatId &&
     prevProps.selectedVisibilityType === nextProps.selectedVisibilityType &&
-    prevProps.isReadonly === nextProps.isReadonly
+    prevProps.isReadonly === nextProps.isReadonly &&
+    prevProps.showInlineControls === nextProps.showInlineControls
   );
 });

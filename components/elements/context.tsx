@@ -90,14 +90,10 @@ function InfoRow({
           {tokens === undefined ? "—" : tokens.toLocaleString()}
         </span>
         {typeof costUSD === "number" && Number.isFinite(costUSD) && (
-          <span className="text-muted-foreground">
-            ${costUSD.toFixed(6)}
-          </span>
+          <span className="text-muted-foreground">${costUSD.toFixed(6)}</span>
         )}
         {typeof costINR === "number" && Number.isFinite(costINR) && (
-          <span className="text-muted-foreground">
-            ₹{costINR.toFixed(4)}
-          </span>
+          <span className="text-muted-foreground">₹{costINR.toFixed(4)}</span>
         )}
       </div>
     </div>
@@ -147,27 +143,27 @@ export const Context = ({ className, usage, ...props }: ContextProps) => {
           <div className="mt-1 space-y-1">
             {usage?.cachedInputTokens && usage.cachedInputTokens > 0 && (
               <InfoRow
-                costUSD={usage?.costUSD?.cacheReadUSD ?? undefined}
                 costINR={usage?.costINR?.cacheReadINR ?? undefined}
+                costUSD={usage?.costUSD?.cacheReadUSD ?? undefined}
                 label="Cache Hits"
                 tokens={usage?.cachedInputTokens}
               />
             )}
             <InfoRow
-              costUSD={usage?.costUSD?.inputUSD ?? undefined}
               costINR={usage?.costINR?.inputINR ?? undefined}
+              costUSD={usage?.costUSD?.inputUSD ?? undefined}
               label="Input"
               tokens={usage?.inputTokens}
             />
             <InfoRow
-              costUSD={usage?.costUSD?.outputUSD ?? undefined}
               costINR={usage?.costINR?.outputINR ?? undefined}
+              costUSD={usage?.costUSD?.outputUSD ?? undefined}
               label="Output"
               tokens={usage?.outputTokens}
             />
             <InfoRow
-              costUSD={usage?.costUSD?.reasoningUSD ?? undefined}
               costINR={usage?.costINR?.reasoningINR ?? undefined}
+              costUSD={usage?.costUSD?.reasoningUSD ?? undefined}
               label="Reasoning"
               tokens={
                 usage?.reasoningTokens && usage.reasoningTokens > 0
@@ -182,18 +178,14 @@ export const Context = ({ className, usage, ...props }: ContextProps) => {
                   <span className="text-muted-foreground">Total cost</span>
                   <div className="flex items-center gap-2 font-mono">
                     <span className="min-w-[4ch] text-right" />
-                    <span>
-                      ${totalUSD.toFixed(6)}
-                    </span>
+                    <span>${totalUSD.toFixed(6)}</span>
                     {typeof totalINR === "number" &&
                       Number.isFinite(totalINR) && (
-                      <span>
-                        ₹{totalINR.toFixed(4)}
-                      </span>
-                    )}
+                        <span>₹{totalINR.toFixed(4)}</span>
+                      )}
                     {typeof conversionRate === "number" &&
                       Number.isFinite(conversionRate) && (
-                        <span className="text-muted-foreground text-[10px]">
+                        <span className="text-[10px] text-muted-foreground">
                           {`(1 USD ≈ ₹${conversionRate.toFixed(2)})`}
                         </span>
                       )}

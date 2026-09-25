@@ -1,27 +1,12 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  type ReactNode,
-  useMemo,
-} from "react";
+import { createContext, type ReactNode, useContext, useMemo } from "react";
 
 type ModelSummary = {
   id: string;
-  key: string;
-  provider: string;
-  providerModelId: string;
   name: string;
   description: string;
   supportsReasoning: boolean;
-  reasoningTag: string | null;
-  systemPrompt: string | null;
-  codeTemplate: string | null;
-  inputCostPerMillion: number;
-  outputCostPerMillion: number;
-  inputProviderCostPerMillion: number;
-  outputProviderCostPerMillion: number;
 };
 
 type ModelConfigContextValue = {

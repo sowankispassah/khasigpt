@@ -1,36 +1,26 @@
 "use server";
 
 import { z } from "zod";
-
-import { sendContactMessageEmail } from "@/lib/email/brevo";
 import { createContactMessage } from "@/lib/db/queries";
+import { sendContactMessageEmail } from "@/lib/email/brevo";
 import { ChatSDKError } from "@/lib/errors";
 
+const PHONE_REGEX = /^[+0-9()\-\s]{6,20}$/;
+
 const contactSchema = z.object({
-  name: z
-    .string()
-    .min(2, "Name must be at least 2 characters."),
-  email: z
-    .string()
-    .email("Enter a valid email address."),
+  name: z.string().min(2, "Name must be at least 2 characters."),
+  email: z.string().email("Enter a valid email address."),
   phone: z
     .string()
-    .refine(
-      (value) =>
-        value.length === 0 ||
-        /^[+0-9()\-\s]{6,20}$/.test(value),
-      {
-        message:
-          "Enter a valid phone number (6-20 characters, numbers and +()- allowed).",
-      }
-    ),
+    .refine((value) => value.length === 0 || PHONE_REGEX.test(value), {
+      message:
+        "Enter a valid phone number (6-20 characters, numbers and +()- allowed).",
+    }),
   subject: z
     .string()
     .min(3, "Subject must be at least 3 characters.")
     .max(120, "Subject must be 120 characters or less."),
-  message: z
-    .string()
-    .min(10, "Message must be at least 10 characters."),
+  message: z.string().min(10, "Message must be at least 10 characters."),
 });
 
 type ContactFormValues = {
@@ -41,7 +31,9 @@ type ContactFormValues = {
   message: string;
 };
 
-type ContactFormErrors = Partial<Record<keyof ContactFormValues, string | null>>;
+type ContactFormErrors = Partial<
+  Record<keyof ContactFormValues, string | null>
+>;
 
 export type ContactFormState =
   | { status: "idle" }
@@ -95,13 +87,12 @@ export async function submitContactFormAction(
     await createContactMessage({
       name: parsed.data.name,
       email: parsed.data.email,
-      phone:
-        parsed.data.phone.length > 0 ? parsed.data.phone : null,
+      phone: parsed.data.phone.length > 0 ? parsed.data.phone : null,
       subject: parsed.data.subject,
       message: parsed.data.message,
     });
 
-    void (async () => {
+    (async () => {
       try {
         await sendContactMessageEmail({
           senderName: parsed.data.name,
@@ -119,9 +110,10 @@ export async function submitContactFormAction(
       message: "Thanks! We'll reach out soon.",
     };
   } catch (error) {
-    const cause = error instanceof ChatSDKError
-      ? String(error.cause ?? error.message ?? "Something went wrong.")
-      : "Something went wrong.";
+    const cause =
+      error instanceof ChatSDKError
+        ? String(error.cause ?? error.message ?? "Something went wrong.")
+        : "Something went wrong.";
 
     return {
       status: "error",
@@ -137,4 +129,3 @@ export async function submitContactFormAction(
     };
   }
 }
-
