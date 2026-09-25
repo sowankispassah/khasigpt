@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import type { JobsScrapeRunnerMode } from "@/lib/jobs/schedule";
 
 const ENDPOINT = "/api/admin/jobs/scrape";
 const RUN_START_GRACE_MS = 8_000;
@@ -12,7 +14,7 @@ const ACTION_REQUEST_TIMEOUT_MS = 15_000;
 
 type JobsScrapeProgressSnapshot = {
   runId: string;
-  trigger: "manual" | "auto" | "cron";
+  trigger: "manual" | "auto" | "cron" | "chatgpt";
   state: "idle" | "running" | "success" | "failed" | "cancelled" | "skipped";
   startedAt: string;
   updatedAt: string;
@@ -114,8 +116,12 @@ function formatElapsedMs(durationMs: number | null) {
 
 export function AdminJobsScrapeControl({
   initialProgress = null,
+  runnerMode,
+  unavailable,
 }: {
   initialProgress?: JobsScrapeProgressSnapshot | null;
+  runnerMode: JobsScrapeRunnerMode;
+  unavailable: boolean;
 }) {
   const [progress, setProgress] = useState<JobsScrapeProgressSnapshot | null>(
     initialProgress
@@ -196,6 +202,9 @@ export function AdminJobsScrapeControl({
   }, [running]);
 
   const runStart = useCallback(async () => {
+    if (unavailable || runnerMode !== "project") {
+      return;
+    }
     const optimistic = createOptimisticRunningSnapshot();
     setProgress(optimistic);
     optimisticRunGuardRef.current = {
@@ -277,7 +286,7 @@ export function AdminJobsScrapeControl({
     } finally {
       setPendingAction(null);
     }
-  }, [refreshStatus]);
+  }, [refreshStatus, runnerMode, unavailable]);
 
   const requestCancel = useCallback(async () => {
     setPendingAction("cancel");
@@ -376,7 +385,7 @@ export function AdminJobsScrapeControl({
       <div className="flex flex-col gap-2 md:flex-row md:items-center">
         <Button
           className="cursor-pointer"
-          disabled={hasPendingAction || running}
+          disabled={hasPendingAction || running || unavailable || runnerMode !== "project"}
           onClick={() => {
             void runStart();
           }}
@@ -427,6 +436,16 @@ export function AdminJobsScrapeControl({
           </>
         ) : null}
       </div>
+
+      {runnerMode === "chatgpt" ? (
+        <p className="text-muted-foreground text-xs">
+          <EditableTranslation
+            translationKey="admin.jobs.runner.manual_disabled"
+            defaultText="Project scraping is disabled while the ChatGPT app schedule is selected."
+            description="Notice beside the admin manual scraping button in ChatGPT mode."
+          />
+        </p>
+      ) : null}
 
       <p className="text-muted-foreground text-xs">{statusText}</p>
       {progress?.failureDetails?.length ? (

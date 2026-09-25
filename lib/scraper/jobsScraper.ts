@@ -285,11 +285,21 @@ export async function runJobsScraper(
   let skippedDuplicateCount = 0;
   const persistedJobIds = new Set<string>();
   const insertedJobIds = new Set<string>();
+  let cancelledBeforePersist = false;
 
   const scraped = await scrapeJobsFromSources(sources, {
     ...options,
     onSourceJobs: async (event) => {
+      if (await options.shouldCancel?.()) {
+        cancelledBeforePersist = true;
+        return;
+      }
       await options.onSourceJobs?.(event);
+
+      if (await options.shouldCancel?.()) {
+        cancelledBeforePersist = true;
+        return;
+      }
 
       const persisted = await withTimeout(
         saveJobs(event.jobs, {
@@ -399,6 +409,10 @@ export async function runJobsScraper(
 
   return {
     ...scraped,
+    summary: {
+      ...scraped.summary,
+      cancelled: scraped.summary.cancelled || cancelledBeforePersist,
+    },
     persisted,
   };
 }

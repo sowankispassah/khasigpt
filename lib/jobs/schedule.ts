@@ -25,7 +25,21 @@ const TIMEZONE_OFFSETS_MINUTES = {
 type SupportedTimezone = keyof typeof TIMEZONE_OFFSETS_MINUTES;
 
 export type JobsScrapeRunStatus = "success" | "failed" | "skipped";
-export type JobsScrapeTrigger = "auto" | "cron" | "manual";
+export type JobsScrapeTrigger = "auto" | "cron" | "manual" | "chatgpt";
+export type JobsScrapeRunnerMode = "project" | "chatgpt";
+
+export function parseJobsScrapeRunnerMode(value: unknown): JobsScrapeRunnerMode {
+  return typeof value === "string" && value.trim().toLowerCase() === "chatgpt"
+    ? "chatgpt"
+    : "project";
+}
+
+export function isJobsScrapeTriggerAllowed(
+  mode: JobsScrapeRunnerMode,
+  trigger: JobsScrapeTrigger
+) {
+  return mode === "chatgpt" ? trigger === "chatgpt" : trigger !== "chatgpt";
+}
 export type JobsScrapeSkipReason =
   | "disabled"
   | "locked"

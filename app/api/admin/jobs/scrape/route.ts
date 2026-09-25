@@ -1,5 +1,6 @@
 import { waitUntil } from "@vercel/functions";
 import { type NextRequest, NextResponse } from "next/server";
+import { getJobsScrapeRunnerModeUncached } from "@/lib/jobs/runner-mode";
 import {
   clearJobsScrapeCancelRequest,
   getJobsScrapeProgressSnapshot,
@@ -51,6 +52,14 @@ export async function POST(request: NextRequest) {
       action: "cancel",
       progress,
     });
+  }
+
+  const runnerMode = await getJobsScrapeRunnerModeUncached();
+  if (runnerMode !== "project") {
+    return noStoreJson({
+      ok: false,
+      error: "project_scrape_disabled",
+    }, 409);
   }
 
   const current = await getJobsScrapeProgressSnapshot();

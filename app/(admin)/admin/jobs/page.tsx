@@ -5,8 +5,10 @@ import { ActionSubmitButton } from "@/components/action-submit-button";
 import { AdminPagination } from "@/components/admin/admin-pagination";
 import { AdminJobEditDialog } from "@/components/admin-job-edit-dialog";
 import { AdminJobsExpandableTable } from "@/components/admin-jobs-expandable-table";
+import { AdminJobsRunnerModeControl } from "@/components/admin-jobs-runner-mode-control";
 import { AdminJobsScrapeControl } from "@/components/admin-jobs-scrape-control";
 import { JobsAutoScrapeStatus } from "@/components/jobs-auto-scrape-status";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
 import { getAdminQueryTimeoutMs } from "@/lib/admin/safe-query";
@@ -22,6 +24,7 @@ import {
   JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY,
   JOBS_SCRAPE_PDF_EXTRACTION_MODE_SETTING_KEY,
   JOBS_SCRAPE_PDF_EXTRACTION_MODEL_ID_SETTING_KEY,
+  JOBS_SCRAPE_RUNNER_MODE_SETTING_KEY,
   JOBS_SCRAPE_SOURCES_SETTING_KEY,
   JOBS_SCRAPE_START_TIME_SETTING_KEY,
   JOBS_SCRAPE_TIMEZONE_SETTING_KEY,
@@ -46,8 +49,10 @@ import { saveJobs } from "@/lib/jobs/saveJobs";
 import {
   getNextJobsScrapeDueAt,
   JOBS_SCRAPE_SETTING_KEYS,
+  type JobsScrapeRunnerMode,
   parseBoolean,
   parseDateOrNull,
+  parseJobsScrapeRunnerMode,
   resolveJobsScrapeScheduleSettings,
   resolveJobsScrapeScheduleState,
 } from "@/lib/jobs/schedule";
@@ -55,6 +60,7 @@ import {
   getJobsScrapeHistory,
   getJobsScrapeProgressSnapshot,
   type JobsScrapeHistoryEntry,
+  requestJobsScrapeCancel,
 } from "@/lib/jobs/scrape-orchestrator";
 import { getJobPostingCount, listJobPostingEntries } from "@/lib/jobs/service";
 import {
@@ -73,6 +79,7 @@ export const dynamic = "force-dynamic";
 
 const JOBS_SCRAPE_SETTINGS_KEYS = [
   JOBS_SCRAPE_ENABLED_SETTING_KEY,
+  JOBS_SCRAPE_RUNNER_MODE_SETTING_KEY,
   JOBS_SCRAPE_INTERVAL_HOURS_SETTING_KEY,
   JOBS_SCRAPE_LOOKBACK_DAYS_SETTING_KEY,
   JOBS_SCRAPE_START_TIME_SETTING_KEY,
@@ -574,6 +581,36 @@ async function saveJobsScrapeScheduleAction(formData: FormData) {
   });
 }
 
+async function saveJobsRunnerModeAction(formData: FormData) {
+  "use server";
+
+  const session = await auth();
+  if (!session?.user || session.user.role !== "admin") {
+    redirect("/");
+  }
+
+  const requestedMode = formData.get("runnerMode");
+  if (requestedMode !== "project" && requestedMode !== "chatgpt") {
+    throw new Error("Choose a valid jobs runner.");
+  }
+
+  await persistAppSettingWithRetry({
+    key: JOBS_SCRAPE_RUNNER_MODE_SETTING_KEY,
+    value: requestedMode,
+  });
+
+  const activeRun = await getJobsScrapeProgressSnapshot().catch(() => null);
+  if (activeRun?.state === "running") {
+    await requestJobsScrapeCancel();
+  }
+
+  invalidateAdminMutation({
+    paths: [{ path: "/admin/jobs" }],
+    source: "jobs.runner_mode.save",
+    tags: [appSettingCacheTagForKey(JOBS_SCRAPE_RUNNER_MODE_SETTING_KEY)],
+  });
+}
+
 async function saveOneTimeJobsScrapeAction(formData: FormData) {
   "use server";
 
@@ -1017,6 +1054,9 @@ export default async function AdminJobsPage({
   const lastRunStatusRaw = jobSettingsByKey.get(JOBS_SCRAPE_SETTING_KEYS.lastRunStatus) ?? null;
   const lastSkipReasonRaw = jobSettingsByKey.get(JOBS_SCRAPE_SETTING_KEYS.lastSkipReason) ?? null;
   const lastRunSummaryRaw = jobSettingsByKey.get(JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY) ?? null;
+  const runnerMode = parseJobsScrapeRunnerMode(
+    jobSettingsByKey.get(JOBS_SCRAPE_RUNNER_MODE_SETTING_KEY)
+  );
 
   const scheduleSettings = resolveJobsScrapeScheduleSettings({
     enabled: enabledRaw,
@@ -1184,6 +1224,11 @@ export default async function AdminJobsPage({
 
   return (
     <div className="flex flex-col gap-6">
+      <AdminJobsRunnerModeControl
+        action={saveJobsRunnerModeAction}
+        mode={runnerMode}
+        unavailable={jobSettingsUnavailable}
+      />
       <CollapsibleSectionCard
         contentClassName="space-y-2 text-muted-foreground text-sm"
         title="Automated Jobs Ingestion"
@@ -1201,11 +1246,14 @@ export default async function AdminJobsPage({
             <Suspense fallback={<JobsPanelFallback rows={3} />}>
               <JobsScrapeControlSection
                 scrapeProgressPromise={scrapeProgressPromise}
+                runnerMode={runnerMode}
+                unavailable={jobSettingsUnavailable}
               />
             </Suspense>
           </div>
       </CollapsibleSectionCard>
 
+      {runnerMode === "project" ? (
       <CollapsibleSectionCard contentClassName="space-y-4 text-sm" title="Auto Scrape Schedule">
           {jobSettingsUnavailable ? (
             <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-700 text-sm">
@@ -1395,6 +1443,7 @@ export default async function AdminJobsPage({
             </div>
           </div>
       </CollapsibleSectionCard>
+      ) : null}
 
       <CollapsibleSectionCard contentClassName="space-y-4 text-sm" title="PDF Extraction">
           {jobSettingsUnavailable ? (
@@ -1473,6 +1522,7 @@ export default async function AdminJobsPage({
       <Suspense fallback={<JobsPanelFallback rows={6} title="Scraping History" />}>
         <JobsScrapeHistorySection
           nextDueAt={nextDueAt}
+          runnerMode={runnerMode}
           scheduleSettings={scheduleSettings}
           scrapeHistoryPromise={scrapeHistoryPromise}
         />
@@ -1632,21 +1682,33 @@ export default async function AdminJobsPage({
 
 async function JobsScrapeControlSection({
   scrapeProgressPromise,
+  runnerMode,
+  unavailable,
 }: {
   scrapeProgressPromise: Promise<
     Awaited<ReturnType<typeof getJobsScrapeProgressSnapshot>> | null
   >;
+  runnerMode: JobsScrapeRunnerMode;
+  unavailable: boolean;
 }) {
   const scrapeProgress = await scrapeProgressPromise;
-  return <AdminJobsScrapeControl initialProgress={scrapeProgress} />;
+  return (
+    <AdminJobsScrapeControl
+      initialProgress={scrapeProgress}
+      runnerMode={runnerMode}
+      unavailable={unavailable}
+    />
+  );
 }
 
 async function JobsScrapeHistorySection({
   nextDueAt,
+  runnerMode,
   scheduleSettings,
   scrapeHistoryPromise,
 }: {
   nextDueAt: Date | null;
+  runnerMode: JobsScrapeRunnerMode;
   scheduleSettings: ReturnType<typeof resolveJobsScrapeScheduleSettings>;
   scrapeHistoryPromise: Promise<
     Awaited<ReturnType<typeof getJobsScrapeHistory>> | null
@@ -1719,8 +1781,13 @@ async function JobsScrapeHistorySection({
   return (
     <CollapsibleSectionCard contentClassName="space-y-3 text-sm" title="Scraping History">
       <p className="text-muted-foreground">
-        Latest 50 scrape runs across cron, auto, and manual runs.
+        <EditableTranslation
+          translationKey="admin.jobs.history.summary"
+          defaultText="Latest 50 job import runs from the project and ChatGPT schedules."
+          description="Description above the admin jobs import history table."
+        />
       </p>
+      {runnerMode === "project" ? (
       <p className="text-muted-foreground text-xs">
         Next scheduled run at:{" "}
         <span className="font-medium text-foreground">
@@ -1729,6 +1796,7 @@ async function JobsScrapeHistorySection({
             : "Scheduled scrape disabled"}
         </span>
       </p>
+      ) : null}
       {scrapeHistoryUnavailable ? (
         <p className="text-amber-700 text-sm">
           Scrape history is temporarily unavailable. Please refresh in a few seconds.

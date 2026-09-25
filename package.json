@@ -13,6 +13,7 @@
     "typecheck": "pnpm exec tsc --noEmit",
     "translations:publish": "tsx scripts/publish-translations.ts",
     "jobs:repair-pdf-compensation": "tsx scripts/repair-job-pdf-compensation.ts",
+    "jobs:scrape:scheduled": "node --conditions=react-server --import dotenv/config --import tsx scripts/run-jobs-scrape.ts",
     "jobs:rebuild-rag": "pnpm dlx tsx scripts/rebuild-jobs-rag.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "npx tsx lib/db/migrate.ts",

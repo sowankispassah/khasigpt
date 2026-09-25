@@ -7,6 +7,7 @@ import {
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   IMAGE_WEB_REFERENCES_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
+  JOBS_SCRAPE_RUNNER_MODE_SETTING_KEY,
   LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_DEFAULT_LANGUAGE_A_SETTING_KEY,
   LIVE_TRANSLATION_DEFAULT_LANGUAGE_B_SETTING_KEY,
@@ -124,6 +125,16 @@ export function normalizeAppSettingValueForWrite<T>(key: string, value: T): T {
       throw new Error("invalid_translate_provider_mode_setting");
     }
 
+    return normalized as T;
+  }
+
+  if (normalizedKey === JOBS_SCRAPE_RUNNER_MODE_SETTING_KEY) {
+    const unwrapped = unwrapStringValue(value);
+    const normalized =
+      typeof unwrapped === "string" ? unwrapped.trim().toLowerCase() : "";
+    if (normalized !== "project" && normalized !== "chatgpt") {
+      throw new Error("invalid_jobs_scrape_runner_mode_setting");
+    }
     return normalized as T;
   }
 
