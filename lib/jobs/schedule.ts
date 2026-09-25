@@ -38,7 +38,9 @@ export function isJobsScrapeTriggerAllowed(
   mode: JobsScrapeRunnerMode,
   trigger: JobsScrapeTrigger
 ) {
-  return mode === "chatgpt" ? trigger === "chatgpt" : trigger !== "chatgpt";
+  // ChatGPT gathers listings itself and hands verified rows to the DB-only
+  // importer. No trigger may start the project's web scraper in this mode.
+  return mode === "project" && trigger !== "chatgpt";
 }
 export type JobsScrapeSkipReason =
   | "disabled"
