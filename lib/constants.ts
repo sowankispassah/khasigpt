@@ -104,6 +104,7 @@ export const NEWS_FEATURE_FLAG_KEY = "chat.news.enabled";
 export const EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY =
   "explore.meghalaya.enabled";
 export const JOBS_SCRAPE_ENABLED_SETTING_KEY = "jobs.scrape.enabled";
+export const JOBS_SCRAPE_RUNNER_MODE_SETTING_KEY = "jobs.scrape.runnerMode";
 export const JOBS_SCRAPE_INTERVAL_HOURS_SETTING_KEY =
   "jobs.scrape.intervalHours";
 export const JOBS_SCRAPE_START_TIME_SETTING_KEY = "jobs.scrape.startTime";

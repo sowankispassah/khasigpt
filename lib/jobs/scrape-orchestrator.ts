@@ -10,16 +10,25 @@ import {
   JOBS_SCRAPE_LOOKBACK_DAYS_SETTING_KEY,
   JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY,
   JOBS_SCRAPE_PROGRESS_SETTING_KEY,
+  JOBS_SCRAPE_RUNNER_MODE_SETTING_KEY,
 } from "@/lib/constants";
-import { deleteAppSetting, getAppSettingUncached, setAppSetting } from "@/lib/db/queries";
+import {
+  deleteAppSetting,
+  getAppSettingsByKeysUncached,
+  getAppSettingUncached,
+  setAppSetting,
+} from "@/lib/db/queries";
+import { getJobsScrapeRunnerModeUncached } from "@/lib/jobs/runner-mode";
 import {
   createScrapeLockUntil,
   evaluateJobsScrapeSchedule,
   getNextJobsScrapeDueAt,
+  isJobsScrapeTriggerAllowed,
   JOBS_SCRAPE_SETTING_KEYS,
   type JobsScrapeScheduleSettings,
   type JobsScrapeTrigger,
   parseDateOrNull,
+  parseJobsScrapeRunnerMode,
   resolveJobsScrapeScheduleSettings,
   resolveJobsScrapeScheduleState,
 } from "@/lib/jobs/schedule";
@@ -106,6 +115,10 @@ const DEFAULT_JOBS_SCRAPE_CANCEL_REQUESTED_STALE_MS = 15 * 1000;
 const DEFAULT_JOBS_SCRAPE_PROGRESS_HEARTBEAT_MS = 20 * 1000;
 
 function isScheduledJobsScrapeTrigger(trigger: JobsScrapeTrigger) {
+  return trigger === "auto" || trigger === "cron" || trigger === "chatgpt";
+}
+
+function isProjectScheduledJobsScrapeTrigger(trigger: JobsScrapeTrigger) {
   return trigger === "auto" || trigger === "cron";
 }
 
@@ -208,7 +221,8 @@ function normalizeProgressSnapshot(rawValue: unknown): JobsScrapeProgressSnapsho
   const trigger: JobsScrapeTrigger =
     candidate.trigger === "manual" ||
     candidate.trigger === "auto" ||
-    candidate.trigger === "cron"
+    candidate.trigger === "cron" ||
+    candidate.trigger === "chatgpt"
       ? candidate.trigger
       : "manual";
   const state = (() => {
@@ -358,7 +372,10 @@ function normalizeHistoryEntry(rawValue: unknown): JobsScrapeHistoryEntry | null
       ? value.runId.trim()
       : "";
   const trigger =
-    value.trigger === "manual" || value.trigger === "auto" || value.trigger === "cron"
+    value.trigger === "manual" ||
+    value.trigger === "auto" ||
+    value.trigger === "cron" ||
+    value.trigger === "chatgpt"
       ? value.trigger
       : null;
   const status =
@@ -441,27 +458,27 @@ function normalizeHistoryList(rawValue: unknown) {
 async function setManyAppSettings(entries: AppSettingEntry[]) {
   for (const entry of entries) {
     if (entry.value === null || entry.value === undefined) {
-      await deleteAppSetting(entry.key);
+      await deleteAppSetting(entry.key, { revalidateCache: false });
       continue;
     }
 
     await setAppSetting({
       key: entry.key,
       value: entry.value,
-    });
+    }, { revalidateCache: false });
   }
 }
 
 async function setProgressSafely(snapshot: JobsScrapeProgressSnapshot | null) {
   try {
     if (snapshot === null) {
-      await deleteAppSetting(JOBS_SCRAPE_PROGRESS_SETTING_KEY);
+      await deleteAppSetting(JOBS_SCRAPE_PROGRESS_SETTING_KEY, { revalidateCache: false });
       return;
     }
     await setAppSetting({
       key: JOBS_SCRAPE_PROGRESS_SETTING_KEY,
       value: snapshot,
-    });
+    }, { revalidateCache: false });
   } catch (error) {
     console.warn("[jobs-orchestrator] progress_update_failed", {
       error: error instanceof Error ? error.message : String(error),
@@ -542,7 +559,7 @@ async function appendJobsScrapeHistory(entry: JobsScrapeHistoryEntry) {
     await setAppSetting({
       key: JOBS_SCRAPE_HISTORY_SETTING_KEY,
       value: next,
-    });
+    }, { revalidateCache: false });
   } catch (error) {
     console.warn("[jobs-orchestrator] history_append_failed", {
       error: error instanceof Error ? error.message : String(error),
@@ -755,7 +772,7 @@ export async function requestJobsScrapeCancel() {
   await setAppSetting({
     key: JOBS_SCRAPE_CANCEL_REQUESTED_SETTING_KEY,
     value: true,
-  });
+  }, { revalidateCache: false });
 
   const current = await getJobsScrapeProgressSnapshot();
   if (current?.state === "running") {
@@ -769,7 +786,7 @@ export async function requestJobsScrapeCancel() {
 }
 
 export async function clearJobsScrapeCancelRequest() {
-  await deleteAppSetting(JOBS_SCRAPE_CANCEL_REQUESTED_SETTING_KEY);
+  await deleteAppSetting(JOBS_SCRAPE_CANCEL_REQUESTED_SETTING_KEY, { revalidateCache: false });
 }
 
 export async function runJobsScrapeWithScheduling({
@@ -784,19 +801,40 @@ export async function runJobsScrapeWithScheduling({
   runId?: string;
 }): Promise<JobsScrapeOrchestrationResult> {
   const startedAt = new Date();
-  const runtime = await loadJobsScrapeRuntimeState();
+  const [runtime, runnerMode] = await Promise.all([
+    loadJobsScrapeRuntimeState(),
+    getJobsScrapeRunnerModeUncached(),
+  ]);
+  if (!isJobsScrapeTriggerAllowed(runnerMode, trigger)) {
+    const finishedAt = new Date();
+    return {
+      ok: true,
+      trigger,
+      skipped: true,
+      skipReason: "runner_mode",
+      nextDueAt: null,
+      settings: runtime.settings,
+      startedAt: startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      durationMs: finishedAt.getTime() - startedAt.getTime(),
+      scrapeResult: null,
+      errorMessage: null,
+    };
+  }
   const decision = evaluateJobsScrapeSchedule({
-    trigger,
+    // The ChatGPT task owns its cadence; the site's interval and start time
+    // apply only to project triggers.
+    trigger: trigger === "chatgpt" ? "manual" : trigger,
     settings: runtime.settings,
     state: runtime.state,
     now: startedAt,
   });
   const oneTimeDue =
-    isScheduledJobsScrapeTrigger(trigger) &&
+    isProjectScheduledJobsScrapeTrigger(trigger) &&
     runtime.oneTimeAt !== null &&
     startedAt.getTime() >= runtime.oneTimeAt.getTime();
   const oneTimeUpcoming =
-    isScheduledJobsScrapeTrigger(trigger) &&
+    isProjectScheduledJobsScrapeTrigger(trigger) &&
     runtime.oneTimeAt !== null &&
     startedAt.getTime() < runtime.oneTimeAt.getTime()
       ? runtime.oneTimeAt
@@ -955,10 +993,21 @@ export async function runJobsScrapeWithScheduling({
   };
 
   const shouldCancel = async () => {
-    const rawCancel = await getAppSettingUncached<unknown>(
-      JOBS_SCRAPE_CANCEL_REQUESTED_SETTING_KEY
-    ).catch(() => false);
-    const cancelRequested = parseBoolean(rawCancel, false);
+    const controlSettings = await getAppSettingsByKeysUncached([
+      JOBS_SCRAPE_CANCEL_REQUESTED_SETTING_KEY,
+      JOBS_SCRAPE_RUNNER_MODE_SETTING_KEY,
+    ]).catch(() => null);
+    const controls = controlSettings
+      ? new Map(controlSettings.map((setting) => [setting.key, setting.value]))
+      : null;
+    const rawCancel = controls?.get(JOBS_SCRAPE_CANCEL_REQUESTED_SETTING_KEY);
+    const currentRunnerMode = controls
+      ? parseJobsScrapeRunnerMode(controls.get(JOBS_SCRAPE_RUNNER_MODE_SETTING_KEY))
+      : null;
+    const cancelRequested =
+      parseBoolean(rawCancel, false) ||
+      currentRunnerMode === null ||
+      !isJobsScrapeTriggerAllowed(currentRunnerMode, trigger);
     if (cancelRequested !== progressSnapshot.cancelRequested) {
       await updateProgress({
         cancelRequested,
@@ -1074,13 +1123,20 @@ export async function runJobsScrapeWithScheduling({
     });
 
     const finishedAt = new Date();
-    const nextDueAt = getNextJobsScrapeDueAt({
-      settings: runtime.settings,
-      lastSuccessAt: finishedAt,
-      now: finishedAt,
-    });
-
     const wasCancelled = scrapeResult.summary.cancelled;
+    const allSourcesFailed =
+      !wasCancelled &&
+      scrapeResult.summary.totalSources > 0 &&
+      scrapeResult.summary.sourceStats.every((source) => !source.fetched);
+    const failureMessage = allSourcesFailed ? "No job sources could be fetched." : null;
+    const nextDueAt =
+      trigger === "chatgpt"
+        ? null
+        : getNextJobsScrapeDueAt({
+            settings: runtime.settings,
+            lastSuccessAt: allSourcesFailed ? runtime.state.lastSuccessAt : finishedAt,
+            now: finishedAt,
+          });
     const summary = {
       trigger,
       skipped: false,
@@ -1106,13 +1162,14 @@ export async function runJobsScrapeWithScheduling({
       oneTimeTriggered: oneTimeDue,
       oneTimeScheduledAt: runtime.oneTimeAt?.toISOString() ?? null,
       cancelled: wasCancelled,
+      allSourcesFailed,
       ragSyncFailures: progressSnapshot.failureDetails,
     };
 
     const successEntries: AppSettingEntry[] = [
       {
         key: JOBS_SCRAPE_LAST_RUN_STATUS_SETTING_KEY,
-        value: wasCancelled ? "cancelled" : "success",
+        value: wasCancelled ? "cancelled" : allSourcesFailed ? "failed" : "success",
       },
       {
         key: JOBS_SCRAPE_LAST_SKIP_REASON_SETTING_KEY,
@@ -1131,7 +1188,7 @@ export async function runJobsScrapeWithScheduling({
         value: false,
       },
     ];
-    if (!wasCancelled) {
+    if (!wasCancelled && !allSourcesFailed) {
       successEntries.push({
         key: JOBS_SCRAPE_LAST_SUCCESS_AT_SETTING_KEY,
         value: finishedAt.toISOString(),
@@ -1146,7 +1203,7 @@ export async function runJobsScrapeWithScheduling({
     await setManyAppSettings(successEntries);
 
     await updateProgress({
-      state: wasCancelled ? "cancelled" : "success",
+      state: wasCancelled ? "cancelled" : allSourcesFailed ? "failed" : "success",
       finishedAt: finishedAt.toISOString(),
       currentSource: null,
       processedSources: scrapeResult.summary.sourcesProcessed,
@@ -1156,12 +1213,14 @@ export async function runJobsScrapeWithScheduling({
       skippedDuplicates:
         scrapeResult.persisted.skippedDuplicateCount +
         scrapeResult.summary.totalDuplicatesInRun,
-      message: wasCancelled ? "Scrape cancelled" : "Scrape completed",
+      message: wasCancelled ? "Scrape cancelled" : failureMessage ?? "Scrape completed",
     });
 
     const historyStatus: JobsScrapeHistoryEntry["status"] = wasCancelled
       ? "cancelled"
-      : "success";
+      : allSourcesFailed
+        ? "failed"
+        : "success";
     await appendJobsScrapeHistory({
       runId,
       trigger,
@@ -1182,11 +1241,11 @@ export async function runJobsScrapeWithScheduling({
         scrapeResult.persisted.skippedDuplicateCount +
         scrapeResult.summary.totalDuplicatesInRun,
       skipReason: wasCancelled ? "cancel_requested" : null,
-      errorMessage: null,
+      errorMessage: failureMessage,
     });
 
     return {
-      ok: true,
+      ok: !allSourcesFailed,
       trigger,
       skipped: false,
       skipReason: wasCancelled ? "cancel_requested" : null,
@@ -1196,7 +1255,7 @@ export async function runJobsScrapeWithScheduling({
       finishedAt: finishedAt.toISOString(),
       durationMs: summary.durationMs,
       scrapeResult,
-      errorMessage: null,
+      errorMessage: failureMessage,
     };
   } catch (error) {
     const finishedAt = new Date();

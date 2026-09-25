@@ -461,6 +461,66 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Label for the admin user keyword search field.",
   },
   {
+    key: "admin.jobs.runner.title",
+    defaultText: "Automatic Jobs Runner",
+    description: "Heading for choosing the automatic jobs import runner.",
+  },
+  {
+    key: "admin.jobs.runner.description",
+    defaultText: "Choose which schedule starts job imports. The jobs list and source settings work with either choice.",
+    description: "Explanation of the admin jobs runner mode setting.",
+  },
+  {
+    key: "admin.jobs.runner.unavailable",
+    defaultText: "The current runner could not be confirmed. Refresh before changing it.",
+    description: "Error shown when the jobs runner mode setting is unavailable.",
+  },
+  {
+    key: "admin.jobs.runner.project",
+    defaultText: "Project schedule",
+    description: "Label for the site's built-in jobs import schedule.",
+  },
+  {
+    key: "admin.jobs.runner.project_details",
+    defaultText: "The site runs its configured automatic scraper.",
+    description: "Description of the project jobs runner mode.",
+  },
+  {
+    key: "admin.jobs.runner.chatgpt",
+    defaultText: "ChatGPT app schedule",
+    description: "Label for the ChatGPT desktop jobs import schedule.",
+  },
+  {
+    key: "admin.jobs.runner.chatgpt_details",
+    defaultText: "This computer runs the import at 6:00 AM India time while ChatGPT is open. Site scrapes are blocked.",
+    description: "Description of the ChatGPT desktop jobs runner mode.",
+  },
+  {
+    key: "admin.jobs.runner.save",
+    defaultText: "Save Runner",
+    description: "Button for saving the selected automatic jobs runner.",
+  },
+  {
+    key: "admin.jobs.runner.saving",
+    defaultText: "Saving runner...",
+    description: "Button label while saving the jobs runner setting.",
+  },
+  {
+    key: "admin.jobs.runner.saved",
+    defaultText: "Jobs runner saved.",
+    description: "Success message after saving the jobs runner setting.",
+  },
+  {
+    key: "admin.jobs.runner.manual_disabled",
+    defaultText: "Project scraping is disabled while the ChatGPT app schedule is selected.",
+    description: "Notice beside the admin manual scraping button in ChatGPT mode.",
+  },
+  {
+    key: "admin.jobs.history.summary",
+    defaultText: "Latest 50 job import runs from the project and ChatGPT schedules.",
+    description: "Description above the admin jobs import history table.",
+  },
+  {
     key: "admin.users.search.placeholder",
     defaultText: "Search by email, name, or user ID",
     description: "Placeholder for searching users by keyword.",
