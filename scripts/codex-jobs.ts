@@ -8,7 +8,7 @@ import {
   JOBS_SCRAPE_LOOKBACK_DAYS_SETTING_KEY,
   JOBS_SCRAPE_PROGRESS_SETTING_KEY,
 } from "@/lib/constants";
-import { getAppSettingUncached, setAppSetting } from "@/lib/db/queries";
+import { deleteAppSetting, getAppSettingUncached, setAppSetting } from "@/lib/db/queries";
 import { getJobsScrapeRunnerModeUncached } from "@/lib/jobs/runner-mode";
 import { type NewJobRow, saveJobs } from "@/lib/jobs/saveJobs";
 import { getJobsScrapeHistory, getJobsScrapeProgressSnapshot } from "@/lib/jobs/scrape-orchestrator";
@@ -34,6 +34,11 @@ type ImportOutcome = {
 
 function output(value: Record<string, unknown>) {
   process.stdout.write(`${JSON.stringify(value)}\n`);
+}
+
+function writeSetting(input: Parameters<typeof setAppSetting>[0]) {
+  // This CLI runs outside a Next.js request, where revalidateTag has no store.
+  return setAppSetting(input, { revalidateCache: false });
 }
 
 function text(value: unknown, maxLength: number) {
@@ -195,19 +200,18 @@ async function recordRun({
     skippedInvalid: outcome.skippedInvalid,
     errorMessage: errorMessage ?? null,
   };
-  await setAppSetting({ key: JOBS_SCRAPE_LAST_RUN_STATUS_SETTING_KEY, value: status });
-  await setAppSetting({ key: JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY, value: summary });
-  await setAppSetting({
-    key: JOBS_SCRAPE_LAST_SKIP_REASON_SETTING_KEY,
-    value: null,
+  await writeSetting({ key: JOBS_SCRAPE_LAST_RUN_STATUS_SETTING_KEY, value: status });
+  await writeSetting({ key: JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY, value: summary });
+  await deleteAppSetting(JOBS_SCRAPE_LAST_SKIP_REASON_SETTING_KEY, {
+    revalidateCache: false,
   });
   if (status === "success") {
-    await setAppSetting({
+    await writeSetting({
       key: JOBS_SCRAPE_LAST_SUCCESS_AT_SETTING_KEY,
       value: finishedAt.toISOString(),
     });
   }
-  await setAppSetting({
+  await writeSetting({
     key: JOBS_SCRAPE_PROGRESS_SETTING_KEY,
     value: {
       runId,
@@ -230,7 +234,7 @@ async function recordRun({
     },
   });
   const history = await getJobsScrapeHistory({ limit: 99 });
-  await setAppSetting({
+  await writeSetting({
     key: JOBS_SCRAPE_HISTORY_SETTING_KEY,
     value: [
       {
@@ -319,7 +323,7 @@ async function main() {
       output({ ok: true, skipped: true, skipReason: "running" });
       return;
     }
-    await setAppSetting({
+    await writeSetting({
       key: JOBS_SCRAPE_PROGRESS_SETTING_KEY,
       value: {
         runId,
