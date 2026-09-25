@@ -91,7 +91,7 @@ export function AdminJobsRunnerModeControl({
                 <span className="block text-muted-foreground text-xs">
                   <EditableTranslation
                     translationKey="admin.jobs.runner.chatgpt_details"
-                    defaultText="This computer runs the import at 6:00 AM India time while ChatGPT is open. Site scrapes are blocked."
+                    defaultText="This computer checks every 15 minutes while ChatGPT is open. It imports at 6:00 AM India time, or catches up after a missed run. Site scrapes are blocked."
                     description="Description of the ChatGPT desktop jobs runner mode."
                   />
                 </span>
