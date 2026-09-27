@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
@@ -13,6 +14,7 @@ type NameFormProps = {
 };
 
 export function NameForm({ initialFirstName, initialLastName }: NameFormProps) {
+  const router = useRouter();
   const { translate } = useTranslation();
   const [firstName, setFirstName] = useState(initialFirstName ?? "");
   const [lastName, setLastName] = useState(initialLastName ?? "");
@@ -65,13 +67,10 @@ export function NameForm({ initialFirstName, initialLastName }: NameFormProps) {
         ),
         type: "success",
       });
-      void updateSession({
-        firstName: result.firstName,
-        lastName: result.lastName,
-        name: [result.firstName, result.lastName].join(" "),
-      }).catch((error) => {
+      await updateSession({}).catch((error) => {
         console.error("[profile/name] Failed to refresh session.", error);
       });
+      router.refresh();
     } catch {
       setStatus({
         message: translate(

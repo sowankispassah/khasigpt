@@ -539,14 +539,6 @@ export const {
         if (typeof dateOfBirth !== "undefined") {
           token.dateOfBirth = (dateOfBirth as string | null) ?? null;
         }
-        const firstName = readSessionValue("firstName");
-        if (typeof firstName !== "undefined") {
-          token.firstName = (firstName as string | null) ?? null;
-        }
-        const lastName = readSessionValue("lastName");
-        if (typeof lastName !== "undefined") {
-          token.lastName = (lastName as string | null) ?? null;
-        }
         const allowPersonalKnowledge = readSessionValue("allowPersonalKnowledge");
         if (typeof allowPersonalKnowledge !== "undefined") {
           token.allowPersonalKnowledge = Boolean(allowPersonalKnowledge);
@@ -615,6 +607,8 @@ export const {
             token.role = record.role as UserRole;
             token.roleRefreshedAt = Date.now();
           }
+          token.firstName = record.firstName ?? null;
+          token.lastName = record.lastName ?? null;
           token.allowPersonalKnowledge = record.allowPersonalKnowledge ?? false;
           token.dbRefreshedAt = Date.now();
           token.dbRefreshFailedAt = undefined;
@@ -650,9 +644,7 @@ export const {
           .filter(Boolean)
           .join(" ")
           .trim();
-        if (computedName.length > 0) {
-          session.user.name = computedName;
-        }
+        session.user.name = computedName || null;
       }
 
       return session;
