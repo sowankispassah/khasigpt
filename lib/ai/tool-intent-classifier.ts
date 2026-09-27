@@ -3,6 +3,7 @@ import "server-only";
 import { generateText } from "ai";
 import { getModelRegistry } from "@/lib/ai/model-registry";
 import { resolveLanguageModel } from "@/lib/ai/providers";
+import { selectToolIntentModelConfig } from "@/lib/ai/tool-intent-model";
 import {
   fallbackImageIntent,
   normalizeImageIntent,
@@ -150,10 +151,12 @@ export async function classifyToolIntent(
 
   try {
     const registry = await getModelRegistry();
-    const modelConfig =
-      (registry.defaultConfig?.supportsReasoning
-        ? registry.configs.find((config) => !config.supportsReasoning)
-        : registry.defaultConfig) ?? registry.configs[0];
+    const modelConfig = selectToolIntentModelConfig({
+      configs: registry.configs,
+      defaultConfig: registry.defaultConfig,
+      preferredKey:
+        process.env.TOOL_INTENT_MODEL_KEY?.trim() || undefined,
+    });
     if (!modelConfig) {
       return fallback;
     }
@@ -170,6 +173,8 @@ export async function classifyToolIntent(
           "Use shopping for product discovery or purchase availability. A request such as 'find me a t-shirt under 500 rupees' and Khasi 'pynwad t-shirt ba hapoh 500 tyngka' are the same shopping intent.",
           "Preserve every constraint in query: product, maximum or minimum amount, currency, location, brand, size, date, and requested source. Translate generic words into concise search-friendly English when useful, but never translate names or invent constraints.",
           "Use recentMessages to resolve follow-ups. After search results, 'are these still available?' is web_search/current_availability; a bare 'thanks' or opinion is normal_chat.",
+          "When the user follows a product request by asking to search the net, classify the new turn as web_search/shopping and build the query from the earlier product, budget, and currency. An earlier assistant's unsourced suggestions do not satisfy the request to search.",
+          "An explicit request to browse the net is web_search even if the topic is only in recentMessages. Use the most recent concrete user request as the query, skipping earlier bare search reminders.",
           "A product-filter follow-up such as Khasi 'Tang kiba rong ïong' continues the prior shopping search, while 'Khublei' does not search again.",
           "Questions answerable from stable general knowledge, writing or brainstorming requests, and references to something the user already bought are normal_chat.",
           "For example, 'Explain photosynthesis' and Khasi 'Batai ïa ka photosynthesis' are both normal_chat; 'Write a poem about rain' and Khasi 'Thoh poem shaphang u slap' are both normal_chat.",
@@ -183,13 +188,18 @@ export async function classifyToolIntent(
         ].join("\n"),
         prompt: JSON.stringify(compactClassifierInput(input)),
         temperature: 0,
-        maxOutputTokens: 140,
+        maxOutputTokens: 512,
       }),
       TOOL_INTENT_TIMEOUT_MS
     );
 
     const parsed = extractJsonObject(result.text.trim());
     if (!parsed || typeof parsed.intent !== "string") {
+      console.warn("[tool-intent] Semantic response was unusable.", {
+        finishReason: result.finishReason,
+        modelId: modelConfig.providerModelId,
+        outputTokens: result.usage.outputTokens,
+      });
       return fallback;
     }
     if (
@@ -206,6 +216,11 @@ export async function classifyToolIntent(
     }
     const webSearch = parseWebSearchDecision(parsed, input);
     if (parsed.intent === "web_search") {
+      if (!webSearch) {
+        console.warn("[tool-intent] Web search decision was incomplete.", {
+          modelId: modelConfig.providerModelId,
+        });
+      }
       return webSearch
         ? { intent: "web_search", webSearch }
         : { intent: "normal_chat", webSearch: null };
