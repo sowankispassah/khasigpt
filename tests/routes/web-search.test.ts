@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { selectToolIntentModelConfig } from "@/lib/ai/tool-intent-model";
 import type { ChatMessage } from "@/lib/types";
 import {
   detectCurrentInfoNeed,
@@ -33,6 +34,31 @@ async function readWorkspaceFile(relativePath: string) {
 }
 
 test.describe("web search grounding", () => {
+  test("uses a compact contextual classifier instead of the chat model", () => {
+    const defaultConfig = {
+      key: "default-chat",
+      providerModelId: "gemini-3.8-flash",
+      supportsReasoning: false,
+    };
+    const classifierConfig = {
+      key: "gemini-flash-lite-latest",
+      providerModelId: "gemini-flash-lite-latest",
+      supportsReasoning: false,
+    };
+    expect(
+      selectToolIntentModelConfig({
+        configs: [defaultConfig, classifierConfig],
+        defaultConfig,
+      })
+    ).toBe(classifierConfig);
+    expect(
+      selectToolIntentModelConfig({
+        configs: [defaultConfig],
+        defaultConfig,
+      })
+    ).toBe(defaultConfig);
+  });
+
   test("separates provider billing units from actual search call count", () => {
     expect(
       getWebSearchProviderBillingUnitCount({
