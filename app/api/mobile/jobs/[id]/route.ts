@@ -195,7 +195,9 @@ export async function GET(
       fetchedOnLabel: formatDateLabel(job.createdAt),
       sourceLabel,
       sourceUrl: job.sourceUrl,
-      pdfUrl: proxiedPdfUrl,
+      pdfUrl: proxiedPdfUrl && previewToken
+        ? `${proxiedPdfUrl}?token=${encodeURIComponent(previewToken)}`
+        : null,
       pdfPreviewImageUrl: proxiedPdfUrl && previewToken
         ? `/api/mobile/jobs/${job.id}/preview-image?token=${encodeURIComponent(
             previewToken

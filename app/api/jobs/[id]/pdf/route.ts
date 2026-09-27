@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
 import { getJobPostingById } from "@/lib/jobs/service";
+import { getMobileSession } from "@/lib/mobile-auth-session";
+import { verifyJobPreviewToken } from "@/lib/mobile-auth-token";
 import { parseSupabaseStorageObjectUrl, resolveServerFetchableSupabaseUrl } from "@/lib/supabase/storage-url";
 
 export const runtime = "nodejs";
@@ -77,8 +79,15 @@ export async function GET(
   request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
+  const { id } = await context.params;
+  const previewToken = new URL(request.url).searchParams.get("token") ?? "";
+  const hasValidPreviewToken = verifyJobPreviewToken(previewToken, id);
+  const session = hasValidPreviewToken
+    ? null
+    : request.headers.has("authorization")
+      ? await getMobileSession(request)
+      : await auth();
+  if (!hasValidPreviewToken && !session?.user) {
     return NextResponse.json(
       {
         code: "unauthorized:auth",
@@ -88,10 +97,10 @@ export async function GET(
     );
   }
 
-  const jobsEnabled = await isJobsEnabledForRole(
+  const jobsEnabled = hasValidPreviewToken || (session?.user && await isJobsEnabledForRole(
     session.user.role ?? null,
     session.user.id
-  );
+  ));
   if (!jobsEnabled) {
     return NextResponse.json(
       {
@@ -102,7 +111,6 @@ export async function GET(
     );
   }
 
-  const { id } = await context.params;
   if (!id) {
     return NextResponse.json(
       {
@@ -116,6 +124,7 @@ export async function GET(
   const job = await getJobPostingById({
     id,
     includeInactive: false,
+    includeRagState: false,
   });
   if (!job) {
     return NextResponse.json(

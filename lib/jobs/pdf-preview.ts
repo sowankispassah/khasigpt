@@ -19,6 +19,11 @@ async function ensurePdfPreviewRuntimeReady() {
     globalThis.Path2D = Path2D as unknown as typeof globalThis.Path2D;
   }
 
+  // Import the worker explicitly so Next includes it in the server bundle.
+  // PDF.js's relative dynamic import otherwise resolves beside a generated chunk.
+  const worker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
+  globalThis.pdfjsWorker = worker;
+
   pdfPreviewRuntimeReady = true;
 }
 
