@@ -2,6 +2,16 @@ import { USER_FEATURE_DEFINITIONS } from "@/lib/feature-access-catalog";
 import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
+  { key: "chat.report.action", defaultText: "Report offensive content", description: "Accessible label for reporting an AI-generated response." },
+  { key: "chat.report.short_action", defaultText: "Report", description: "Visible action to flag an AI-generated response." },
+  { key: "chat.report.title", defaultText: "Report AI response", description: "Title of the AI content report confirmation." },
+  { key: "chat.report.description", defaultText: "Report this response as offensive or harmful? Your report will be sent to our team for review.", description: "Explains the AI content report." },
+  { key: "chat.report.cancel", defaultText: "Cancel", description: "Cancel an AI content report." },
+  { key: "chat.report.close", defaultText: "Close", description: "Close a completed AI content report confirmation." },
+  { key: "chat.report.submit", defaultText: "Send report", description: "Submit an AI content report." },
+  { key: "chat.report.sending", defaultText: "Sending...", description: "Pending AI content report action." },
+  { key: "chat.report.success", defaultText: "Report sent. Thank you for helping us improve safety.", description: "Confirmation after an AI content report is stored." },
+  { key: "chat.report.error", defaultText: "Report could not be sent. Please try again.", description: "Error when an AI content report cannot be stored." },
   ...USER_FEATURE_DEFINITIONS.flatMap((feature) => [
     {
       key: feature.labelKey,
