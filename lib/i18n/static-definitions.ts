@@ -3,6 +3,10 @@ import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   { key: "chat.feedback.action", defaultText: "Dislike or report this response", description: "Accessible description of the thumbs-down response action." },
+  { key: "chat.feedback.upvote", defaultText: "Thumbs up", description: "Accessible label for liking a response." },
+  { key: "chat.feedback.undo_upvote", defaultText: "Undo thumbs up", description: "Accessible label for removing a thumbs-up vote." },
+  { key: "chat.feedback.undo_downvote", defaultText: "Undo thumbs down", description: "Accessible label for removing a thumbs-down vote." },
+  { key: "chat.feedback.vote_error", defaultText: "Could not update feedback. Please try again.", description: "Error when saving or clearing a response vote fails." },
   { key: "chat.feedback.title", defaultText: "Share feedback", description: "Title of the response feedback form." },
   { key: "chat.feedback.close", defaultText: "Close feedback", description: "Accessible label for closing the response feedback form." },
   { key: "chat.feedback.description", defaultText: "Choose a reason. Use Safety or offensive content to flag a response for review.", description: "Explains the feedback and safety report options." },
