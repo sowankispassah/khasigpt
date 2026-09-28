@@ -1,8 +1,20 @@
 import equal from "fast-deep-equal";
-import { memo } from "react";
+import { Flag, Loader2 } from "lucide-react";
+import { memo, useState } from "react";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
 import { useCopyToClipboard } from "usehooks-ts";
+import { useTranslation } from "@/components/language-provider";
+import { EditableTranslation } from "@/components/translation-edit-provider";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
 import { Action, Actions } from "./elements/actions";
@@ -23,6 +35,28 @@ export function PureMessageActions({
 }) {
   const { mutate } = useSWRConfig();
   const [_, copyToClipboard] = useCopyToClipboard();
+  const { translate } = useTranslation();
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportPending, setReportPending] = useState(false);
+
+  const sendReport = async () => {
+    if (reportPending) return;
+    setReportPending(true);
+    try {
+      const response = await fetch("/api/report-ai-content", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId, messageId: message.id }),
+      });
+      if (!response.ok) throw new Error("Report failed");
+      setReportOpen(false);
+      toast.success(translate("chat.report.success", "Report sent. Thank you for helping us improve safety."));
+    } catch {
+      toast.error(translate("chat.report.error", "Report could not be sent. Please try again."));
+    } finally {
+      setReportPending(false);
+    }
+  };
 
   if (isLoading) {
     return null;
@@ -68,6 +102,7 @@ export function PureMessageActions({
   }
 
   return (
+    <>
     <Actions className="-ml-0.5">
       <Action onClick={handleCopy} tooltip="Copy">
         <CopyIcon />
@@ -170,7 +205,42 @@ export function PureMessageActions({
       >
         <ThumbDownIcon />
       </Action>
+      <Action
+        className="h-9 w-auto cursor-pointer gap-1 px-2"
+        data-testid="message-report"
+        onClick={() => setReportOpen(true)}
+        tooltip={translate("chat.report.action", "Report offensive content")}
+      >
+        <Flag aria-hidden="true" className="size-4" />
+        <EditableTranslation defaultText="Report" description="Visible action to flag an AI-generated response." translationKey="chat.report.short_action" />
+      </Action>
     </Actions>
+    <AlertDialog onOpenChange={(open) => !reportPending && setReportOpen(open)} open={reportOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            <EditableTranslation defaultText="Report AI response" description="Title of the offensive AI content report confirmation." translationKey="chat.report.title" />
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            <EditableTranslation defaultText="Report this response as offensive or harmful? Your report will be sent to our team for review." description="Explains where an AI content report goes." translationKey="chat.report.description" />
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <Button className="cursor-pointer" disabled={reportPending} onClick={() => setReportOpen(false)} type="button" variant="outline">
+            <EditableTranslation defaultText="Cancel" description="Cancel an AI content report." translationKey="chat.report.cancel" />
+          </Button>
+          <Button className="cursor-pointer" disabled={reportPending} onClick={sendReport} type="button">
+            {reportPending ? <Loader2 aria-hidden="true" className="mr-2 size-4 animate-spin" /> : null}
+            {reportPending ? (
+              <EditableTranslation defaultText="Sending..." description="AI content report is being sent." translationKey="chat.report.sending" />
+            ) : (
+              <EditableTranslation defaultText="Send report" description="Submit an offensive AI content report." translationKey="chat.report.submit" />
+            )}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }
 
