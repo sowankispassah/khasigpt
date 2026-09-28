@@ -1,24 +1,29 @@
 import equal from "fast-deep-equal";
-import { Flag, Loader2 } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { memo, useState } from "react";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
 import { useCopyToClipboard } from "usehooks-ts";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
 import { Action, Actions } from "./elements/actions";
 import { CopyIcon, PencilEditIcon, ThumbDownIcon, ThumbUpIcon } from "./icons";
+
+const feedbackCategories = [
+  { value: "incorrect", key: "chat.feedback.incorrect", label: "Incorrect or incomplete" },
+  { value: "not_requested", key: "chat.feedback.not_requested", label: "Not what I asked for" },
+  { value: "slow_buggy", key: "chat.feedback.slow_buggy", label: "Slow or buggy" },
+  { value: "style_tone", key: "chat.feedback.style_tone", label: "Style or tone" },
+  { value: "safety", key: "chat.feedback.safety", label: "Safety or offensive content" },
+  { value: "other", key: "chat.feedback.other", label: "Other" },
+] as const;
+
+type FeedbackCategory = (typeof feedbackCategories)[number]["value"];
 
 export function PureMessageActions({
   chatId,
@@ -36,25 +41,49 @@ export function PureMessageActions({
   const { mutate } = useSWRConfig();
   const [_, copyToClipboard] = useCopyToClipboard();
   const { translate } = useTranslation();
-  const [reportOpen, setReportOpen] = useState(false);
-  const [reportPending, setReportPending] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackCategory, setFeedbackCategory] = useState<FeedbackCategory | null>(null);
+  const [feedbackDetails, setFeedbackDetails] = useState("");
+  const [feedbackPending, setFeedbackPending] = useState(false);
 
-  const sendReport = async () => {
-    if (reportPending) return;
-    setReportPending(true);
+  const closeFeedback = () => {
+    if (feedbackPending) return;
+    setFeedbackOpen(false);
+    setFeedbackCategory(null);
+    setFeedbackDetails("");
+  };
+
+  const sendFeedback = async () => {
+    if (feedbackPending || !feedbackCategory) return;
+    setFeedbackPending(true);
     try {
       const response = await fetch("/api/report-ai-content", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chatId, messageId: message.id }),
+        body: JSON.stringify({ chatId, messageId: message.id, category: feedbackCategory, details: feedbackDetails.trim() }),
       });
-      if (!response.ok) throw new Error("Report failed");
-      setReportOpen(false);
-      toast.success(translate("chat.report.success", "Report sent. Thank you for helping us improve safety."));
+      if (!response.ok) throw new Error("Feedback failed");
+      setFeedbackOpen(false);
+      setFeedbackCategory(null);
+      setFeedbackDetails("");
+      toast.success(translate("chat.feedback.success", "Feedback sent. Thank you."));
+      if (!vote || vote.isUpvoted) {
+        try {
+          const voteResponse = await fetch("/api/vote", {
+            method: "PATCH",
+            body: JSON.stringify({ chatId, messageId: message.id, type: "down" }),
+          });
+          if (voteResponse.ok) {
+            await mutate<Vote[]>(`/api/vote?chatId=${chatId}`);
+          }
+        } catch {
+          // Feedback has already reached the review queue.
+        }
+      }
     } catch {
-      toast.error(translate("chat.report.error", "Report could not be sent. Please try again."));
+      toast.error(translate("chat.feedback.error", "Feedback could not be sent. Please try again."));
     } finally {
-      setReportPending(false);
+      setFeedbackPending(false);
     }
   };
 
@@ -159,87 +188,54 @@ export function PureMessageActions({
 
       <Action
         data-testid="message-downvote"
-        disabled={vote && !vote.isUpvoted}
-        onClick={() => {
-          const downvote = fetch("/api/vote", {
-            method: "PATCH",
-            body: JSON.stringify({
-              chatId,
-              messageId: message.id,
-              type: "down",
-            }),
-          });
-
-          toast.promise(downvote, {
-            loading: "Downvoting Response...",
-            success: () => {
-              mutate<Vote[]>(
-                `/api/vote?chatId=${chatId}`,
-                (currentVotes) => {
-                  if (!currentVotes) {
-                    return [];
-                  }
-
-                  const votesWithoutCurrent = currentVotes.filter(
-                    (currentVote) => currentVote.messageId !== message.id
-                  );
-
-                  return [
-                    ...votesWithoutCurrent,
-                    {
-                      chatId,
-                      messageId: message.id,
-                      isUpvoted: false,
-                    },
-                  ];
-                },
-                { revalidate: false }
-              );
-
-              return "Downvoted Response!";
-            },
-            error: "Failed to downvote response.",
-          });
-        }}
-        tooltip="Downvote Response"
+        onClick={() => setFeedbackOpen(true)}
+        tooltip={translate("chat.feedback.action", "Dislike or report this response")}
       >
         <ThumbDownIcon />
       </Action>
-      <Action
-        className="h-9 w-auto cursor-pointer gap-1 px-2"
-        data-testid="message-report"
-        onClick={() => setReportOpen(true)}
-        tooltip={translate("chat.report.action", "Report offensive content")}
-      >
-        <Flag aria-hidden="true" className="size-4" />
-        <EditableTranslation defaultText="Report" description="Visible action to flag an AI-generated response." translationKey="chat.report.short_action" />
-      </Action>
     </Actions>
-    <AlertDialog onOpenChange={(open) => !reportPending && setReportOpen(open)} open={reportOpen}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>
-            <EditableTranslation defaultText="Report AI response" description="Title of the offensive AI content report confirmation." translationKey="chat.report.title" />
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            <EditableTranslation defaultText="Report this response as offensive or harmful? Your report will be sent to our team for review." description="Explains where an AI content report goes." translationKey="chat.report.description" />
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <Button className="cursor-pointer" disabled={reportPending} onClick={() => setReportOpen(false)} type="button" variant="outline">
-            <EditableTranslation defaultText="Cancel" description="Cancel an AI content report." translationKey="chat.report.cancel" />
+    <Dialog onOpenChange={(open) => { if (open) setFeedbackOpen(true); else closeFeedback(); }} open={feedbackOpen}>
+      <DialogContent className="max-w-xl gap-5 rounded-2xl">
+        <button aria-label={translate("chat.feedback.close", "Close feedback")} className="absolute right-4 top-4 cursor-pointer rounded p-1 hover:bg-muted" disabled={feedbackPending} onClick={closeFeedback} type="button"><X aria-hidden="true" className="size-4" /></button>
+        <DialogHeader>
+          <DialogTitle><EditableTranslation defaultText="Share feedback" description="Title of the response feedback form." translationKey="chat.feedback.title" /></DialogTitle>
+          <DialogDescription><EditableTranslation defaultText="Choose a reason. Use Safety or offensive content to flag a response for review." description="Explains the feedback and safety report options." translationKey="chat.feedback.description" /></DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-wrap gap-2">
+          {feedbackCategories.map((category) => (
+            <button
+              aria-pressed={feedbackCategory === category.value}
+              className={`cursor-pointer rounded-full border px-3 py-2 text-sm transition-colors ${feedbackCategory === category.value ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+              disabled={feedbackPending}
+              key={category.value}
+              onClick={() => setFeedbackCategory(category.value)}
+              type="button"
+            >
+              <EditableTranslation defaultText={category.label} description={`Feedback reason: ${category.label}.`} translationKey={category.key} />
+            </button>
+          ))}
+        </div>
+        <div>
+          <label className="mb-2 block text-sm" htmlFor={`feedback-details-${message.id}`}>
+            <EditableTranslation defaultText="Share details (optional)" description="Label for optional response feedback details." translationKey="chat.feedback.details" />
+          </label>
+          <Textarea
+            id={`feedback-details-${message.id}`}
+            maxLength={2000}
+            onChange={(event) => setFeedbackDetails(event.target.value)}
+            rows={3}
+            value={feedbackDetails}
+          />
+        </div>
+        <p className="text-muted-foreground text-xs"><EditableTranslation defaultText="The selected response and your feedback will be shared with our team for review." description="Explains what response feedback shares." translationKey="chat.feedback.privacy" /></p>
+        <DialogFooter>
+          <Button className="cursor-pointer" disabled={feedbackPending || !feedbackCategory} onClick={sendFeedback} type="button">
+            {feedbackPending ? <Loader2 aria-hidden="true" className="mr-2 size-4 animate-spin" /> : null}
+            <EditableTranslation defaultText={feedbackPending ? "Sending..." : "Submit"} description="Submit response feedback." translationKey={feedbackPending ? "chat.feedback.sending" : "chat.feedback.submit"} />
           </Button>
-          <Button className="cursor-pointer" disabled={reportPending} onClick={sendReport} type="button">
-            {reportPending ? <Loader2 aria-hidden="true" className="mr-2 size-4 animate-spin" /> : null}
-            {reportPending ? (
-              <EditableTranslation defaultText="Sending..." description="AI content report is being sent." translationKey="chat.report.sending" />
-            ) : (
-              <EditableTranslation defaultText="Send report" description="Submit an offensive AI content report." translationKey="chat.report.submit" />
-            )}
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     </>
   );
 }
@@ -247,6 +243,9 @@ export function PureMessageActions({
 export const MessageActions = memo(
   PureMessageActions,
   (prevProps, nextProps) => {
+    if (prevProps.chatId !== nextProps.chatId || prevProps.message.id !== nextProps.message.id) {
+      return false;
+    }
     if (!equal(prevProps.vote, nextProps.vote)) {
       return false;
     }

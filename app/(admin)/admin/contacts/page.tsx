@@ -150,9 +150,14 @@ export default async function AdminContactsPage({
                     </td>
                     <td className="py-3 align-top">
                       <div className="font-medium">{message.subject}</div>
-                      <p className="line-clamp-2 text-muted-foreground text-xs leading-relaxed">
-                        {message.message}
-                      </p>
+                      <details className="group mt-1">
+                        <summary className="cursor-pointer text-muted-foreground text-xs hover:underline">
+                          View full message
+                        </summary>
+                        <p className="mt-2 max-w-xl whitespace-pre-wrap break-words text-xs leading-relaxed">
+                          {message.message}
+                        </p>
+                      </details>
                     </td>
                     <td className="py-3 align-top text-muted-foreground">
                       {formatDistanceToNow(new Date(message.createdAt), {

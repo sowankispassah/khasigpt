@@ -2,6 +2,22 @@ import { USER_FEATURE_DEFINITIONS } from "@/lib/feature-access-catalog";
 import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
+  { key: "chat.feedback.action", defaultText: "Dislike or report this response", description: "Accessible description of the thumbs-down response action." },
+  { key: "chat.feedback.title", defaultText: "Share feedback", description: "Title of the response feedback form." },
+  { key: "chat.feedback.close", defaultText: "Close feedback", description: "Accessible label for closing the response feedback form." },
+  { key: "chat.feedback.description", defaultText: "Choose a reason. Use Safety or offensive content to flag a response for review.", description: "Explains the feedback and safety report options." },
+  { key: "chat.feedback.incorrect", defaultText: "Incorrect or incomplete", description: "Feedback reason." },
+  { key: "chat.feedback.not_requested", defaultText: "Not what I asked for", description: "Feedback reason." },
+  { key: "chat.feedback.slow_buggy", defaultText: "Slow or buggy", description: "Feedback reason." },
+  { key: "chat.feedback.style_tone", defaultText: "Style or tone", description: "Feedback reason." },
+  { key: "chat.feedback.safety", defaultText: "Safety or offensive content", description: "Feedback reason that reports offensive AI content." },
+  { key: "chat.feedback.other", defaultText: "Other", description: "Feedback reason." },
+  { key: "chat.feedback.details", defaultText: "Share details (optional)", description: "Label for optional response feedback details." },
+  { key: "chat.feedback.privacy", defaultText: "The selected response and your feedback will be shared with our team for review.", description: "Explains what response feedback shares." },
+  { key: "chat.feedback.submit", defaultText: "Submit", description: "Submit response feedback." },
+  { key: "chat.feedback.sending", defaultText: "Sending...", description: "Response feedback is being sent." },
+  { key: "chat.feedback.success", defaultText: "Feedback sent. Thank you.", description: "Confirmation after response feedback is stored." },
+  { key: "chat.feedback.error", defaultText: "Feedback could not be sent. Please try again.", description: "Error when response feedback cannot be stored." },
   { key: "chat.report.action", defaultText: "Report offensive content", description: "Accessible label for reporting an AI-generated response." },
   { key: "chat.report.short_action", defaultText: "Report", description: "Visible action to flag an AI-generated response." },
   { key: "chat.report.title", defaultText: "Report AI response", description: "Title of the AI content report confirmation." },

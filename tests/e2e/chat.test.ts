@@ -151,13 +151,26 @@ test.describe("Chat activity", () => {
     await chatPage.isVoteComplete();
   });
 
-  test("Downvote message", async () => {
+  test("Downvote message", async ({ page }) => {
+    let submittedCategory: string | undefined;
+    await page.route("**/api/report-ai-content", async (route) => {
+      submittedCategory = route.request().postDataJSON().category;
+      await route.fulfill({ json: { ok: true } });
+    });
     await chatPage.sendUserMessage("Why is the sky blue?");
     await chatPage.isGenerationComplete();
 
     const assistantMessage = await chatPage.getRecentAssistantMessage();
     await assistantMessage.downvote();
-    await chatPage.isVoteComplete();
+    const feedback = page.getByRole("dialog", { name: "Share feedback" });
+    await expect(feedback).toBeVisible();
+    await expect(feedback.getByRole("button", { name: "Submit" })).toBeDisabled();
+    await feedback.getByRole("button", { name: "Safety or offensive content" }).click();
+    await expect(feedback.getByRole("button", { name: "Submit" })).toBeEnabled();
+    const downvoteResponse = page.waitForResponse((response) => response.url().includes("/api/vote") && response.request().method() === "PATCH");
+    await feedback.getByRole("button", { name: "Submit" }).click();
+    await downvoteResponse;
+    expect(submittedCategory).toBe("safety");
   });
 
   test("Show vote actions immediately after streaming completes", async () => {
@@ -176,7 +189,7 @@ test.describe("Chat activity", () => {
     ).toBeVisible({ timeout: 1000 });
   });
 
-  test("Update vote", async () => {
+  test("Feedback form remains available after upvote", async ({ page }) => {
     await chatPage.sendUserMessage("Why is the sky blue?");
     await chatPage.isGenerationComplete();
 
@@ -185,7 +198,7 @@ test.describe("Chat activity", () => {
     await chatPage.isVoteComplete();
 
     await assistantMessage.downvote();
-    await chatPage.isVoteComplete();
+    await expect(page.getByRole("dialog", { name: "Share feedback" })).toBeVisible();
   });
 
   test("Create message from url query", async ({ page }) => {

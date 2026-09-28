@@ -12,7 +12,18 @@ export const runtime = "nodejs";
 const reportSchema = z.object({
   chatId: z.string().uuid(),
   messageId: z.string().uuid(),
+  category: z.enum(["incorrect", "not_requested", "slow_buggy", "style_tone", "safety", "other"]).default("safety"),
+  details: z.string().trim().max(2000).optional(),
 });
+
+const categoryLabels = {
+  incorrect: "Incorrect or incomplete",
+  not_requested: "Not what I asked for",
+  slow_buggy: "Slow or buggy",
+  style_tone: "Style or tone",
+  safety: "Safety or offensive content",
+  other: "Other",
+} as const;
 
 function json(body: unknown, status: number) {
   return Response.json(body, {
@@ -33,7 +44,7 @@ export async function POST(request: Request) {
     return json({ error: "Invalid report." }, 400);
   }
 
-  const { chatId, messageId } = parsed.data;
+  const { chatId, messageId, category, details } = parsed.data;
   try {
     const chat = await getChatById({ id: chatId });
     if (!chat || chat.userId !== session.user.id) {
@@ -73,8 +84,8 @@ export async function POST(request: Request) {
     await createContactMessage({
       name: session.user.name?.trim() || "App user",
       email: session.user.email,
-      subject: "AI content report",
-      message: `A user reported an AI-generated response as offensive or harmful.\nChat ID: ${chatId}\nMessage ID: ${messageId}\nChat URL: https://khasigpt.com/chat/${chatId}\nResponse excerpt: ${excerpt || "[Non-text response]"}`,
+      subject: category === "safety" ? "AI content report" : "AI response feedback",
+      message: `Feedback category: ${categoryLabels[category]}\nUser details: ${details || "[None provided]"}\nChat ID: ${chatId}\nMessage ID: ${messageId}\nChat URL: https://khasigpt.com/chat/${chatId}\nResponse excerpt: ${excerpt || "[Non-text response]"}`,
     });
 
     return json({ ok: true }, 200);
