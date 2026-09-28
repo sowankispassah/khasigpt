@@ -2,12 +2,14 @@ import { formatDistanceToNow } from "date-fns";
 import type { Metadata } from "next";
 
 import { AdminPagination } from "@/components/admin/admin-pagination";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { adminQueryResult } from "@/lib/admin/safe-query";
 import {
   getContactMessageCount,
   listContactMessages,
 } from "@/lib/db/queries";
 import type { ContactMessage } from "@/lib/db/schema";
+import { ContactMessagesTable, type ContactTableMessage } from "./contact-messages-table";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +19,30 @@ export const metadata: Metadata = {
 };
 
 const CONTACTS_PAGE_SIZE = 25;
+const dateFormatter = new Intl.DateTimeFormat("en-IN", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "Asia/Kolkata",
+});
+
+function toTableMessage(message: ContactMessage): ContactTableMessage {
+  const createdAt = new Date(message.createdAt ?? Number.NaN);
+  const updatedAt = new Date(message.updatedAt ?? Number.NaN);
+  const validCreatedAt = Number.isFinite(createdAt.getTime());
+  return {
+    ...message,
+    message: typeof message.message === "string" ? message.message : "",
+    createdAt: validCreatedAt ? createdAt.toISOString() : "",
+    receivedAt: validCreatedAt ? `${dateFormatter.format(createdAt)} IST` : "—",
+    receivedRelative: validCreatedAt
+      ? formatDistanceToNow(createdAt, { addSuffix: true })
+      : "—",
+    updatedAt: Number.isFinite(updatedAt.getTime()) ? updatedAt.toISOString() : "",
+    updatedAtLabel: Number.isFinite(updatedAt.getTime())
+      ? `${dateFormatter.format(updatedAt)} IST`
+      : "—",
+  };
+}
 
 function parsePage(value: string | string[] | undefined) {
   const rawValue = Array.isArray(value) ? value[0] : value;
@@ -73,106 +99,20 @@ export default async function AdminContactsPage({
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-semibold text-2xl">Contact requests</h1>
+        <h1 className="font-semibold text-2xl"><EditableTranslation defaultText="Contact requests" description="Admin contact requests page title." translationKey="admin.contacts.title" /></h1>
         <p className="text-muted-foreground text-sm">
-          Messages submitted through the public contact form.
+          <EditableTranslation defaultText="Messages and AI feedback submitted by users." description="Admin contact requests page description." translationKey="admin.contacts.description" />
         </p>
       </header>
 
       <section className="rounded-lg border bg-card p-4 shadow-sm">
         {(!messagesConfirmed || !totalMessagesState.ok) && (
           <AdminContactsWarning
-            message={[
-              !messagesConfirmed
-                ? "Contact request rows could not be confirmed."
-                : null,
-              !totalMessagesState.ok
-                ? "Contact request total could not be confirmed."
-                : null,
-            ]
-              .filter(Boolean)
-              .join(" ")}
+            countUnavailable={!totalMessagesState.ok}
+            rowsUnavailable={!messagesConfirmed}
           />
         )}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-muted-foreground text-xs uppercase">
-              <tr>
-                <th className="py-2 text-left">From</th>
-                <th className="py-2 text-left">Phone</th>
-                <th className="py-2 text-left">Subject</th>
-                <th className="py-2 text-left">Received</th>
-                <th className="py-2 text-left">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {!messagesConfirmed ? (
-                <tr>
-                  <td
-                    className="py-8 text-center text-muted-foreground"
-                    colSpan={5}
-                  >
-                    Unable to load contact requests.
-                  </td>
-                </tr>
-              ) : messages.length === 0 ? (
-                <tr>
-                  <td
-                    className="py-8 text-center text-muted-foreground"
-                    colSpan={5}
-                  >
-                    No contact requests yet.
-                  </td>
-                </tr>
-              ) : (
-                messages.map((message) => (
-                  <tr className="border-t" key={message.id}>
-                    <td className="py-3 align-top">
-                      <div className="font-medium">{message.name}</div>
-                      <a
-                        className="cursor-pointer text-muted-foreground text-xs hover:underline"
-                        href={`mailto:${message.email}`}
-                      >
-                        {message.email}
-                      </a>
-                    </td>
-                    <td className="py-3 align-top text-muted-foreground text-xs">
-                      {message.phone ? (
-                        <a
-                          className="cursor-pointer hover:underline"
-                          href={`tel:${message.phone}`}
-                        >
-                          {message.phone}
-                        </a>
-                      ) : (
-                        <span className="text-muted-foreground/70">N/A</span>
-                      )}
-                    </td>
-                    <td className="py-3 align-top">
-                      <div className="font-medium">{message.subject}</div>
-                      <details className="group mt-1">
-                        <summary className="cursor-pointer text-muted-foreground text-xs hover:underline">
-                          View full message
-                        </summary>
-                        <p className="mt-2 max-w-xl whitespace-pre-wrap break-words text-xs leading-relaxed">
-                          {message.message}
-                        </p>
-                      </details>
-                    </td>
-                    <td className="py-3 align-top text-muted-foreground">
-                      {formatDistanceToNow(new Date(message.createdAt), {
-                        addSuffix: true,
-                      })}
-                    </td>
-                    <td className="py-3 align-top capitalize">
-                      {message.status.replaceAll("_", " ")}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <ContactMessagesTable messages={messages.map(toTableMessage)} messagesConfirmed={messagesConfirmed} />
 
         <div className="mt-4">
           <AdminPagination
@@ -189,10 +129,18 @@ export default async function AdminContactsPage({
   );
 }
 
-function AdminContactsWarning({ message }: { message: string }) {
+function AdminContactsWarning({
+  rowsUnavailable,
+  countUnavailable,
+}: {
+  rowsUnavailable: boolean;
+  countUnavailable: boolean;
+}) {
   return (
     <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
-      {message} Refresh this admin section to retry.
+      {rowsUnavailable ? <><EditableTranslation defaultText="Contact request rows could not be confirmed." description="Contact list rows unavailable warning." translationKey="admin.contacts.rows_unavailable" />{" "}</> : null}
+      {countUnavailable ? <><EditableTranslation defaultText="Contact request total could not be confirmed." description="Contact list count unavailable warning." translationKey="admin.contacts.count_unavailable" />{" "}</> : null}
+      <EditableTranslation defaultText="Refresh this admin section to retry." description="Contact list recovery instruction." translationKey="admin.contacts.retry_instruction" />
     </div>
   );
 }
