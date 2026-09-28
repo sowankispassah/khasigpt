@@ -33,6 +33,6 @@ export function summarizeContactMessage(message: string) {
     messageId,
     details: details && details !== "[None provided]" ? details : null,
     excerpt,
-    isAiFeedback: Boolean(category && chatId && messageId),
+    isAiFeedback: Boolean(category || (chatId && messageId && excerpt)),
   };
 }
