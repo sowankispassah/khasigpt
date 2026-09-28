@@ -1602,12 +1602,25 @@ export const contactMessage = pgTable(
     phone: varchar("phone", { length: 32 }),
     subject: varchar("subject", { length: 200 }).notNull(),
     message: text("message").notNull(),
+    kind: varchar("kind", { length: 16, enum: ["contact", "report"] })
+      .notNull()
+      .default("contact"),
+    isViewed: boolean("isViewed").notNull().default(false),
     status: contactMessageStatusEnum("status").notNull().default("new"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   },
   (table) => ({
     statusIdx: index("ContactMessage_status_idx").on(table.status),
+    kindCreatedAtIdx: index("ContactMessage_kind_createdAt_idx").on(
+      table.kind,
+      table.createdAt
+    ),
+    kindViewedCreatedAtIdx: index("ContactMessage_kind_isViewed_createdAt_idx").on(
+      table.kind,
+      table.isViewed,
+      table.createdAt
+    ),
     statusCreatedAtIdx: index("ContactMessage_status_createdAt_idx").on(
       table.status,
       table.createdAt

@@ -6,6 +6,7 @@ import {
   Compass,
   Contact,
   Database,
+  Flag,
   Languages,
   LayoutDashboard,
   MessageSquare,
@@ -27,6 +28,10 @@ import {
   useEffect,
   useState,
 } from "react";
+import { useTranslation } from "@/components/language-provider";
+import {
+  EditableTranslation,
+} from "@/components/translation-edit-provider";
 
 import {
   Sidebar,
@@ -49,6 +54,7 @@ import { cn } from "@/lib/utils";
 type AdminBadgeKey =
   | "accountDeletionRequests"
   | "contacts"
+  | "reports"
   | "jobs"
   | "moderation";
 
@@ -57,6 +63,7 @@ type AdminNavItem = {
   href: string;
   icon: ComponentType<{ className?: string }>;
   label: string;
+  labelKey?: string;
 };
 
 type AdminNavGroup = {
@@ -79,12 +86,21 @@ const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         href: "/admin/contacts",
         icon: Contact,
         label: "Contacts",
+        labelKey: "admin.nav.contacts",
+      },
+      {
+        badgeKey: "reports",
+        href: "/admin/reports",
+        icon: Flag,
+        label: "Reports",
+        labelKey: "admin.nav.reports",
       },
       {
         badgeKey: "accountDeletionRequests",
         href: "/admin/account-deletion",
         icon: Trash2,
         label: "Deletion Requests",
+        labelKey: "admin.nav.deletion_requests",
       },
     ],
   },
@@ -124,6 +140,7 @@ export function AdminNav({
   initialBadgeCounts?: AdminBadgeCounts;
 }) {
   const pathname = usePathname();
+  const { translate } = useTranslation();
   const { setOpenMobile } = useSidebar();
   const [badgeCounts, setBadgeCounts] =
     useState<AdminBadgeCounts>(initialBadgeCounts);
@@ -187,6 +204,51 @@ export function AdminNav({
         "admin:account-deletion-unviewed-count",
         handleCountUpdate
       );
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshContactCounts() {
+      try {
+        const response = await fetch("/api/admin/contact-messages/unread-counts", {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        if (!response.ok) {
+          return;
+        }
+        const body = (await response.json()) as { contacts?: unknown; reports?: unknown };
+        if (
+          typeof body.contacts !== "number" || !Number.isFinite(body.contacts) ||
+          typeof body.reports !== "number" || !Number.isFinite(body.reports)
+        ) {
+          return;
+        }
+        const contacts = body.contacts;
+        const reports = body.reports;
+        if (!cancelled) {
+          setBadgeCounts((current) => ({
+            ...current,
+            contacts: Math.max(0, contacts),
+            reports: Math.max(0, reports),
+          }));
+        }
+      } catch (error) {
+        console.warn("[admin-nav] Failed to refresh contact and report badges.", error);
+      }
+    }
+
+    const handleCountUpdate = () => void refreshContactCounts();
+    window.addEventListener("admin:contact-unread-counts", handleCountUpdate);
+    void refreshContactCounts();
+    const intervalId = window.setInterval(refreshContactCounts, 120_000);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("admin:contact-unread-counts", handleCountUpdate);
       window.clearInterval(intervalId);
     };
   }, []);
@@ -256,6 +318,12 @@ export function AdminNav({
                   const isActive = isActiveAdminRoute(pathname, link.href);
                   const badgeCount = getBadgeCount(link);
                   const Icon = link.icon;
+                  const label = link.labelKey ? translate(link.labelKey, link.label) : link.label;
+                  const badgeTitle = getBadgeTitle(
+                    translate("admin.nav.unread_badge", "Unread in {section}: {count}"),
+                    label,
+                    badgeCount
+                  );
 
                   return (
                     <SidebarMenuItem key={link.href}>
@@ -267,10 +335,11 @@ export function AdminNav({
                             "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
                         )}
                         isActive={isActive}
-                        tooltip={link.label}
+                        tooltip={label}
                       >
                         <Link
                           aria-current={isActive ? "page" : undefined}
+                          aria-label={badgeCount > 0 ? `${label}. ${badgeTitle}` : undefined}
                           href={link.href}
                           onClick={(event) =>
                             handleLinkClick(event, link.href)
@@ -278,22 +347,22 @@ export function AdminNav({
                           prefetch={false}
                         >
                           <Icon className="size-4" />
-                          <span>{link.label}</span>
+                          <span>{link.labelKey ? <EditableTranslation defaultText={link.label} description={`${link.label} admin navigation label.`} translationKey={link.labelKey} /> : link.label}</span>
                         </Link>
                       </SidebarMenuButton>
                       {badgeCount > 0 ? (
                         <>
                           <SidebarMenuBadge
-                            className="bg-destructive px-1.5 font-semibold text-destructive-foreground"
-                            title={getBadgeTitle(link.label, badgeCount)}
+                            className="h-5 min-w-5 rounded-full border border-red-700 bg-red-600 px-1 font-semibold text-white"
+                            title={badgeTitle}
                           >
                             {formatBadgeCount(badgeCount)}
                           </SidebarMenuBadge>
                           <span
                             aria-hidden="true"
-                            className="absolute top-1.5 right-1 hidden size-2.5 rounded-full bg-destructive ring-2 ring-sidebar group-data-[collapsible=icon]:block"
-                            title={getBadgeTitle(link.label, badgeCount)}
-                          />
+                            className="absolute -top-1 -right-1 hidden h-5 min-w-5 items-center justify-center rounded-full border border-red-700 bg-red-600 px-1 font-semibold text-[10px] text-white ring-2 ring-sidebar group-data-[collapsible=icon]:flex"
+                            title={badgeTitle}
+                          >{formatBadgeCount(badgeCount)}</span>
                         </>
                       ) : null}
                     </SidebarMenuItem>
@@ -320,8 +389,8 @@ function formatBadgeCount(count: number) {
   return count > 99 ? "99+" : count;
 }
 
-function getBadgeTitle(label: string, count: number) {
-  return `${count} pending ${label.toLowerCase()} ${
-    count === 1 ? "item" : "items"
-  }`;
+function getBadgeTitle(template: string, label: string, count: number) {
+  return template
+    .replace("{count}", String(count))
+    .replace("{section}", label.toLowerCase());
 }

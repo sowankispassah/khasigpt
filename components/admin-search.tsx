@@ -71,7 +71,15 @@ const ADMIN_SEARCH_ENTRIES: AdminSearchEntry[] = [
     description: "Support inquiries submitted via the contact form.",
     href: "/admin/contacts",
     category: "Support",
-    keywords: ["support", "contact", "feedback"],
+    keywords: ["support", "contact", "inquiry"],
+  },
+  {
+    id: "reports",
+    title: "Chat Reports",
+    description: "Review AI response feedback and safety reports.",
+    href: "/admin/reports",
+    category: "Support",
+    keywords: ["reports", "feedback", "safety", "chat"],
   },
   {
     id: "account-deletion",

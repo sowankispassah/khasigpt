@@ -677,7 +677,7 @@ export async function getAdminOverviewSnapshot(): Promise<AdminOverviewSnapshot>
       SELECT
         (SELECT COUNT(*)::integer FROM "User") AS "userCount",
         (SELECT COUNT(*)::integer FROM "Chat" WHERE "deletedAt" IS NULL) AS "chatCount",
-        (SELECT COUNT(*)::integer FROM "ContactMessage") AS "contactMessageCount",
+        (SELECT COUNT(*)::integer FROM "ContactMessage" WHERE "kind" = 'contact') AS "contactMessageCount",
         (
           SELECT COALESCE(
             jsonb_agg(to_jsonb(recent_users) ORDER BY recent_users."createdAt" DESC),
@@ -750,6 +750,7 @@ export async function getAdminOverviewSnapshot(): Promise<AdminOverviewSnapshot>
               "message",
               "createdAt"
             FROM "ContactMessage"
+            WHERE "kind" = 'contact'
             ORDER BY "createdAt" DESC
             LIMIT 5
           ) recent_contact_messages
@@ -6413,6 +6414,7 @@ export type CreateContactMessageInput = {
   phone?: string | null;
   subject: string;
   message: string;
+  kind?: ContactMessage["kind"];
   status?: ContactMessageStatus;
 };
 
@@ -6431,6 +6433,7 @@ export async function createContactMessage(
         phone: input.phone ?? null,
         subject: input.subject,
         message: input.message,
+        kind: input.kind ?? "contact",
         status: input.status ?? "new",
         createdAt: now,
         updatedAt: now,
@@ -6463,16 +6466,21 @@ export async function createContactMessage(
 export async function listContactMessages({
   limit = 50,
   offset = 0,
+  kind,
   status,
   search,
 }: {
   limit?: number;
   offset?: number;
+  kind?: ContactMessage["kind"];
   status?: ContactMessageStatus | "all";
   search?: string | null;
 } = {}): Promise<ContactMessage[]> {
   try {
     const conditions: SQL<boolean>[] = [];
+    if (kind) {
+      conditions.push(eq(contactMessage.kind, kind) as SQL<boolean>);
+    }
     const normalizedSearch = search?.trim().toLowerCase();
     if (status && status !== "all") {
       conditions.push(eq(contactMessage.status, status) as SQL<boolean>);
@@ -6517,14 +6525,19 @@ export async function listContactMessages({
 }
 
 export async function getContactMessageCount({
+  kind,
   status,
   search,
 }: {
+  kind?: ContactMessage["kind"];
   status?: ContactMessageStatus | "all";
   search?: string | null;
 } = {}): Promise<number> {
   try {
     const conditions: SQL<boolean>[] = [];
+    if (kind) {
+      conditions.push(eq(contactMessage.kind, kind) as SQL<boolean>);
+    }
     const normalizedSearch = search?.trim().toLowerCase();
     if (status && status !== "all") {
       conditions.push(eq(contactMessage.status, status) as SQL<boolean>);
@@ -6568,6 +6581,34 @@ export async function getContactMessageCount({
       "Failed to count contact messages"
     );
   }
+}
+
+export async function getUnreadContactMessageCounts(): Promise<{
+  contacts: number;
+  reports: number;
+}> {
+  const rows = await withAdminDatabase("contacts.unread-counts", (adminDb) =>
+    adminDb
+      .select({ kind: contactMessage.kind, value: count() })
+      .from(contactMessage)
+      .where(eq(contactMessage.isViewed, false))
+      .groupBy(contactMessage.kind)
+  );
+  return {
+    contacts: rows.find((row) => row.kind === "contact")?.value ?? 0,
+    reports: rows.find((row) => row.kind === "report")?.value ?? 0,
+  };
+}
+
+export async function markContactMessageViewed(id: string) {
+  const [updated] = await withAdminDatabase("contacts.mark-viewed", (adminDb) =>
+    adminDb
+      .update(contactMessage)
+      .set({ isViewed: true, updatedAt: new Date() })
+      .where(and(eq(contactMessage.id, id), eq(contactMessage.isViewed, false)))
+      .returning({ id: contactMessage.id, kind: contactMessage.kind })
+  );
+  return updated ?? null;
 }
 
 export async function updateContactMessageStatus({

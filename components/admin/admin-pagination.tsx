@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 type SearchParamValue = string | string[] | undefined;
 
@@ -42,7 +43,7 @@ export function AdminPagination({
   pageSize: number;
   totalItems: number;
   searchParams?: Record<string, SearchParamValue>;
-  itemLabel?: string;
+  itemLabel?: ReactNode;
 }) {
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const currentPage = Math.min(Math.max(page, 1), totalPages);
