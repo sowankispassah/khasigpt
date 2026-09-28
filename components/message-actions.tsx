@@ -45,6 +45,31 @@ export function PureMessageActions({
   const [feedbackCategory, setFeedbackCategory] = useState<FeedbackCategory | null>(null);
   const [feedbackDetails, setFeedbackDetails] = useState("");
   const [feedbackPending, setFeedbackPending] = useState(false);
+  const [votePending, setVotePending] = useState(false);
+
+  const updateVote = async (type: "up" | "down" | "clear") => {
+    if (votePending) return;
+    setVotePending(true);
+    const voteKey = `/api/vote?chatId=${chatId}`;
+    try {
+      const response = await fetch("/api/vote", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId, messageId: message.id, type }),
+      });
+      if (!response.ok) throw new Error("Vote failed");
+      await mutate<Vote[]>(voteKey, (currentVotes = []) => {
+        const otherVotes = currentVotes.filter((currentVote) => currentVote.messageId !== message.id);
+        return type === "clear"
+          ? otherVotes
+          : [...otherVotes, { chatId, messageId: message.id, isUpvoted: type === "up" }];
+      }, { revalidate: false });
+    } catch {
+      toast.error(translate("chat.feedback.vote_error", "Could not update feedback. Please try again."));
+    } finally {
+      setVotePending(false);
+    }
+  };
 
   const closeFeedback = () => {
     if (feedbackPending) return;
@@ -139,59 +164,31 @@ export function PureMessageActions({
 
       <Action
         data-testid="message-upvote"
-        disabled={vote?.isUpvoted}
-        onClick={() => {
-          const upvote = fetch("/api/vote", {
-            method: "PATCH",
-            body: JSON.stringify({
-              chatId,
-              messageId: message.id,
-              type: "up",
-            }),
-          });
-
-          toast.promise(upvote, {
-            loading: "Upvoting Response...",
-            success: () => {
-              mutate<Vote[]>(
-                `/api/vote?chatId=${chatId}`,
-                (currentVotes) => {
-                  if (!currentVotes) {
-                    return [];
-                  }
-
-                  const votesWithoutCurrent = currentVotes.filter(
-                    (currentVote) => currentVote.messageId !== message.id
-                  );
-
-                  return [
-                    ...votesWithoutCurrent,
-                    {
-                      chatId,
-                      messageId: message.id,
-                      isUpvoted: true,
-                    },
-                  ];
-                },
-                { revalidate: false }
-              );
-
-              return "Upvoted Response!";
-            },
-            error: "Failed to upvote response.",
-          });
-        }}
-        tooltip="Upvote Response"
+        aria-pressed={vote?.isUpvoted === true}
+        className={vote?.isUpvoted ? "text-primary" : undefined}
+        disabled={votePending || feedbackPending}
+        onClick={() => void updateVote(vote?.isUpvoted ? "clear" : "up")}
+        tooltip={vote?.isUpvoted
+          ? translate("chat.feedback.undo_upvote", "Undo thumbs up")
+          : translate("chat.feedback.upvote", "Thumbs up")}
       >
-        <ThumbUpIcon />
+        {votePending ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : <ThumbUpIcon />}
       </Action>
 
       <Action
         data-testid="message-downvote"
-        onClick={() => setFeedbackOpen(true)}
-        tooltip={translate("chat.feedback.action", "Dislike or report this response")}
+        aria-pressed={vote?.isUpvoted === false}
+        className={vote?.isUpvoted === false ? "text-primary" : undefined}
+        disabled={votePending || feedbackPending}
+        onClick={() => {
+          if (vote?.isUpvoted === false) void updateVote("clear");
+          else setFeedbackOpen(true);
+        }}
+        tooltip={vote?.isUpvoted === false
+          ? translate("chat.feedback.undo_downvote", "Undo thumbs down")
+          : translate("chat.feedback.action", "Dislike or report this response")}
       >
-        <ThumbDownIcon />
+        {votePending ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : <ThumbDownIcon />}
       </Action>
     </Actions>
     <Dialog onOpenChange={(open) => { if (open) setFeedbackOpen(true); else closeFeedback(); }} open={feedbackOpen}>

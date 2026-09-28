@@ -142,13 +142,24 @@ test.describe("Chat activity", () => {
     );
   });
 
-  test("Upvote message", async () => {
+  test("Upvote message", async ({ page }) => {
     await chatPage.sendUserMessage("Why is the sky blue?");
     await chatPage.isGenerationComplete();
 
     const assistantMessage = await chatPage.getRecentAssistantMessage();
+    const upvoteResponse = page.waitForResponse((response) =>
+      response.url().includes("/api/vote") && response.request().method() === "PATCH"
+    );
     await assistantMessage.upvote();
-    await chatPage.isVoteComplete();
+    await upvoteResponse;
+    const upvote = assistantMessage.element.getByTestId("message-upvote");
+    await expect(upvote).toHaveAttribute("aria-pressed", "true");
+    const clearVote = page.waitForRequest((request) =>
+      request.url().includes("/api/vote") && request.method() === "PATCH" && request.postDataJSON().type === "clear"
+    );
+    await upvote.click();
+    await clearVote;
+    await expect(upvote).toHaveAttribute("aria-pressed", "false");
   });
 
   test("Downvote message", async ({ page }) => {
@@ -171,6 +182,15 @@ test.describe("Chat activity", () => {
     await feedback.getByRole("button", { name: "Submit" }).click();
     await downvoteResponse;
     expect(submittedCategory).toBe("safety");
+    const downvote = assistantMessage.element.getByTestId("message-downvote");
+    await expect(downvote).toHaveAttribute("aria-pressed", "true");
+    const clearVote = page.waitForRequest((request) =>
+      request.url().includes("/api/vote") && request.method() === "PATCH" && request.postDataJSON().type === "clear"
+    );
+    await downvote.click();
+    await clearVote;
+    await expect(feedback).not.toBeVisible();
+    await expect(downvote).toHaveAttribute("aria-pressed", "false");
   });
 
   test("Show vote actions immediately after streaming completes", async () => {
