@@ -2,10 +2,25 @@ import {
   type FeatureAccessMode,
   parseFeatureAccessMode,
 } from "@/lib/feature-access";
+import type { SemanticWebSearchDecision } from "@/lib/tool-intent";
 import type { ChatMessage } from "@/lib/types";
 
 export const NEWS_CHAT_MODE = "news" as const;
 export const NEWS_ACCESS_MODE_FALLBACK: FeatureAccessMode = "admin_only";
+
+export function isNewsSearchRequest({
+  chatMode,
+  webSearch,
+}: {
+  chatMode: string;
+  webSearch: SemanticWebSearchDecision | null;
+}) {
+  return Boolean(
+    chatMode === NEWS_CHAT_MODE ||
+    webSearch?.kind === "news" ||
+    webSearch?.reason === "news_update"
+  );
+}
 
 export function parseNewsAccessModeSetting(value: unknown): FeatureAccessMode {
   return parseFeatureAccessMode(value, NEWS_ACCESS_MODE_FALLBACK);
@@ -30,11 +45,11 @@ export function buildNewsInitialPrompt(now = new Date()) {
     `Find and summarize the latest important news as of ${requestDate}.`,
     "Use current web search results; do not answer from stored knowledge alone.",
     "Prioritize Shillong first, then major developments across Meghalaya, and then nearby regional stories only when they are important to Meghalaya.",
-    "Prefer reports published today, then the last few days. Clearly label older background and do not present stale stories as current.",
+    "Prefer reports published today. If today's coverage is thin, include dated reports from the preceding seven days, newest first. Do not present older or undated stories as current.",
     "Prefer established Meghalaya outlets, official government, police or administration sources, and recognized regional or national news organizations.",
     "Deduplicate reports about the same event and cross-check major stories when multiple reliable sources are available.",
     "If there are no recent Shillong-specific reports, say so briefly and continue with the most important current Meghalaya stories.",
-    "Make the response easy to scan with short sections for Shillong and Meghalaya, concise numbered headlines, summaries, and source citations.",
+    "Give an informative roundup across the categories supported by current reporting, such as politics, sports, civic affairs, business, and community. For each distinct story include its date, what happened, who was involved, relevant location and outcome when the sources support those details, and a direct article citation. Write two to four sentences per story when the article provides enough detail. Do not fill a category with generic background or ask which category the user wants before giving the roundup.",
     "Begin directly with the news. Do not introduce or describe KhasiGPT, the app, its team, origin, mission, or capabilities unless the user explicitly asks about them.",
     "Respond in the user's configured chat language.",
   ].join("\n");

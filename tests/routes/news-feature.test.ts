@@ -7,11 +7,16 @@ import {
   buildNewsInitialPrompt,
   formatNewsRequestDate,
   isNewsInitialMessage,
+  isNewsSearchRequest,
   parseNewsAccessModeSetting,
   shouldSearchNewsFollowUp,
   shouldStartNewsInitialRequest,
 } from "@/lib/news/shared";
 import type { ChatMessage } from "@/lib/types";
+import {
+  buildSerperNewsGrounding,
+  parseSerperNewsResults,
+} from "@/lib/web-search/news-results";
 
 const repoRoot = process.cwd();
 
@@ -32,8 +37,55 @@ test.describe("News chat mode", () => {
     expect(prompt).toContain("across Meghalaya");
     expect(prompt).toContain("current web search results");
     expect(prompt).toContain("Deduplicate");
+    expect(prompt).toContain("preceding seven days");
+    expect(prompt).toContain("across the categories");
     expect(prompt).toContain("Begin directly with the news");
     expect(prompt).toContain("Do not introduce or describe KhasiGPT");
+  });
+
+  test("uses semantic news intent in ordinary chat and keeps other searches separate", () => {
+    const webSearch = {
+      confidence: "high" as const,
+      kind: "news" as const,
+      query: "Shillong Meghalaya",
+      reason: "current_information" as const,
+    };
+    expect(isNewsSearchRequest({ chatMode: "default", webSearch })).toBe(true);
+    expect(isNewsSearchRequest({ chatMode: "news", webSearch: null })).toBe(true);
+    expect(isNewsSearchRequest({
+      chatMode: "default",
+      webSearch: { ...webSearch, kind: "general" },
+    })).toBe(false);
+  });
+
+  test("keeps only dated recent articles, newest first, for a broad news roundup", () => {
+    const now = new Date("2026-09-27T12:00:00Z");
+    const stories = parseSerperNewsResults({
+      news: [
+        { title: "Older report", link: "https://example.com/older", date: "8 days ago", snippet: "Old" },
+        { title: "Sports report", link: "https://example.com/sports", date: "2 days ago", source: "Local Sports", snippet: "A recent match ended." },
+        { title: "Undated home page", link: "https://example.com/", snippet: "News home" },
+        { title: "Politics report", link: "https://example.com/politics", date: "3 hours ago", source: "Local Daily", snippet: "The assembly voted." },
+        { title: "Politics report", link: "https://example.com/duplicate", date: "2 hours ago", snippet: "Duplicate" },
+      ],
+    }, now);
+
+    expect(stories.map((story) => story.title)).toEqual([
+      "Politics report",
+      "Sports report",
+    ]);
+    const grounding = buildSerperNewsGrounding(stories);
+    expect(grounding.sources).toHaveLength(2);
+    expect(grounding.answer).toMatch(/27 Sept? 2026/);
+    expect(grounding.answer).toMatch(/25 Sept? 2026/);
+    expect(grounding.answer).not.toContain("Older report");
+    expect(grounding.answer).not.toContain("Undated home page");
+  });
+
+  test("does not turn a result list with no recent articles into news", () => {
+    const grounding = buildSerperNewsGrounding([]);
+    expect(grounding.sources).toEqual([]);
+    expect(grounding.answer).toContain("No dated news articles");
   });
 
   test("marks the automatic user turn as hidden and keeps follow-up search selective", () => {
@@ -137,6 +189,7 @@ test.describe("News chat mode", () => {
     expect(nativeChat).toContain("onPress={handleNewChatHeaderPress}");
     expect(chatRoute).toContain("shouldSearchInNewsMode");
     expect(chatRoute).toContain("Begin directly with the requested news");
+    expect(chatRoute).toContain("includeNews: newsSearchRequest");
     expect(sidebar).toContain("buildPendingChatHref");
     expect(sidebar).toContain("href={NEW_CHAT_HREF}");
     expect(sidebar).not.toContain("contextualNewChatHref");

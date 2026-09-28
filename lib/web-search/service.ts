@@ -1,6 +1,8 @@
 import "server-only";
 
 import { GoogleGenAI } from "@google/genai";
+import { enrichNewsStories } from "./news-enrichment";
+import { buildSerperNewsGrounding, parseSerperNewsResults } from "./news-results";
 import { getWebSearchProviderBillingUnitCount } from "./pricing";
 import { enrichShoppingProducts } from "./product-enrichment";
 import {
@@ -382,7 +384,7 @@ async function answerWithSerper({
         q: userMessage.trim(),
         gl: "in",
         hl: "en",
-        num: 10,
+        num: includeNews ? 30 : 10,
       }),
       cache: "no-store",
       signal: AbortSignal.timeout(SERPER_SEARCH_TIMEOUT_MS),
@@ -392,10 +394,34 @@ async function answerWithSerper({
     throw new Error(`Serper web search failed with status ${response.status}.`);
   }
 
+  const responseJson: unknown = await response.json();
+  if (includeNews && !includeProducts && !includeVideos) {
+    const stories = await enrichNewsStories(
+      parseSerperNewsResults(responseJson)
+    );
+    const news = buildSerperNewsGrounding(stories);
+    return {
+      answer: news.answer,
+      provider: "serper",
+      grounded: news.sources.length > 0,
+      sources: news.sources,
+      videos: [],
+      products: [],
+      searchQueries: [userMessage.trim()],
+      citations: [],
+      searchCallCount: 1,
+      providerBillingUnitCount: getWebSearchProviderBillingUnitCount({
+        isShoppingSearch: false,
+        provider: "serper",
+        searchCallCount: 1,
+      }),
+      usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+    };
+  }
   const parsed = parseSerperSearchResponse({
     includeProducts,
     includeVideos,
-    response: await response.json(),
+    response: responseJson,
   });
   const enrichedProducts = includeProducts
     ? await enrichShoppingProducts({

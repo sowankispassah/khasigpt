@@ -115,6 +115,7 @@ import { parseNewsAccessModeSetting } from "@/lib/news/config";
 import {
   buildNewsChatTitle,
   isNewsInitialMessage,
+  isNewsSearchRequest,
   NEWS_CHAT_MODE,
   shouldSearchNewsFollowUp,
 } from "@/lib/news/shared";
@@ -3090,6 +3091,10 @@ export async function POST(request: Request) {
     const effectiveToolDecision =
       verifiedToolDecision ?? semanticToolDecision ?? null;
     const semanticWebSearchDecision = effectiveToolDecision?.webSearch ?? null;
+    const newsSearchRequest = isNewsSearchRequest({
+      chatMode: resolvedChatMode,
+      webSearch: semanticWebSearchDecision,
+    });
     const webSearchDecision = mergeSemanticWebSearchDecision({
       deterministicDecision: deterministicWebSearchDecision,
       semanticDecision: effectiveToolDecision,
@@ -3152,8 +3157,8 @@ export async function POST(request: Request) {
       resolvedChatMode === JOBS_CHAT_MODE
         ? "You are in Jobs mode. Use only the retrieved job knowledge and selected job posting context as the source for eligibility, responsibilities, requirements, salary, location, and important dates."
         : "",
-      resolvedChatMode === NEWS_CHAT_MODE
-        ? "You are in News mode. Treat only the first hidden News request as defaulting to Shillong and Meghalaya. For every visible follow-up, follow the user's requested location or topic without forcing the default geography. Distinguish current reporting from older background and never invent a source. Begin directly with the requested news; do not introduce or describe KhasiGPT, the app, its team, origin, mission, or capabilities unless the user explicitly asks about them."
+      newsSearchRequest
+        ? "For this news request, begin directly with the requested news. A broad question about what happened in a place today already asks for a roundup; do not ask the user to choose a category first. Treat only the first hidden News request as defaulting to Shillong and Meghalaya. For every visible follow-up, follow the user's requested location and topics. Cover every category supported by recent articles, including politics, sports and other local developments when available. Give substantive detail for each distinct story: what happened, when, where, who was involved, and any outcome supported by the article. Write two to four sentences per story when the article provides enough detail. Include its publication date and a direct article citation. Put today's reports first; if coverage is thin, continue with articles from the preceding seven days, newest first. Never invent a headline, event, category update, date, or source to make the roundup look complete. If a requested category has no verified recent article, say so briefly. Do not introduce or describe KhasiGPT, the app, its team, origin, mission, or capabilities unless the user explicitly asks about them."
         : "",
       resolvedChatMode === JOBS_CHAT_MODE
         ? "Format job responses in clean Markdown with clear sections (for example: Overview, Eligibility, Salary, Location, Important dates) and consistent bullet points."
@@ -3326,7 +3331,7 @@ export async function POST(request: Request) {
           reserveSearch(attemptedProvider);
           webSearchAnswer = await webSearchService.answerWithSearch({
             conversationContext,
-            includeNews: resolvedChatMode === NEWS_CHAT_MODE,
+            includeNews: newsSearchRequest,
             includeProducts: webSearchDecision.hasShoppingIntent,
             includeVideos: webSearchDecision.hasVideoIntent,
             maxSearches: webSearchConfig.maxCalls,
@@ -3350,7 +3355,7 @@ export async function POST(request: Request) {
               reserveSearch(fallbackProvider);
               webSearchAnswer = await webSearchService.answerWithSearch({
                 conversationContext,
-                includeNews: resolvedChatMode === NEWS_CHAT_MODE,
+                includeNews: newsSearchRequest,
                 includeProducts: webSearchDecision.hasShoppingIntent,
                 includeVideos: webSearchDecision.hasVideoIntent,
                 maxSearches: webSearchConfig.maxCalls,
@@ -3413,7 +3418,7 @@ export async function POST(request: Request) {
           status: webSearchAnswer ? "generating" : "failed",
           usedWebSearch: Boolean(webSearchAnswer),
           context:
-            resolvedChatMode === NEWS_CHAT_MODE ? "news" : "web",
+            newsSearchRequest ? "news" : "web",
         }
       : null;
 
@@ -3424,8 +3429,8 @@ export async function POST(request: Request) {
       });
     }
     if (
-      resolvedChatMode === NEWS_CHAT_MODE &&
-      shouldSearchInNewsMode &&
+      newsSearchRequest &&
+      (shouldSearchInNewsMode || webSearchDecision.shouldSearch) &&
       !webSearchAnswer
     ) {
       systemInstructionParts.push(
