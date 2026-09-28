@@ -82,6 +82,7 @@ export async function POST(request: Request) {
       : "";
 
     await createContactMessage({
+      kind: "report",
       name: session.user.name?.trim() || "App user",
       email: session.user.email,
       subject: category === "safety" ? "AI content report" : "AI response feedback",

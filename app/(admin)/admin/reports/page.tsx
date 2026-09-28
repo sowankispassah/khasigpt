@@ -4,14 +4,14 @@ import { ContactMessagesPage } from "@/components/admin/contact-messages-page";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Contact Requests",
-  description: "Review messages submitted through the contact form.",
+  title: "Chat Reports",
+  description: "Review AI response feedback and safety reports.",
 };
 
-export default function AdminContactsPage({
+export default function AdminReportsPage({
   searchParams,
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  return <ContactMessagesPage kind="contact" searchParams={searchParams} />;
+  return <ContactMessagesPage kind="report" searchParams={searchParams} />;
 }
