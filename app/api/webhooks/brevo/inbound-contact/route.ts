@@ -15,7 +15,7 @@ function authorized(request: NextRequest, secret: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const secret = process.env.BREVO_INBOUND_WEBHOOK_TOKEN;
+  const secret = process.env.BREVO_INBOUND_WEBHOOK_TOKEN?.trim();
   const domain = contactInboundDomain();
   if (!secret || !domain) return NextResponse.json({ error: "Inbound email is unavailable" }, { status: 503, headers: noStore });
   if (!authorized(request, secret)) return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: noStore });
