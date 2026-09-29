@@ -5,6 +5,7 @@ import Link from "next/link";
 import { type MouseEvent, memo, useMemo } from "react";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
+import { formatForumRelativeTime } from "@/lib/forum/relative-time";
 import type { ForumThreadListItemPayload } from "@/lib/forum/types";
 import { sanitizeText } from "@/lib/utils";
 
@@ -13,38 +14,6 @@ type ThreadCardProps = {
   isSubscribed?: boolean;
   onNavigateStart?: () => void;
 };
-
-function formatRelativeTime(
-  value: string | null,
-  locale: string,
-  fallback: string
-) {
-  if (!value) {
-    return fallback;
-  }
-  const date = new Date(value);
-  const now = Date.now();
-  const diff = date.getTime() - now;
-  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
-  const divisions: [number, Intl.RelativeTimeFormatUnit][] = [
-    [60, "seconds"],
-    [60, "minutes"],
-    [24, "hours"],
-    [7, "days"],
-    [4.345_24, "weeks"],
-    [12, "months"],
-    [Number.POSITIVE_INFINITY, "years"],
-  ];
-
-  let duration = Math.abs(diff / 1000);
-  for (const [amount, unit] of divisions) {
-    if (duration < amount) {
-      return rtf.format(Math.round(diff / 1000 / (duration || 1)), unit);
-    }
-    duration /= amount;
-  }
-  return rtf.format(0, "seconds");
-}
 
 function ThreadCardComponent({
   thread,
@@ -62,7 +31,7 @@ function ThreadCardComponent({
   );
   const excerpt = useMemo(() => sanitizeText(thread.excerpt), [thread.excerpt]);
   const lastActivity = useMemo(() => {
-    return formatRelativeTime(
+    return formatForumRelativeTime(
       thread.lastRepliedAt ?? thread.updatedAt,
       activeLanguage.code,
       translate("forum.thread.relative.just_now", "just now")
