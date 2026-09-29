@@ -20,5 +20,6 @@ export function toContactTableMessage(message: ContactMessage): ContactTableMess
     receivedRelative: validCreatedAt ? formatDistanceToNow(createdAt, { addSuffix: true }) : "—",
     updatedAt: Number.isFinite(updatedAt.getTime()) ? updatedAt.toISOString() : "",
     updatedAtLabel: Number.isFinite(updatedAt.getTime()) ? `${dateFormatter.format(updatedAt)} IST` : "—",
+    lastInboundAt: message.lastInboundAt ? new Date(message.lastInboundAt).toISOString() : null,
   };
 }
