@@ -17,12 +17,14 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { summarizeContactMessage } from "@/lib/admin/contact-message-summary";
 import type { ContactMessage } from "@/lib/db/schema";
 
-export type ContactTableMessage = Omit<ContactMessage, "createdAt" | "updatedAt"> & {
+export type ContactTableMessage = Omit<ContactMessage, "createdAt" | "updatedAt" | "lastInboundAt"> & {
   createdAt: string;
   receivedAt: string;
   receivedRelative: string;
   updatedAt: string;
   updatedAtLabel: string;
+  lastInboundAt: string | null;
+  latestInboundPreview?: string | null;
 };
 
 const statusLabels = {
@@ -44,10 +46,11 @@ type StatusEvent = {
 
 type ContactReply = {
   id: string;
-  recipientEmail: string;
+  email: string;
+  direction: "inbound" | "outbound";
   subject: string;
   body: string;
-  deliveryStatus: "pending" | "sent" | "unconfirmed";
+  deliveryStatus: "pending" | "sent" | "unconfirmed" | null;
   createdAt: string;
   sentAt: string | null;
   actorFirstName: string | null;
@@ -92,11 +95,13 @@ function Field({
 
 export function ContactMessagesTable({
   kind,
+  inboundConfigured,
   messages,
   messagesConfirmed,
   onStatusChanged,
 }: {
   kind: ContactMessage["kind"];
+  inboundConfigured?: boolean;
   messages: ContactTableMessage[];
   messagesConfirmed: boolean;
   onStatusChanged?: () => void;
@@ -273,6 +278,7 @@ export function ContactMessagesTable({
 
   return (
     <>
+      {kind === "contact" && !inboundConfigured ? <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm dark:bg-amber-950/20 dark:text-amber-200"><EditableTranslation defaultText="Incoming email is not connected yet. Customer responses currently go to the support mailbox." description="Admin contact inbound email connection warning." translationKey="admin.contacts.inbound.not_connected" /></p> : null}
       <div className="overflow-x-auto">
         <table className={`w-full table-fixed text-sm ${kind === "report" ? "min-w-[1320px]" : "min-w-[900px]"}`}>
           <thead className="text-muted-foreground text-xs uppercase">
@@ -326,8 +332,8 @@ export function ContactMessagesTable({
                     ) : "—"}
                   </td>
                   <td className="py-3 pr-3 text-xs"><span className="line-clamp-2 whitespace-pre-line break-words" title={summary.excerpt ?? undefined}>{summary.excerpt ?? "—"}</span></td>
-                  </> : <td className="py-3 pr-3 text-xs"><span className="line-clamp-2 whitespace-pre-line break-words" title={message.message}>{message.message}</span></td>}
-                  <td className="py-3 pr-3 text-xs"><time dateTime={message.createdAt} title={message.receivedAt}>{message.receivedRelative}</time><span className="block text-muted-foreground">{message.receivedAt}</span></td>
+                  </> : <td className="py-3 pr-3 text-xs">{message.lastInboundAt ? <span className="mb-1 block font-medium text-primary"><EditableTranslation defaultText="Customer replied" description="Contact table indicator for an incoming email reply." translationKey="admin.contacts.inbound.indicator" /></span> : null}<span className="line-clamp-2 whitespace-pre-line break-words" title={message.latestInboundPreview ?? message.message}>{message.latestInboundPreview ?? message.message}</span></td>}
+                  <td className="py-3 pr-3 text-xs"><time dateTime={message.createdAt} title={message.receivedAt}>{message.receivedRelative}</time><span className="block text-muted-foreground">{message.receivedAt}</span>{kind === "contact" && message.lastInboundAt ? <span className="mt-1 block text-primary"><EditableTranslation defaultText="Latest reply" description="Contact table timestamp label for incoming email." translationKey="admin.contacts.inbound.latest" />: {new Date(message.lastInboundAt).toLocaleString()}</span> : null}</td>
                   <td className="py-3 pr-3"><Status value={message.status} /></td>
                   <td className="py-3">
                     <DropdownMenu>
@@ -378,8 +384,8 @@ export function ContactMessagesTable({
                 {historyBusy ? <Loader2 aria-label={translate("admin.reports.history.loading", "Loading action history")} className="size-4 animate-spin" /> : historyError ? <div className="text-destructive text-sm"><EditableTranslation defaultText="Could not load action history." description="Report action history error." translationKey="admin.reports.history.error" /> <button className="cursor-pointer underline" onClick={() => void loadHistory(selected.id)} type="button"><EditableTranslation defaultText="Retry" description="Retry report action history." translationKey="admin.reports.filter.retry" /></button></div> : history.length ? <ol className="space-y-2">{history.map((event) => <li className="rounded-md border p-3 text-sm" key={event.id}><div><Status value={event.fromStatus} /> <span aria-hidden="true">→</span> <Status value={event.toStatus} /> <span className="ml-2 text-muted-foreground text-xs">{[event.actorFirstName, event.actorLastName].filter(Boolean).join(" ") || translate("admin.reports.history.unknown_actor", "Admin")}</span> <time className="ml-2 text-muted-foreground text-xs" dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString()}</time></div>{event.note ? <p className="mt-2 whitespace-pre-wrap break-words">{event.note}</p> : null}</li>)}</ol> : <p className="text-muted-foreground text-sm"><EditableTranslation defaultText="No actions recorded yet." description="Empty report action history." translationKey="admin.reports.history.empty" /></p>}
               </section>
               {kind === "contact" ? <section>
-                <h3 className="mb-2 font-medium text-sm"><EditableTranslation defaultText="Email replies" description="Replies sent to a contact request." translationKey="admin.contacts.replies.title" /></h3>
-                {repliesBusy ? <Loader2 aria-label={translate("admin.contacts.replies.loading", "Loading replies")} className="size-4 animate-spin" /> : repliesError ? <div className="text-destructive text-sm"><EditableTranslation defaultText="Could not load replies." description="Contact reply history error." translationKey="admin.contacts.replies.error" /> <button className="cursor-pointer underline" onClick={() => void loadReplies(selected.id)} type="button"><EditableTranslation defaultText="Retry" description="Retry loading replies." translationKey="admin.reports.filter.retry" /></button></div> : replies.length ? <ol className="space-y-2">{replies.map((reply) => <li className="rounded-md border p-3 text-sm" key={reply.id}><div className="flex flex-wrap items-center gap-2"><strong>{reply.recipientEmail}</strong><span className="text-muted-foreground text-xs">{new Date(reply.createdAt).toLocaleString()}</span><span className="rounded-full border px-2 py-0.5 text-xs">{reply.deliveryStatus === "sent" ? <EditableTranslation defaultText="Sent" description="Contact reply delivered status." translationKey="admin.contacts.replies.sent" /> : reply.deliveryStatus === "pending" ? <EditableTranslation defaultText="Pending" description="Contact reply pending status." translationKey="admin.contacts.replies.pending" /> : <EditableTranslation defaultText="Delivery unconfirmed" description="Contact reply uncertain status." translationKey="admin.contacts.replies.unconfirmed" />}</span></div><p className="mt-2 whitespace-pre-wrap break-words">{reply.body}</p></li>)}</ol> : <p className="text-muted-foreground text-sm"><EditableTranslation defaultText="No email replies yet." description="No replies sent to a contact request." translationKey="admin.contacts.replies.empty" /></p>}
+                <h3 className="mb-2 font-medium text-sm"><EditableTranslation defaultText="Email conversation" description="Incoming and outgoing emails for a contact request." translationKey="admin.contacts.replies.title" /></h3>
+                {repliesBusy ? <Loader2 aria-label={translate("admin.contacts.replies.loading", "Loading replies")} className="size-4 animate-spin" /> : repliesError ? <div className="text-destructive text-sm"><EditableTranslation defaultText="Could not load replies." description="Contact reply history error." translationKey="admin.contacts.replies.error" /> <button className="cursor-pointer underline" onClick={() => void loadReplies(selected.id)} type="button"><EditableTranslation defaultText="Retry" description="Retry loading replies." translationKey="admin.reports.filter.retry" /></button></div> : replies.length ? <ol className="space-y-2">{replies.map((reply) => <li className="rounded-md border p-3 text-sm" key={reply.id}><div className="flex flex-wrap items-center gap-2"><span className="rounded-full border px-2 py-0.5 text-xs">{reply.direction === "inbound" ? <EditableTranslation defaultText="From customer" description="Incoming email in contact conversation." translationKey="admin.contacts.replies.from_customer" /> : <EditableTranslation defaultText="To customer" description="Outgoing email in contact conversation." translationKey="admin.contacts.replies.to_customer" />}</span><strong>{reply.email}</strong><span className="text-muted-foreground text-xs">{new Date(reply.createdAt).toLocaleString()}</span>{reply.direction === "outbound" ? <span className="rounded-full border px-2 py-0.5 text-xs">{reply.deliveryStatus === "sent" ? <EditableTranslation defaultText="Sent" description="Contact reply delivered status." translationKey="admin.contacts.replies.sent" /> : reply.deliveryStatus === "pending" ? <EditableTranslation defaultText="Pending" description="Contact reply pending status." translationKey="admin.contacts.replies.pending" /> : <EditableTranslation defaultText="Delivery unconfirmed" description="Contact reply uncertain status." translationKey="admin.contacts.replies.unconfirmed" />}</span> : null}</div><p className="mt-2 whitespace-pre-wrap break-words">{reply.body}</p></li>)}</ol> : <p className="text-muted-foreground text-sm"><EditableTranslation defaultText="No email replies yet." description="No replies sent to a contact request." translationKey="admin.contacts.replies.empty" /></p>}
               </section> : null}
               <DialogFooter><DialogClose className="cursor-pointer"><EditableTranslation defaultText="Close" description="Close contact request details dialog." translationKey="admin.contacts.dialog.close" /></DialogClose></DialogFooter>
             </>
@@ -411,7 +417,7 @@ export function ContactMessagesTable({
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle><EditableTranslation defaultText="Reply by email" description="Contact request email reply dialog title." translationKey="admin.contacts.reply.title" /></DialogTitle>
-            <DialogDescription><EditableTranslation defaultText="Your reply will be emailed to the contact. Replies go to our support mailbox." description="Contact reply delivery explanation." translationKey="admin.contacts.reply.description" /></DialogDescription>
+            <DialogDescription><EditableTranslation defaultText="Your reply will be emailed to the contact. Incoming responses appear in the email conversation when inbound mail is connected." description="Contact reply delivery explanation." translationKey="admin.contacts.reply.description" /></DialogDescription>
           </DialogHeader>
           {replyMessage ? <div className="space-y-1 rounded-md border bg-muted/20 p-3 text-sm"><p><strong><EditableTranslation defaultText="To" description="Email reply recipient label." translationKey="admin.contacts.reply.to" />:</strong> {replyMessage.email}</p><p><strong><EditableTranslation defaultText="Subject" description="Email reply subject label." translationKey="admin.contacts.table.subject" />:</strong> {/^re\s*:/i.test(replyMessage.subject) ? replyMessage.subject : `Re: ${replyMessage.subject}`}</p></div> : null}
           <label className="flex flex-col gap-2 text-sm"><EditableTranslation defaultText="Your reply" description="Contact reply message field." translationKey="admin.contacts.reply.body" />

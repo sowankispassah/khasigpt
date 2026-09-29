@@ -1609,6 +1609,7 @@ export const contactMessage = pgTable(
     status: contactMessageStatusEnum("status").notNull().default("new"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+    lastInboundAt: timestamp("lastInboundAt"),
   },
   (table) => ({
     statusIdx: index("ContactMessage_status_idx").on(table.status),
@@ -1626,6 +1627,7 @@ export const contactMessage = pgTable(
       table.createdAt
     ),
     createdIdx: index("ContactMessage_created_idx").on(table.createdAt),
+    kindActivityAtIdx: index("ContactMessage_kind_activityAt_idx").on(table.kind, sql`coalesce(${table.lastInboundAt}, ${table.createdAt})`),
   })
 );
 
@@ -1668,6 +1670,24 @@ export const contactMessageReply = pgTable(
 );
 
 export type ContactMessageReply = InferSelectModel<typeof contactMessageReply>;
+
+export const contactMessageInboundEmail = pgTable(
+  "ContactMessageInboundEmail",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    messageId: uuid("messageId").notNull().references(() => contactMessage.id, { onDelete: "cascade" }),
+    providerMessageId: varchar("providerMessageId", { length: 512 }).notNull().unique(),
+    senderEmail: varchar("senderEmail", { length: 128 }).notNull(),
+    subject: varchar("subject", { length: 240 }).notNull(),
+    body: text("body").notNull(),
+    receivedAt: timestamp("receivedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    messageReceivedAtIdx: index("ContactMessageInboundEmail_message_receivedAt_idx").on(table.messageId, table.receivedAt),
+  })
+);
+
+export type ContactMessageInboundEmail = InferSelectModel<typeof contactMessageInboundEmail>;
 
 export const tokenUsage = pgTable(
   "token_usage",

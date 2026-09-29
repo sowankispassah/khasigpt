@@ -6528,7 +6528,12 @@ export async function listContactMessages({
           : baseQuery;
 
       return await filteredQuery
-        .orderBy(desc(contactMessage.createdAt), desc(contactMessage.id))
+        .orderBy(
+          kind === "contact"
+            ? sql`coalesce(${contactMessage.lastInboundAt}, ${contactMessage.createdAt}) desc`
+            : desc(contactMessage.createdAt),
+          desc(contactMessage.id)
+        )
         .limit(limit)
         .offset(offset);
     });

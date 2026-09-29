@@ -2,11 +2,13 @@ import { AdminPagination } from "@/components/admin/admin-pagination";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { toContactTableMessage } from "@/lib/admin/contact-table-message";
 import { adminQueryResult } from "@/lib/admin/safe-query";
+import { listLatestInboundContactEmails } from "@/lib/db/contact-replies";
 import {
   getContactMessageCount,
   listContactMessages,
 } from "@/lib/db/queries";
 import type { ContactMessage } from "@/lib/db/schema";
+import { contactInboundConfigured } from "@/lib/email/contact-inbound";
 import { ContactMessagesTable } from "./contact-messages-table";
 import { ReportsWorkspace } from "./reports-workspace";
 
@@ -66,6 +68,18 @@ export async function ContactMessagesPage({
       : messagesState;
   const messages = correctedMessagesState.data;
   const messagesConfirmed = correctedMessagesState.ok;
+  const repliedMessageIds = kind === "contact"
+    ? messages.filter((message) => message.lastInboundAt).map((message) => message.id)
+    : [];
+  const latestInboundState = repliedMessageIds.length > 0
+    ? await adminQueryResult({
+        fallback: [] as Awaited<ReturnType<typeof listLatestInboundContactEmails>>,
+        label: "contacts.latest-inbound",
+        promise: listLatestInboundContactEmails(repliedMessageIds),
+        timeoutMs: 1500,
+      })
+    : null;
+  const latestInboundByMessage = new Map(latestInboundState?.data.map((email) => [email.messageId, email.body]) ?? []);
 
   return (
     <div className="flex flex-col gap-6">
@@ -86,7 +100,10 @@ export async function ContactMessagesPage({
         )}
         {kind === "report" ? (
           <ReportsWorkspace initialRows={messages.map(toContactTableMessage)} initialTotal={totalMessages} initialConfirmed={messagesConfirmed && totalMessagesState.ok} initialPage={page} />
-        ) : <ContactMessagesTable kind={kind} messages={messages.map(toContactTableMessage)} messagesConfirmed={messagesConfirmed} />}
+        ) : <ContactMessagesTable kind={kind} inboundConfigured={contactInboundConfigured()} messages={messages.map((message) => ({
+          ...toContactTableMessage(message),
+          latestInboundPreview: latestInboundByMessage.get(message.id) ?? null,
+        }))} messagesConfirmed={messagesConfirmed} />}
 
         {kind === "contact" ? <div className="mt-4">
           <AdminPagination

@@ -4,6 +4,7 @@ import {
   TransactionalEmailsApiApiKeys,
 } from "@getbrevo/brevo";
 
+import { contactReplyAddress } from "@/lib/email/contact-inbound";
 import { ChatSDKError } from "@/lib/errors";
 
 type VerificationEmailPayload = {
@@ -313,11 +314,13 @@ export function contactReplyHtml(body: string) {
 }
 
 export async function sendContactReplyEmail({
+  messageId,
   toEmail,
   toName,
   subject,
   body,
 }: {
+  messageId: string;
   toEmail: string;
   toName: string;
   subject: string;
@@ -330,7 +333,7 @@ export async function sendContactReplyEmail({
   const email = new SendSmtpEmail();
   email.subject = contactReplySubject(subject);
   email.sender = { email: senderEmail, name: senderName };
-  email.replyTo = { email: senderEmail, name: senderName };
+  email.replyTo = { email: contactReplyAddress(messageId) ?? senderEmail, name: senderName };
   email.to = [{ email: toEmail, name: toName }];
   email.textContent = body;
   email.htmlContent = contactReplyHtml(body);
