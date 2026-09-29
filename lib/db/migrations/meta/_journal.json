@@ -757,6 +757,13 @@
       "when": 1788998400008,
       "tag": "0105_contact_message_status_events",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1788998400009,
+      "tag": "0106_contact_message_replies",
+      "breakpoints": true
     }
   ]
 }
