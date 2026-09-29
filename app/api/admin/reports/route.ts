@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { toContactTableMessage } from "@/lib/admin/contact-table-message";
-import { getContactMessageCount, listContactMessages } from "@/lib/db/queries";
+import { getContactMessageCount, getReportStatusCounts, listContactMessages } from "@/lib/db/queries";
 import { changeReportStatus, listReportStatusEvents } from "@/lib/db/report-workflow";
 import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
@@ -47,6 +47,14 @@ export async function GET(request: NextRequest) {
     status: status.data,
     search,
   };
+  if (params.get("summary") === "1") {
+    try {
+      const counts = await getReportStatusCounts({ reportSource: filter.reportSource, search });
+      return NextResponse.json({ counts }, { headers: noStore });
+    } catch {
+      return NextResponse.json({ error: "Unable to load report counts" }, { status: 500, headers: noStore });
+    }
+  }
   try {
     const [rows, total] = await Promise.all([
       listContactMessages({ ...filter, limit: 25, offset: (page - 1) * 25 }),

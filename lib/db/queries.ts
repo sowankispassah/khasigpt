@@ -6476,6 +6476,32 @@ function reportSourceCondition(source: "chat" | "forum" | "other"): SQL<boolean>
   return notInArray(normalizedSubject, [...FORUM_REPORT_SUBJECTS, ...CHAT_REPORT_SUBJECTS]) as SQL<boolean>;
 }
 
+type ContactMessageFilters = {
+  kind?: ContactMessage["kind"];
+  status?: ContactMessageStatus | "all";
+  search?: string | null;
+  reportSource?: "chat" | "forum" | "other";
+};
+
+function contactMessageConditions({ kind, status, search, reportSource }: ContactMessageFilters): SQL<boolean>[] {
+  const conditions: SQL<boolean>[] = [];
+  if (kind) conditions.push(eq(contactMessage.kind, kind) as SQL<boolean>);
+  if (kind === "report" && reportSource) conditions.push(reportSourceCondition(reportSource));
+  if (status && status !== "all") conditions.push(eq(contactMessage.status, status) as SQL<boolean>);
+  const normalizedSearch = search?.trim().toLowerCase();
+  if (normalizedSearch) {
+    const pattern = `%${normalizedSearch}%`;
+    conditions.push(or(
+      sql<boolean>`lower(${contactMessage.name}) like ${pattern}`,
+      sql<boolean>`lower(${contactMessage.email}) like ${pattern}`,
+      sql<boolean>`lower(${contactMessage.phone}) like ${pattern}`,
+      sql<boolean>`lower(${contactMessage.subject}) like ${pattern}`,
+      sql<boolean>`lower(${contactMessage.message}) like ${pattern}`
+    ) as SQL<boolean>);
+  }
+  return conditions;
+}
+
 export async function listContactMessages({
   limit = 50,
   offset = 0,
@@ -6492,29 +6518,7 @@ export async function listContactMessages({
   reportSource?: "chat" | "forum" | "other";
 } = {}): Promise<ContactMessage[]> {
   try {
-    const conditions: SQL<boolean>[] = [];
-    if (kind) {
-      conditions.push(eq(contactMessage.kind, kind) as SQL<boolean>);
-    }
-    if (kind === "report" && reportSource) {
-      conditions.push(reportSourceCondition(reportSource));
-    }
-    const normalizedSearch = search?.trim().toLowerCase();
-    if (status && status !== "all") {
-      conditions.push(eq(contactMessage.status, status) as SQL<boolean>);
-    }
-    if (normalizedSearch) {
-      const pattern = `%${normalizedSearch}%`;
-      conditions.push(
-        or(
-          sql<boolean>`lower(${contactMessage.name}) like ${pattern}`,
-          sql<boolean>`lower(${contactMessage.email}) like ${pattern}`,
-          sql<boolean>`lower(${contactMessage.phone}) like ${pattern}`,
-          sql<boolean>`lower(${contactMessage.subject}) like ${pattern}`,
-          sql<boolean>`lower(${contactMessage.message}) like ${pattern}`
-        ) as SQL<boolean>
-      );
-    }
+    const conditions = contactMessageConditions({ kind, status, search, reportSource });
 
     return await withAdminDatabase("contacts.list", async (adminDb) => {
       const baseQuery = adminDb.select().from(contactMessage);
@@ -6554,29 +6558,7 @@ export async function getContactMessageCount({
   reportSource?: "chat" | "forum" | "other";
 } = {}): Promise<number> {
   try {
-    const conditions: SQL<boolean>[] = [];
-    if (kind) {
-      conditions.push(eq(contactMessage.kind, kind) as SQL<boolean>);
-    }
-    if (kind === "report" && reportSource) {
-      conditions.push(reportSourceCondition(reportSource));
-    }
-    const normalizedSearch = search?.trim().toLowerCase();
-    if (status && status !== "all") {
-      conditions.push(eq(contactMessage.status, status) as SQL<boolean>);
-    }
-    if (normalizedSearch) {
-      const pattern = `%${normalizedSearch}%`;
-      conditions.push(
-        or(
-          sql<boolean>`lower(${contactMessage.name}) like ${pattern}`,
-          sql<boolean>`lower(${contactMessage.email}) like ${pattern}`,
-          sql<boolean>`lower(${contactMessage.phone}) like ${pattern}`,
-          sql<boolean>`lower(${contactMessage.subject}) like ${pattern}`,
-          sql<boolean>`lower(${contactMessage.message}) like ${pattern}`
-        ) as SQL<boolean>
-      );
-    }
+    const conditions = contactMessageConditions({ kind, status, search, reportSource });
 
     const [result] = await withAdminDatabase(
       "contacts.count",
@@ -6603,6 +6585,32 @@ export async function getContactMessageCount({
       "bad_request:database",
       "Failed to count contact messages"
     );
+  }
+}
+
+export async function getReportStatusCounts({
+  reportSource,
+  search,
+}: Pick<ContactMessageFilters, "reportSource" | "search"> = {}): Promise<Record<ContactMessageStatus, number>> {
+  const conditions = contactMessageConditions({ kind: "report", reportSource, search });
+  try {
+    const rows = await withAdminDatabase("reports.status-counts", (adminDb) =>
+      adminDb
+        .select({ status: contactMessage.status, value: count() })
+        .from(contactMessage)
+        .where(and(...conditions))
+        .groupBy(contactMessage.status)
+    );
+    const counts: Record<ContactMessageStatus, number> = {
+      new: 0,
+      in_progress: 0,
+      resolved: 0,
+      archived: 0,
+    };
+    for (const row of rows) counts[row.status] = row.value;
+    return counts;
+  } catch {
+    throw new ChatSDKError("bad_request:database", "Failed to count report statuses");
   }
 }
 
