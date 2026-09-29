@@ -15,6 +15,7 @@ import {
   forumThreadStatusEnum,
   forumThreadSubscription,
   forumThreadTag,
+  forumUserBlock,
   user,
 } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
@@ -279,7 +280,7 @@ export async function getForumOverview(
         authorEmail: user.email,
         authorImage: user.image,
         authorRole: user.role,
-        lastReplyUserId: forumThread.lastReplyUserId,
+        lastReplyUserId: lastReplyUser.id,
         lastReplyFirstName: lastReplyUser.firstName,
         lastReplyLastName: lastReplyUser.lastName,
         lastReplyEmail: lastReplyUser.email,
@@ -291,7 +292,16 @@ export async function getForumOverview(
       .innerJoin(forumCategory, eq(forumThread.categoryId, forumCategory.id))
       .leftJoin(
         lastReplyUser,
-        eq(forumThread.lastReplyUserId, lastReplyUser.id)
+        params.viewerUserId
+          ? and(
+              eq(forumThread.lastReplyUserId, lastReplyUser.id),
+              sql<boolean>`NOT EXISTS (
+                SELECT 1 FROM "ForumUserBlock" AS b
+                WHERE b."blockerId" = ${params.viewerUserId}
+                  AND b."blockedId" = ${lastReplyUser.id}
+              )`
+            )
+          : eq(forumThread.lastReplyUserId, lastReplyUser.id)
       );
 
     let filtersClause: SQL<boolean> | undefined;
@@ -322,6 +332,17 @@ export async function getForumOverview(
       filtersClause = filtersClause
         ? (and(filtersClause, searchClause) as SQL<boolean>)
         : searchClause;
+    }
+
+    if (params.viewerUserId) {
+      const visibleAuthorClause = sql<boolean>`NOT EXISTS (
+        SELECT 1 FROM "ForumUserBlock" AS b
+        WHERE b."blockerId" = ${params.viewerUserId}
+          AND b."blockedId" = ${forumThread.authorId}
+      )`;
+      filtersClause = filtersClause
+        ? (and(filtersClause, visibleAuthorClause) as SQL<boolean>)
+        : visibleAuthorClause;
     }
 
     const cursor = parseCursor(params.cursor);
@@ -504,7 +525,7 @@ export async function getForumThreadDetail({
         authorEmail: user.email,
         authorImage: user.image,
         authorRole: user.role,
-        lastReplyUserId: forumThread.lastReplyUserId,
+        lastReplyUserId: lastReplyUser.id,
         lastReplyFirstName: lastReplyUser.firstName,
         lastReplyLastName: lastReplyUser.lastName,
         lastReplyEmail: lastReplyUser.email,
@@ -516,9 +537,29 @@ export async function getForumThreadDetail({
       .innerJoin(forumCategory, eq(forumThread.categoryId, forumCategory.id))
       .leftJoin(
         lastReplyUser,
-        eq(forumThread.lastReplyUserId, lastReplyUser.id)
+        viewerUserId
+          ? and(
+              eq(forumThread.lastReplyUserId, lastReplyUser.id),
+              sql<boolean>`NOT EXISTS (
+                SELECT 1 FROM "ForumUserBlock" AS b
+                WHERE b."blockerId" = ${viewerUserId}
+                  AND b."blockedId" = ${lastReplyUser.id}
+              )`
+            )
+          : eq(forumThread.lastReplyUserId, lastReplyUser.id)
       )
-      .where(eq(forumThread.slug, slug))
+      .where(
+        viewerUserId
+          ? and(
+              eq(forumThread.slug, slug),
+              sql<boolean>`NOT EXISTS (
+                SELECT 1 FROM "ForumUserBlock" AS b
+                WHERE b."blockerId" = ${viewerUserId}
+                  AND b."blockedId" = ${forumThread.authorId}
+              )`
+            )
+          : eq(forumThread.slug, slug)
+      )
       .limit(1);
 
     if (!threadRow) {
@@ -554,7 +595,18 @@ export async function getForumThreadDetail({
         })
         .from(forumPost)
         .innerJoin(user, eq(forumPost.authorId, user.id))
-        .where(eq(forumPost.threadId, threadRow.id))
+        .where(
+          viewerUserId
+            ? and(
+                eq(forumPost.threadId, threadRow.id),
+                sql<boolean>`NOT EXISTS (
+                  SELECT 1 FROM "ForumUserBlock" AS b
+                  WHERE b."blockerId" = ${viewerUserId}
+                    AND b."blockedId" = ${forumPost.authorId}
+                )`
+              )
+            : eq(forumPost.threadId, threadRow.id)
+        )
         .orderBy(asc(forumPost.createdAt)),
       viewerUserId
         ? db
@@ -921,6 +973,21 @@ export async function createForumPost(input: CreateForumPostInput) {
   }
 
   const thread = await ensureThreadBySlug(input.threadSlug);
+  if (thread.authorId !== input.authorId) {
+    const [relationship] = await db
+      .select({ blockerId: forumUserBlock.blockerId })
+      .from(forumUserBlock)
+      .where(
+        sql<boolean>`(
+          ("blockerId" = ${thread.authorId} AND "blockedId" = ${input.authorId})
+          OR ("blockerId" = ${input.authorId} AND "blockedId" = ${thread.authorId})
+        )`
+      )
+      .limit(1);
+    if (relationship) {
+      throw new ChatSDKError("forbidden:forum", "You cannot reply to this discussion.");
+    }
+  }
   if (thread.isLocked) {
     throw new ChatSDKError(
       "bad_request:forum",
@@ -1016,6 +1083,104 @@ export async function createForumPost(input: CreateForumPostInput) {
       "Unable to create forum reply"
     );
   }
+}
+
+export async function listForumBlockedUsers(blockerId: string) {
+  const rows = await db
+    .select({
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+    })
+    .from(forumUserBlock)
+    .innerJoin(user, eq(forumUserBlock.blockedId, user.id))
+    .where(eq(forumUserBlock.blockerId, blockerId))
+    .orderBy(desc(forumUserBlock.createdAt))
+    .limit(200);
+  return rows.map((row) => ({
+    id: row.id,
+    displayName: formatForumUserName(row.firstName, row.lastName, row.email),
+  }));
+}
+
+export async function setForumUserBlock({
+  blockerId,
+  blockedId,
+  blocked,
+}: {
+  blockerId: string;
+  blockedId: string;
+  blocked: boolean;
+}) {
+  if (blockerId === blockedId) {
+    throw new ChatSDKError("bad_request:forum", "You cannot block yourself.");
+  }
+  const [target] = await db.select({ id: user.id }).from(user)
+    .where(eq(user.id, blockedId)).limit(1);
+  if (!target) {
+    throw new ChatSDKError("not_found:forum", "User not found.");
+  }
+  if (blocked) {
+    await db.insert(forumUserBlock).values({ blockerId, blockedId }).onConflictDoNothing();
+  } else {
+    await db.delete(forumUserBlock).where(
+      and(eq(forumUserBlock.blockerId, blockerId), eq(forumUserBlock.blockedId, blockedId))
+    );
+  }
+}
+
+export async function getForumReportTarget({
+  threadSlug,
+  postId,
+  targetType,
+}: {
+  threadSlug: string;
+  postId?: string;
+  targetType: "thread" | "post" | "user";
+}) {
+  const [thread] = await db
+    .select({
+      id: forumThread.id,
+      slug: forumThread.slug,
+      title: forumThread.title,
+      authorId: forumThread.authorId,
+      summary: forumThread.summary,
+    })
+    .from(forumThread)
+    .where(eq(forumThread.slug, threadSlug))
+    .limit(1);
+  if (!thread) {
+    throw new ChatSDKError("not_found:forum", "Discussion not found.");
+  }
+  const post = postId
+    ? (await db.select({
+        id: forumPost.id,
+        authorId: forumPost.authorId,
+        content: forumPost.content,
+        isDeleted: forumPost.isDeleted,
+      }).from(forumPost).where(
+        and(eq(forumPost.id, postId), eq(forumPost.threadId, thread.id))
+      ).limit(1))[0]
+    : null;
+  if ((targetType === "post" && !post) || (postId && !post) || post?.isDeleted) {
+    throw new ChatSDKError("not_found:forum", "Post not found.");
+  }
+  const authorId = post?.authorId ?? thread.authorId;
+  const [author] = await db.select({
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email,
+  }).from(user).where(eq(user.id, authorId)).limit(1);
+  return {
+    authorId,
+    authorName: formatForumUserName(author?.firstName ?? null, author?.lastName ?? null, author?.email ?? null),
+    excerpt: (post?.content ?? thread.summary).slice(0, 1500),
+    postId: post?.id ?? null,
+    threadId: thread.id,
+    threadSlug: thread.slug,
+    threadTitle: thread.title,
+  };
 }
 
 export async function toggleForumSubscription({

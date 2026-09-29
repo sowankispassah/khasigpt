@@ -2025,6 +2025,21 @@ export type ForumThreadSubscription = InferSelectModel<
   typeof forumThreadSubscription
 >;
 
+export const forumUserBlock = pgTable(
+  "ForumUserBlock",
+  {
+    blockerId: uuid("blockerId").notNull().references(() => user.id, { onDelete: "cascade" }),
+    blockedId: uuid("blockedId").notNull().references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.blockerId, table.blockedId] }),
+    blockedIdx: index("ForumUserBlock_blocked_idx").on(table.blockedId),
+  })
+);
+
+export type ForumUserBlock = InferSelectModel<typeof forumUserBlock>;
+
 export const forumPostReaction = pgTable(
   "ForumPostReaction",
   {

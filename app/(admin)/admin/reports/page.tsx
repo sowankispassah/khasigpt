@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Chat Reports",
-  description: "Review AI response feedback and safety reports.",
+  description: "Review AI response feedback and forum safety reports.",
 };
 
 export default function AdminReportsPage({
