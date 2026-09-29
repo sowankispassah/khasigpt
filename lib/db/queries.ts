@@ -22,6 +22,7 @@ import {
   lt,
   lte,
   ne,
+  notInArray,
   or,
   type SQL,
   sql,
@@ -31,6 +32,7 @@ import { revalidateTag, unstable_cache } from "next/cache";
 import postgres from "postgres";
 import type { ArtifactKind } from "@/components/artifact";
 import type { VisibilityType } from "@/components/visibility-selector";
+import { CHAT_REPORT_SUBJECTS, FORUM_REPORT_SUBJECTS } from "@/lib/admin/report-source";
 import { normalizeCharacterText } from "@/lib/ai/character-normalize";
 import {
   calculateImageTokenProviderCostUsd,
@@ -6463,23 +6465,39 @@ export async function createContactMessage(
   }
 }
 
+function reportSourceCondition(source: "chat" | "forum" | "other"): SQL<boolean> {
+  const normalizedSubject = sql<string>`lower(${contactMessage.subject})`;
+  if (source === "forum") {
+    return inArray(normalizedSubject, FORUM_REPORT_SUBJECTS) as SQL<boolean>;
+  }
+  if (source === "chat") {
+    return inArray(normalizedSubject, CHAT_REPORT_SUBJECTS) as SQL<boolean>;
+  }
+  return notInArray(normalizedSubject, [...FORUM_REPORT_SUBJECTS, ...CHAT_REPORT_SUBJECTS]) as SQL<boolean>;
+}
+
 export async function listContactMessages({
   limit = 50,
   offset = 0,
   kind,
   status,
   search,
+  reportSource,
 }: {
   limit?: number;
   offset?: number;
   kind?: ContactMessage["kind"];
   status?: ContactMessageStatus | "all";
   search?: string | null;
+  reportSource?: "chat" | "forum" | "other";
 } = {}): Promise<ContactMessage[]> {
   try {
     const conditions: SQL<boolean>[] = [];
     if (kind) {
       conditions.push(eq(contactMessage.kind, kind) as SQL<boolean>);
+    }
+    if (kind === "report" && reportSource) {
+      conditions.push(reportSourceCondition(reportSource));
     }
     const normalizedSearch = search?.trim().toLowerCase();
     if (status && status !== "all") {
@@ -6528,15 +6546,20 @@ export async function getContactMessageCount({
   kind,
   status,
   search,
+  reportSource,
 }: {
   kind?: ContactMessage["kind"];
   status?: ContactMessageStatus | "all";
   search?: string | null;
+  reportSource?: "chat" | "forum" | "other";
 } = {}): Promise<number> {
   try {
     const conditions: SQL<boolean>[] = [];
     if (kind) {
       conditions.push(eq(contactMessage.kind, kind) as SQL<boolean>);
+    }
+    if (kind === "report" && reportSource) {
+      conditions.push(reportSourceCondition(reportSource));
     }
     const normalizedSearch = search?.trim().toLowerCase();
     if (status && status !== "all") {

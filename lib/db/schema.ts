@@ -1631,6 +1631,24 @@ export const contactMessage = pgTable(
 
 export type ContactMessage = InferSelectModel<typeof contactMessage>;
 
+export const contactMessageStatusEvent = pgTable(
+  "ContactMessageStatusEvent",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    messageId: uuid("messageId").notNull().references(() => contactMessage.id, { onDelete: "cascade" }),
+    actorUserId: uuid("actorUserId").references(() => user.id, { onDelete: "set null" }),
+    fromStatus: contactMessageStatusEnum("fromStatus").notNull(),
+    toStatus: contactMessageStatusEnum("toStatus").notNull(),
+    note: text("note"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    messageCreatedAtIdx: index("ContactMessageStatusEvent_message_createdAt_idx").on(table.messageId, table.createdAt),
+  })
+);
+
+export type ContactMessageStatusEvent = InferSelectModel<typeof contactMessageStatusEvent>;
+
 export const tokenUsage = pgTable(
   "token_usage",
   {

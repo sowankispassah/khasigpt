@@ -1,40 +1,16 @@
-import { formatDistanceToNow } from "date-fns";
 import { AdminPagination } from "@/components/admin/admin-pagination";
 import { EditableTranslation } from "@/components/translation-edit-provider";
+import { toContactTableMessage } from "@/lib/admin/contact-table-message";
 import { adminQueryResult } from "@/lib/admin/safe-query";
 import {
   getContactMessageCount,
   listContactMessages,
 } from "@/lib/db/queries";
 import type { ContactMessage } from "@/lib/db/schema";
-import { ContactMessagesTable, type ContactTableMessage } from "./contact-messages-table";
+import { ContactMessagesTable } from "./contact-messages-table";
+import { ReportsWorkspace } from "./reports-workspace";
 
 const CONTACTS_PAGE_SIZE = 25;
-const dateFormatter = new Intl.DateTimeFormat("en-IN", {
-  dateStyle: "medium",
-  timeStyle: "short",
-  timeZone: "Asia/Kolkata",
-});
-
-function toTableMessage(message: ContactMessage): ContactTableMessage {
-  const createdAt = new Date(message.createdAt ?? Number.NaN);
-  const updatedAt = new Date(message.updatedAt ?? Number.NaN);
-  const validCreatedAt = Number.isFinite(createdAt.getTime());
-  return {
-    ...message,
-    message: typeof message.message === "string" ? message.message : "",
-    createdAt: validCreatedAt ? createdAt.toISOString() : "",
-    receivedAt: validCreatedAt ? `${dateFormatter.format(createdAt)} IST` : "—",
-    receivedRelative: validCreatedAt
-      ? formatDistanceToNow(createdAt, { addSuffix: true })
-      : "—",
-    updatedAt: Number.isFinite(updatedAt.getTime()) ? updatedAt.toISOString() : "",
-    updatedAtLabel: Number.isFinite(updatedAt.getTime())
-      ? `${dateFormatter.format(updatedAt)} IST`
-      : "—",
-  };
-}
-
 function parsePage(value: string | string[] | undefined) {
   const rawValue = Array.isArray(value) ? value[0] : value;
   const parsed = Number.parseInt(rawValue ?? "1", 10);
@@ -101,25 +77,27 @@ export async function ContactMessagesPage({
       </header>
 
       <section className="rounded-lg border bg-card p-4 shadow-sm">
-        {(!messagesConfirmed || !totalMessagesState.ok) && (
+        {kind === "contact" && (!messagesConfirmed || !totalMessagesState.ok) && (
           <AdminContactsWarning
             kind={kind}
             countUnavailable={!totalMessagesState.ok}
             rowsUnavailable={!messagesConfirmed}
           />
         )}
-        <ContactMessagesTable kind={kind} messages={messages.map(toTableMessage)} messagesConfirmed={messagesConfirmed} />
+        {kind === "report" ? (
+          <ReportsWorkspace initialRows={messages.map(toContactTableMessage)} initialTotal={totalMessages} initialConfirmed={messagesConfirmed && totalMessagesState.ok} initialPage={page} />
+        ) : <ContactMessagesTable kind={kind} messages={messages.map(toContactTableMessage)} messagesConfirmed={messagesConfirmed} />}
 
-        <div className="mt-4">
+        {kind === "contact" ? <div className="mt-4">
           <AdminPagination
-            itemLabel={kind === "report" ? <EditableTranslation defaultText="reports" description="Report list pagination item name." translationKey="admin.reports.pagination_item" /> : <EditableTranslation defaultText="contact requests" description="Contact list pagination item name." translationKey="admin.contacts.pagination_item" />}
+            itemLabel={<EditableTranslation defaultText="contact requests" description="Contact list pagination item name." translationKey="admin.contacts.pagination_item" />}
             page={page}
             pageSize={CONTACTS_PAGE_SIZE}
-            pathname={kind === "report" ? "/admin/reports" : "/admin/contacts"}
+            pathname="/admin/contacts"
             searchParams={resolvedSearchParams}
             totalItems={totalMessagesState.ok ? totalMessages : messages.length}
           />
-        </div>
+        </div> : null}
       </section>
     </div>
   );
