@@ -94,9 +94,9 @@ export async function ContactMessagesPage({
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-semibold text-2xl">{kind === "report" ? <EditableTranslation defaultText="Chat reports" description="Admin chat reports page title." translationKey="admin.reports.title" /> : <EditableTranslation defaultText="Contact requests" description="Admin contact requests page title." translationKey="admin.contacts.title" />}</h1>
+        <h1 className="font-semibold text-2xl">{kind === "report" ? <EditableTranslation defaultText="Reports" description="Admin reports page title." translationKey="admin.reports.title" /> : <EditableTranslation defaultText="Contact requests" description="Admin contact requests page title." translationKey="admin.contacts.title" />}</h1>
         <p className="text-muted-foreground text-sm">
-          {kind === "report" ? <EditableTranslation defaultText="AI response feedback and safety reports submitted by users." description="Admin chat reports page description." translationKey="admin.reports.description" /> : <EditableTranslation defaultText="Messages from people who want to get in touch." description="Admin contact requests page description." translationKey="admin.contacts.description" />}
+          {kind === "report" ? <EditableTranslation defaultText="AI response and forum reports submitted by users." description="Admin reports page description." translationKey="admin.reports.description" /> : <EditableTranslation defaultText="Messages from people who want to get in touch." description="Admin contact requests page description." translationKey="admin.contacts.description" />}
         </p>
       </header>
 
@@ -112,7 +112,7 @@ export async function ContactMessagesPage({
 
         <div className="mt-4">
           <AdminPagination
-            itemLabel={kind === "report" ? <EditableTranslation defaultText="chat reports" description="Report list pagination item name." translationKey="admin.reports.pagination_item" /> : <EditableTranslation defaultText="contact requests" description="Contact list pagination item name." translationKey="admin.contacts.pagination_item" />}
+            itemLabel={kind === "report" ? <EditableTranslation defaultText="reports" description="Report list pagination item name." translationKey="admin.reports.pagination_item" /> : <EditableTranslation defaultText="contact requests" description="Contact list pagination item name." translationKey="admin.contacts.pagination_item" />}
             page={page}
             pageSize={CONTACTS_PAGE_SIZE}
             pathname={kind === "report" ? "/admin/reports" : "/admin/contacts"}

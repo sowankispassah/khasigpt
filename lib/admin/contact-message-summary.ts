@@ -9,13 +9,18 @@ function field(lines: string[], label: string) {
 export function summarizeContactMessage(message: string) {
   const lines = (typeof message === "string" ? message : "").split(/\r?\n/);
   const category = field(lines, "Feedback category");
+  const forumTarget = field(lines, "Target");
+  const forumReason = field(lines, "Reason");
+  const forumUrlValue = field(lines, "Forum URL");
+  const forumUrl = forumUrlValue && /^https:\/\/khasigpt\.com\/forum\/[a-z0-9-]+$/i.test(forumUrlValue)
+    ? forumUrlValue : null;
   const chatIdValue = field(lines, "Chat ID");
   const messageIdValue = field(lines, "Message ID");
   const chatId = chatIdValue && UUID_PATTERN.test(chatIdValue) ? chatIdValue : null;
   const messageId = messageIdValue && UUID_PATTERN.test(messageIdValue) ? messageIdValue : null;
   const detailsIndex = lines.findIndex((line) => line.startsWith("User details: "));
   const chatIndex = lines.findIndex((line) => line.startsWith("Chat ID: "));
-  const excerptIndex = lines.findIndex((line) => line.startsWith("Response excerpt: "));
+  const excerptIndex = lines.findIndex((line) => line.startsWith("Response excerpt: ") || line.startsWith("Excerpt: "));
   const details = detailsIndex < 0
     ? null
     : lines
@@ -25,14 +30,16 @@ export function summarizeContactMessage(message: string) {
         .trim();
   const excerpt = excerptIndex < 0
     ? null
-    : lines.slice(excerptIndex).join("\n").replace(/^Response excerpt: /, "").trim();
+    : lines.slice(excerptIndex).join("\n").replace(/^(Response excerpt|Excerpt): /, "").trim();
 
   return {
-    category,
+    category: category ?? (forumTarget && forumReason ? `Forum ${forumTarget} · ${forumReason}` : null),
     chatId,
+    forumUrl,
     messageId,
     details: details && details !== "[None provided]" ? details : null,
     excerpt,
     isAiFeedback: Boolean(category || (chatId && messageId && excerpt)),
+    isForumReport: Boolean(forumTarget && forumReason && forumUrl),
   };
 }

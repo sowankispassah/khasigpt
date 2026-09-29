@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { ForumCategoryManager } from "@/components/forum/forum-category-manager";
+import { BlockedForumUsersButton } from "@/components/forum/forum-safety-actions";
 import { ForumSidebar } from "@/components/forum/forum-sidebar";
 import { ThreadCard } from "@/components/forum/thread-card";
 import { LoaderIcon } from "@/components/icons";
@@ -392,6 +393,9 @@ export function ForumClient({
                 viewerId={viewer.id}
                 viewerName={viewer.name}
               />
+              {viewer.id ? (
+                <BlockedForumUsersButton onUnblocked={() => router.refresh()} />
+              ) : null}
               {isAdmin ? (
                 <ForumCategoryManager className="w-full justify-center" />
               ) : null}

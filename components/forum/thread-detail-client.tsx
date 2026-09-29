@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { ForumSafetyActions } from "@/components/forum/forum-safety-actions";
 import { OfficialBadge } from "@/components/forum/official-badge";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
@@ -482,6 +483,16 @@ export function ThreadDetailClient({
     }
   };
 
+  const handleBlocked = (authorId: string) => {
+    if (authorId === thread.author.id) {
+      router.push("/forum");
+      router.refresh();
+      return;
+    }
+    setPosts((current) => current.filter((post) => post.author.id !== authorId));
+    router.refresh();
+  };
+
   return (
     <div className="space-y-8">
       <div>
@@ -547,6 +558,14 @@ export function ThreadDetailClient({
                   #{tag.label}
                 </Link>
               ))}
+            </div>
+            <div className="mt-3">
+              <ForumSafetyActions
+                authorId={thread.author.id}
+                onBlocked={handleBlocked}
+                threadSlug={thread.slug}
+                viewerId={viewer.id}
+              />
             </div>
             {initialPost ? (
               <div className="mt-6 space-y-4">
@@ -745,6 +764,13 @@ export function ThreadDetailClient({
                         {formatRelative(post.createdAt, activeLanguage.code)}
                       </span>
                     </div>
+                    <ForumSafetyActions
+                      authorId={post.author.id}
+                      onBlocked={handleBlocked}
+                      postId={post.id}
+                      threadSlug={thread.slug}
+                      viewerId={viewer.id}
+                    />
                     <div className="space-y-3">
                       {renderPostContent(post.content, postNoContentCopy)}
                     </div>
