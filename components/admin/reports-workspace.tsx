@@ -99,7 +99,7 @@ function ReportRows({
   </div>;
 }
 
-function StatusSection({
+function ReportSection({
   status,
   label,
   translationKey,
@@ -108,8 +108,12 @@ function StatusSection({
   search,
   revision,
   onStatusChanged,
+  initialRows = [],
+  initialTotal = 0,
+  initialConfirmed = false,
+  initialPage = 1,
 }: {
-  status: SpecificStatus;
+  status: ReportStatus;
   label: string;
   translationKey: string;
   count: number | null;
@@ -117,6 +121,10 @@ function StatusSection({
   search: string;
   revision: number;
   onStatusChanged: () => void;
+  initialRows?: ContactTableMessage[];
+  initialTotal?: number;
+  initialConfirmed?: boolean;
+  initialPage?: number;
 }) {
   const [open, setOpen] = useState(false);
   return <section className="rounded-lg border bg-card p-4">
@@ -126,7 +134,7 @@ function StatusSection({
         <ChevronDown aria-hidden="true" className={`size-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
     </h2>
-    {open ? <div id={`report-section-${status}`}><ReportRows key={`${status}:${source}:${search}`} status={status} source={source} search={search} revision={revision} onStatusChanged={onStatusChanged} /></div> : null}
+    {open ? <div id={`report-section-${status}`}><ReportRows key={`${status}:${source}:${search}:${initialConfirmed}`} status={status} source={source} search={search} revision={revision} onStatusChanged={onStatusChanged} initialRows={initialRows} initialTotal={initialTotal} initialConfirmed={initialConfirmed} initialPage={initialPage} /></div> : null}
   </section>;
 }
 
@@ -146,6 +154,10 @@ export function ReportsWorkspace({ initialRows, initialTotal, initialConfirmed, 
   const [countsError, setCountsError] = useState(false);
   const [countsRetry, setCountsRetry] = useState(0);
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
+  const useInitialAllRows = !hasInteracted && revision === 0 && initialConfirmed;
+  const allCount = counts
+    ? Object.values(counts).reduce((total, count) => total + count, 0)
+    : hasInteracted || !initialConfirmed ? null : initialTotal;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -180,14 +192,11 @@ export function ReportsWorkspace({ initialRows, initialTotal, initialConfirmed, 
         </select>
       </label>
     </div>
-    <section className="rounded-lg border bg-card p-4">
-      <h2 className="font-semibold"><EditableTranslation defaultText="All reports" description="Heading for the complete admin report table." translationKey="admin.reports.sections.all" /></h2>
-      <ReportRows key={`all:${source}:${search}:${hasInteracted}`} status="all" source={source} search={search} revision={revision} onStatusChanged={refresh} initialRows={hasInteracted ? [] : initialRows} initialTotal={hasInteracted ? 0 : initialTotal} initialConfirmed={!hasInteracted && initialConfirmed} initialPage={hasInteracted ? 1 : initialPage} />
-    </section>
-    <div className="mt-4 space-y-3">
+    <div className="space-y-3">
       {countsBusy ? <output className="flex items-center gap-2 text-muted-foreground text-xs"><Loader2 aria-hidden="true" className="size-3 animate-spin" /><EditableTranslation defaultText="Loading status counts" description="Loading report status section counts." translationKey="admin.reports.sections.counts_loading" /></output> : null}
       {countsError ? <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm"><EditableTranslation defaultText="Could not load status counts." description="Report status count error." translationKey="admin.reports.sections.counts_error" /> <button className="cursor-pointer underline" onClick={() => setCountsRetry((value) => value + 1)} type="button"><EditableTranslation defaultText="Retry" description="Retry loading report status counts." translationKey="admin.reports.filter.retry" /></button></div> : null}
-      {statusSections.map((section) => <StatusSection key={section.value} status={section.value} label={section.text} translationKey={section.key} count={counts?.[section.value] ?? null} source={source} search={search} revision={revision} onStatusChanged={refresh} />)}
+      <ReportSection status="all" label="All reports" translationKey="admin.reports.sections.all" count={allCount} source={source} search={search} revision={revision} onStatusChanged={refresh} initialRows={useInitialAllRows ? initialRows : []} initialTotal={useInitialAllRows ? initialTotal : 0} initialConfirmed={useInitialAllRows} initialPage={useInitialAllRows ? initialPage : 1} />
+      {statusSections.map((section) => <ReportSection key={section.value} status={section.value} label={section.text} translationKey={section.key} count={counts?.[section.value] ?? null} source={source} search={search} revision={revision} onStatusChanged={refresh} />)}
     </div>
   </>;
 }
