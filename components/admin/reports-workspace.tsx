@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ContactMessagesTable, type ContactTableMessage } from "@/components/admin/contact-messages-table";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
@@ -26,14 +26,18 @@ export function ReportsWorkspace({ initialRows, initialTotal, initialConfirmed, 
   const [page, setPage] = useState(initialPage);
   const [busy, setBusy] = useState(false);
   const [retry, setRetry] = useState(0);
+  const initialLoadHandled = useRef(false);
 
   const refresh = useCallback(() => setRetry((value) => value + 1), []);
   useEffect(() => {
-    if (source === "all" && status === "all" && !search && page === initialPage && retry === 0 && initialConfirmed) return;
+    if (!initialLoadHandled.current) {
+      initialLoadHandled.current = true;
+      if (initialConfirmed) return;
+    }
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       setBusy(true);
-      const params = new URLSearchParams({ source, status, search, page: String(page) });
+      const params = new URLSearchParams({ source, status, search, page: String(page), refresh: String(retry) });
       try {
         const response = await fetch(`/api/admin/reports?${params}`, { signal: controller.signal, cache: "no-store" });
         if (!response.ok) throw new Error("Unable to load reports");
@@ -50,7 +54,7 @@ export function ReportsWorkspace({ initialRows, initialTotal, initialConfirmed, 
       }
     }, search ? 250 : 0);
     return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [source, status, search, page, retry, initialPage, initialConfirmed]);
+  }, [source, status, search, page, retry, initialConfirmed]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const rangeStart = total ? (page - 1) * pageSize + 1 : 0;
