@@ -13,7 +13,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ForumSafetyActions } from "@/components/forum/forum-safety-actions";
+import { ForumBlockAction, ForumSafetyActions } from "@/components/forum/forum-safety-actions";
 import { OfficialBadge } from "@/components/forum/official-badge";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
@@ -559,14 +559,11 @@ export function ThreadDetailClient({
                 </Link>
               ))}
             </div>
-            <div className="mt-3">
-              <ForumSafetyActions
-                authorId={thread.author.id}
-                onBlocked={handleBlocked}
-                threadSlug={thread.slug}
-                viewerId={viewer.id}
-              />
-            </div>
+            {viewer.id && viewer.id !== thread.author.id ? (
+              <div className="mt-3">
+                <ForumBlockAction authorId={thread.author.id} onBlocked={handleBlocked} viewerId={viewer.id} />
+              </div>
+            ) : null}
             {initialPost ? (
               <div className="mt-6 space-y-4">
                 <div className="space-y-3">
@@ -604,9 +601,14 @@ export function ThreadDetailClient({
                       ({initialPost.reactions[reaction]})
                     </button>
                   ))}
+                  <ForumSafetyActions threadSlug={thread.slug} viewerId={viewer.id} />
                 </div>
               </div>
-            ) : null}
+            ) : (
+              <div className="mt-4 flex">
+                <ForumSafetyActions threadSlug={thread.slug} viewerId={viewer.id} />
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Button
@@ -764,13 +766,7 @@ export function ThreadDetailClient({
                         {formatRelative(post.createdAt, activeLanguage.code)}
                       </span>
                     </div>
-                    <ForumSafetyActions
-                      authorId={post.author.id}
-                      onBlocked={handleBlocked}
-                      postId={post.id}
-                      threadSlug={thread.slug}
-                      viewerId={viewer.id}
-                    />
+                    <ForumBlockAction authorId={post.author.id} onBlocked={handleBlocked} viewerId={viewer.id} />
                     <div className="space-y-3">
                       {renderPostContent(post.content, postNoContentCopy)}
                     </div>
@@ -805,6 +801,7 @@ export function ThreadDetailClient({
                           ({post.reactions[reaction]})
                         </button>
                       ))}
+                      <ForumSafetyActions postId={post.id} threadSlug={thread.slug} viewerId={viewer.id} />
                     </div>
                   </div>
                 </div>

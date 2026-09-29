@@ -1,5 +1,6 @@
 "use client";
 
+import { Flag } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { LoaderIcon } from "@/components/icons";
@@ -7,20 +8,17 @@ import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 
 type TargetType = "thread" | "post" | "user";
 type Reason = "harassment" | "hate" | "sexual" | "violence" | "spam" | "other";
 
 export function ForumSafetyActions({
-  authorId,
-  onBlocked,
   postId,
   threadSlug,
   viewerId,
 }: {
-  authorId: string;
-  onBlocked: (authorId: string) => void;
   postId?: string;
   threadSlug: string;
   viewerId: string | null;
@@ -29,15 +27,14 @@ export function ForumSafetyActions({
   const [targetType, setTargetType] = useState<TargetType | null>(null);
   const [reason, setReason] = useState<Reason>("harassment");
   const [details, setDetails] = useState("");
-  const [pending, setPending] = useState<"report" | "block" | null>(null);
-  const canBlock = Boolean(viewerId && viewerId !== authorId);
+  const [pending, setPending] = useState(false);
   const label = (key: string, fallback: string) => translate(key, fallback);
   const goToLogin = () => {
     window.location.href = `/login?redirect=${encodeURIComponent(`/forum/${threadSlug}`)}`;
   };
   const submitReport = async () => {
     if (!targetType || pending) return;
-    setPending("report");
+    setPending(true);
     try {
       const response = await fetch("/api/forum/reports", {
         method: "POST",
@@ -51,43 +48,27 @@ export function ForumSafetyActions({
     } catch {
       toast.error(label("forum.safety.report_error", "Could not send report. Please try again."));
     } finally {
-      setPending(null);
-    }
-  };
-  const block = async () => {
-    if (pending || !canBlock) return;
-    setPending("block");
-    try {
-      const response = await fetch("/api/forum/blocks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: authorId }),
-      });
-      if (!response.ok) throw new Error("Failed to block");
-      toast.success(label("forum.safety.block_success", "User blocked."));
-      onBlocked(authorId);
-    } catch {
-      toast.error(label("forum.safety.block_error", "Could not block this user."));
-    } finally {
-      setPending(null);
+      setPending(false);
     }
   };
   return (
     <>
-      <div className="flex flex-wrap items-center gap-1">
-        <Button className="cursor-pointer" onClick={() => viewerId ? setTargetType(postId ? "post" : "thread") : goToLogin()} size="sm" variant="ghost">
-          <EditableTranslation defaultText={postId ? "Report reply" : "Report discussion"} description="Report this forum post." translationKey={postId ? "forum.safety.report_reply" : "forum.safety.report_thread"} />
-        </Button>
-        <Button className="cursor-pointer" onClick={() => viewerId ? setTargetType("user") : goToLogin()} size="sm" variant="ghost">
-          <EditableTranslation defaultText="Report user" description="Report this forum author." translationKey="forum.safety.report_user" />
-        </Button>
-        {canBlock ? (
-          <Button className="cursor-pointer" disabled={Boolean(pending)} onClick={block} size="sm" variant="ghost">
-            {pending === "block" ? <LoaderIcon className="mr-1 animate-spin" size={14} /> : null}
-            <EditableTranslation defaultText="Block user" description="Hide this author's forum posts." translationKey="forum.safety.block_user" />
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button className="h-auto cursor-pointer rounded-full border border-border px-3 py-1 text-muted-foreground text-xs hover:border-primary/30 hover:bg-primary/5" disabled={pending} size="sm" type="button" variant="ghost">
+            <Flag aria-hidden="true" className="mr-1 size-3.5" />
+            <EditableTranslation defaultText="Report" description="Open forum report choices." translationKey="forum.safety.open_report" />
           </Button>
-        ) : null}
-      </div>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem className="cursor-pointer" onSelect={() => viewerId ? setTargetType(postId ? "post" : "thread") : goToLogin()}>
+            <EditableTranslation defaultText={postId ? "Report reply" : "Report discussion"} description="Report this forum post." translationKey={postId ? "forum.safety.report_reply" : "forum.safety.report_thread"} />
+          </DropdownMenuItem>
+          <DropdownMenuItem className="cursor-pointer" onSelect={() => viewerId ? setTargetType("user") : goToLogin()}>
+            <EditableTranslation defaultText="Report user" description="Report this forum author." translationKey="forum.safety.report_user" />
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <Dialog onOpenChange={(open) => !open && !pending && setTargetType(null)} open={Boolean(targetType)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -96,7 +77,7 @@ export function ForumSafetyActions({
           </DialogHeader>
           <label className="space-y-2 text-sm">
             <span><EditableTranslation defaultText="Reason" description="Forum report reason label." translationKey="forum.safety.reason" /></span>
-            <select className="w-full cursor-pointer rounded-md border bg-background p-2" disabled={Boolean(pending)} onChange={(event) => setReason(event.target.value as Reason)} value={reason}>
+            <select className="w-full cursor-pointer rounded-md border bg-background p-2" disabled={pending} onChange={(event) => setReason(event.target.value as Reason)} value={reason}>
               {(["harassment", "hate", "sexual", "violence", "spam", "other"] as const).map((value) => (
                 <option key={value} value={value}>{label(`forum.safety.reason.${value}`, {
                   harassment: "Harassment or bullying", hate: "Hate or discrimination", sexual: "Sexual content", violence: "Violence or dangerous content", spam: "Spam or scam", other: "Other",
@@ -104,15 +85,49 @@ export function ForumSafetyActions({
               ))}
             </select>
           </label>
-          <Textarea disabled={Boolean(pending)} maxLength={2000} onChange={(event) => setDetails(event.target.value)} placeholder={label("forum.safety.details", "More details (optional)")} value={details} />
-          <Button className="cursor-pointer" disabled={Boolean(pending)} onClick={submitReport}>
-            {pending === "report" ? <LoaderIcon className="mr-2 animate-spin" size={16} /> : null}
-            <EditableTranslation defaultText={pending === "report" ? "Sending..." : "Send report"} description="Submit the forum report." translationKey={pending === "report" ? "forum.safety.sending" : "forum.safety.submit"} />
+          <Textarea disabled={pending} maxLength={2000} onChange={(event) => setDetails(event.target.value)} placeholder={label("forum.safety.details", "More details (optional)")} value={details} />
+          <Button className="cursor-pointer" disabled={pending} onClick={submitReport}>
+            {pending ? <LoaderIcon className="mr-2 animate-spin" size={16} /> : null}
+            <EditableTranslation defaultText={pending ? "Sending..." : "Send report"} description="Submit the forum report." translationKey={pending ? "forum.safety.sending" : "forum.safety.submit"} />
           </Button>
         </DialogContent>
       </Dialog>
     </>
   );
+}
+
+export function ForumBlockAction({ authorId, onBlocked, viewerId }: {
+  authorId: string;
+  onBlocked: (authorId: string) => void;
+  viewerId: string | null;
+}) {
+  const { translate } = useTranslation();
+  const [pending, setPending] = useState(false);
+  if (!viewerId || viewerId === authorId) return null;
+
+  const block = async () => {
+    if (pending) return;
+    setPending(true);
+    try {
+      const response = await fetch("/api/forum/blocks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: authorId }),
+      });
+      if (!response.ok) throw new Error("Failed to block");
+      toast.success(translate("forum.safety.block_success", "User blocked."));
+      onBlocked(authorId);
+    } catch {
+      toast.error(translate("forum.safety.block_error", "Could not block this user."));
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return <Button className="cursor-pointer" disabled={pending} onClick={block} size="sm" variant="ghost">
+    {pending ? <LoaderIcon className="mr-1 animate-spin" size={14} /> : null}
+    <EditableTranslation defaultText="Block user" description="Hide this author's forum posts." translationKey="forum.safety.block_user" />
+  </Button>;
 }
 
 export function BlockedForumUsersButton({ onUnblocked }: { onUnblocked: () => void }) {

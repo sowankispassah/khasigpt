@@ -50,6 +50,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   { key: "forum.safety.report_thread", defaultText: "Report discussion", description: "Report a forum discussion." },
   { key: "forum.safety.report_reply", defaultText: "Report reply", description: "Report a forum reply." },
   { key: "forum.safety.report_user", defaultText: "Report user", description: "Report a forum user." },
+  { key: "forum.safety.open_report", defaultText: "Report", description: "Open forum report choices beside post reactions." },
+  { key: "forum.safety.choose_target", defaultText: "Choose what you want to report.", description: "Prompt to report a forum discussion, reply, or author." },
   { key: "forum.safety.block_user", defaultText: "Block user", description: "Block a forum user." },
   { key: "forum.safety.blocked_users", defaultText: "Blocked users", description: "Open the blocked forum users list." },
   { key: "forum.safety.blocked_description", defaultText: "Their discussions and replies are hidden from you.", description: "Explains forum blocking." },
