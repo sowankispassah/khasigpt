@@ -750,6 +750,13 @@
       "when": 1788998400007,
       "tag": "0104_forum_user_blocks",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1788998400008,
+      "tag": "0105_contact_message_status_events",
+      "breakpoints": true
     }
   ]
 }
