@@ -298,3 +298,41 @@ export async function sendContactMessageEmail({
     );
   }
 }
+
+export function contactReplySubject(subject: string) {
+  const safeSubject = subject.replace(/[\r\n]+/g, " ").trim() || "Your KhasiGPT enquiry";
+  return (/^re\s*:/i.test(safeSubject) ? safeSubject : `Re: ${safeSubject}`).slice(0, 240);
+}
+
+function escapeEmailHtml(value: string) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+export function contactReplyHtml(body: string) {
+  return `<html><body><p style="white-space:pre-wrap;font-family:Arial,sans-serif">${escapeEmailHtml(body)}</p></body></html>`;
+}
+
+export async function sendContactReplyEmail({
+  toEmail,
+  toName,
+  subject,
+  body,
+}: {
+  toEmail: string;
+  toName: string;
+  subject: string;
+  body: string;
+}) {
+  const senderEmail = process.env.BREVO_SENDER_EMAIL;
+  const senderName = process.env.BREVO_SENDER_NAME ?? "Support";
+  if (!senderEmail) throw new ChatSDKError("bad_request:api", "Brevo sender email is not configured");
+
+  const email = new SendSmtpEmail();
+  email.subject = contactReplySubject(subject);
+  email.sender = { email: senderEmail, name: senderName };
+  email.replyTo = { email: senderEmail, name: senderName };
+  email.to = [{ email: toEmail, name: toName }];
+  email.textContent = body;
+  email.htmlContent = contactReplyHtml(body);
+  await getBrevoClient().sendTransacEmail(email);
+}
