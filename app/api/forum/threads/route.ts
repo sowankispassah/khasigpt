@@ -30,7 +30,13 @@ const createThreadSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getForumReadSession(request);
+    const session = await getForumReadSession(request).catch((error) => {
+      console.warn(
+        "[api/forum/threads] Optional session lookup failed; continuing anonymous forum read.",
+        error
+      );
+      return null;
+    });
     const url = new URL(request.url);
     const categorySlug = url.searchParams.get("category") ?? null;
     const tagSlug = url.searchParams.get("tag") ?? null;

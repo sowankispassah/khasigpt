@@ -66,7 +66,10 @@ type ForumPageProps = {
 };
 
 export default async function ForumPage({ searchParams }: ForumPageProps) {
-  const session = await auth();
+  const session = await auth().catch((error) => {
+    console.warn("[forum/page] Optional auth lookup failed.", error);
+    return null;
+  });
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const categorySlug =
     typeof resolvedSearchParams?.category === "string"

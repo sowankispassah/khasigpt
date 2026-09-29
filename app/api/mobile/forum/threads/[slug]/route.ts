@@ -22,6 +22,12 @@ export async function GET(
       getMobileSession(request, {
         bearerTimeoutMs: OPTIONAL_MOBILE_FORUM_AUTH_TIMEOUT_MS,
         cookieTimeoutMs: OPTIONAL_MOBILE_FORUM_AUTH_TIMEOUT_MS,
+      }).catch((error) => {
+        console.warn(
+          "[api/mobile/forum/thread] Optional session lookup failed; continuing anonymous forum read.",
+          error
+        );
+        return null;
       }),
     { slowMs: 750 }
   );
