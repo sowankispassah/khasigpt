@@ -1,9 +1,10 @@
 "use client";
 
-import { ChevronDown, Loader2, Mail, MoreVertical, Paperclip, SendHorizontal, StickyNote, X } from "lucide-react";
+import { ChevronDown, Loader2, Mail, Maximize2, Minimize2, MoreVertical, Paperclip, SendHorizontal, StickyNote, X } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -109,6 +110,7 @@ function ContactConversationView({
   accountBusy,
   accountLoaded,
   accountError,
+  isFullscreen,
   replies,
   repliesBusy,
   repliesError,
@@ -134,6 +136,7 @@ function ContactConversationView({
   onRetryHistory,
   onRetryAccount,
   onRetryViewed,
+  onToggleFullscreen,
 }: {
   message: ContactTableMessage;
   inboundConfigured?: boolean;
@@ -141,6 +144,7 @@ function ContactConversationView({
   accountBusy: boolean;
   accountLoaded: boolean;
   accountError: boolean;
+  isFullscreen: boolean;
   replies: ContactReply[];
   repliesBusy: boolean;
   repliesError: boolean;
@@ -166,11 +170,18 @@ function ContactConversationView({
   onRetryHistory: () => void;
   onRetryAccount: () => void;
   onRetryViewed: () => void;
+  onToggleFullscreen: () => void;
 }) {
   const { translate } = useTranslation();
+  const fullscreenLabel = isFullscreen
+    ? translate("admin.contacts.dialog.restore", "Restore window")
+    : translate("admin.contacts.dialog.fullscreen", "Full screen");
   return (
     <>
-      <DialogHeader className="shrink-0 border-b px-5 py-4 pr-12 text-left sm:px-6">
+      <DialogHeader className="shrink-0 border-b px-5 py-4 pr-24 text-left sm:pl-6 sm:pr-24">
+        <Button aria-label={fullscreenLabel} aria-pressed={isFullscreen} className="absolute top-4 right-14 size-8" onClick={onToggleFullscreen} size="icon" title={fullscreenLabel} type="button" variant="outline">
+          {isFullscreen ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}
+        </Button>
         <DialogClose aria-label={translate("admin.contacts.dialog.close", "Close")} className="absolute top-4 right-4 size-8 cursor-pointer p-0" disabled={replyPending} title={translate("admin.contacts.dialog.close", "Close")}><X aria-hidden="true" className="size-4" /></DialogClose>
         <div className="flex flex-wrap items-center gap-2">
           <DialogTitle className="min-w-0 break-words text-xl">{message.subject}</DialogTitle>
@@ -301,6 +312,7 @@ export function ContactMessagesTable({
 }) {
   const { translate } = useTranslation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [viewedIds, setViewedIds] = useState<Set<string>>(() => new Set());
   const [markingId, setMarkingId] = useState<string | null>(null);
   const [viewErrorId, setViewErrorId] = useState<string | null>(null);
@@ -374,6 +386,7 @@ export function ContactMessagesTable({
 
   function openDetails(message: ContactTableMessage) {
     setSelectedId(message.id);
+    setIsFullscreen(false);
     if (kind === "contact") {
       setReplyKind("public_reply");
       setReplyRequestId(crypto.randomUUID());
@@ -602,14 +615,15 @@ export function ContactMessagesTable({
         </table>
       </div>
 
-      <Dialog onOpenChange={(open) => { if (!open && !replyPending) setSelectedId(null); }} open={selected !== undefined}>
-        <DialogContent className={kind === "contact" ? "flex h-[min(90dvh,900px)] w-[calc(100vw-2rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0" : "max-h-[90dvh] w-[calc(100vw-2rem)] max-w-3xl overflow-y-auto"}>
+      <Dialog onOpenChange={(open) => { if (!open && !replyPending) { setSelectedId(null); setIsFullscreen(false); } }} open={selected !== undefined}>
+        <DialogContent className={kind === "contact" ? `flex flex-col gap-0 overflow-hidden p-0 ${isFullscreen ? "left-0 top-0 h-dvh w-dvw max-w-none translate-x-0 translate-y-0 rounded-none border-0 shadow-none sm:rounded-none" : "h-[min(90dvh,900px)] w-[calc(100vw-2rem)] max-w-6xl"}` : "max-h-[90dvh] w-[calc(100vw-2rem)] max-w-3xl overflow-y-auto"}>
           {selected && selectedSummary ? (
             kind === "contact" ? <ContactConversationView
               account={account}
               accountBusy={accountBusy}
               accountError={accountError}
               accountLoaded={accountLoaded}
+              isFullscreen={isFullscreen}
               conversationEnd={conversationEnd}
               inboundConfigured={inboundConfigured}
               history={history}
@@ -625,6 +639,7 @@ export function ContactMessagesTable({
               onRetryAccount={() => void loadAccount(selected.id)}
               onRetryReplies={() => void loadReplies(selected.id, true)}
               onRetryViewed={() => void markViewed(selected)}
+              onToggleFullscreen={() => setIsFullscreen((current) => !current)}
               onSendReply={() => void submitReply()}
               replies={chronologicalReplies}
               repliesBusy={repliesBusy}

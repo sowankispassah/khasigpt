@@ -213,6 +213,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   { key: "admin.contacts.dialog.request_id", defaultText: "Request ID", description: "Contact request identifier detail label." },
   { key: "admin.contacts.dialog.full_message", defaultText: "Full message", description: "Original contact request message section." },
   { key: "admin.contacts.dialog.close", defaultText: "Close", description: "Close contact request details dialog." },
+  { key: "admin.contacts.dialog.fullscreen", defaultText: "Full screen", description: "Expand the contact conversation to fill the screen." },
+  { key: "admin.contacts.dialog.restore", defaultText: "Restore window", description: "Return the contact conversation to its window size." },
   ...USER_FEATURE_DEFINITIONS.flatMap((feature) => [
     {
       key: feature.labelKey,
