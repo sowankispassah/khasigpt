@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Mail, MoreVertical, SendHorizontal, X } from "lucide-react";
+import { Loader2, Mail, MoreVertical, Paperclip, SendHorizontal, X } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { summarizeContactMessage } from "@/lib/admin/contact-message-summary";
-import type { ContactMessage } from "@/lib/db/schema";
+import type { ContactAttachment, ContactMessage } from "@/lib/db/schema";
 
 export type ContactTableMessage = Omit<ContactMessage, "createdAt" | "updatedAt" | "lastInboundAt"> & {
   createdAt: string;
@@ -50,12 +50,18 @@ type ContactReply = {
   direction: "inbound" | "outbound";
   subject: string;
   body: string;
+  attachments: ContactAttachment[];
   deliveryStatus: "pending" | "sent" | "unconfirmed" | null;
   createdAt: string;
   sentAt: string | null;
   actorFirstName: string | null;
   actorLastName: string | null;
 };
+
+function AttachmentLinks({ files, source, id }: { files: ContactAttachment[]; source: "contact" | "reply"; id: string }) {
+  if (!Array.isArray(files) || !files.length) return null;
+  return <div className="mt-2 flex flex-wrap gap-2">{files.map((file) => <a className="inline-flex max-w-full cursor-pointer items-center gap-1 rounded-md border border-current/20 px-2 py-1 text-xs underline-offset-2 hover:underline" href={`/api/admin/contact-messages/attachments?source=${source}&id=${encodeURIComponent(id)}&attachmentId=${encodeURIComponent(file.id)}`} key={file.id} rel="noreferrer" target="_blank"><Paperclip aria-hidden="true" className="size-3 shrink-0" /><span className="max-w-56 truncate" title={file.name}>{file.name}</span></a>)}</div>;
+}
 
 function Status({ value }: { value: ContactMessage["status"] }) {
   const label = statusLabels[value] ?? { key: "admin.contacts.status.unknown", text: "Unknown" };
@@ -105,11 +111,15 @@ function ContactConversationView({
   marking,
   viewError,
   replyBody,
+  replyFiles,
+  replyAttachmentError,
   replyPending,
   replySent,
   replyError,
   conversationEnd,
   onReplyChange,
+  onReplyFilesChange,
+  onRemoveReplyFile,
   onSendReply,
   onRetryReplies,
   onRetryHistory,
@@ -126,11 +136,15 @@ function ContactConversationView({
   marking: boolean;
   viewError: boolean;
   replyBody: string;
+  replyFiles: File[];
+  replyAttachmentError: string | null;
   replyPending: boolean;
   replySent: boolean;
   replyError: "invalid" | "unconfirmed" | null;
   conversationEnd: RefObject<HTMLDivElement | null>;
   onReplyChange: (value: string) => void;
+  onReplyFilesChange: (files: File[]) => void;
+  onRemoveReplyFile: (index: number) => void;
   onSendReply: () => void;
   onRetryReplies: () => void;
   onRetryHistory: () => void;
@@ -161,7 +175,7 @@ function ContactConversationView({
                 <span className="font-medium text-foreground">{message.name}</span>
                 <time dateTime={message.createdAt}>{message.receivedAt}</time>
               </div>
-              <div className="max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tl-sm border bg-background px-4 py-3 text-sm shadow-sm">{message.message}</div>
+              <div className="max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tl-sm border bg-background px-4 py-3 text-sm shadow-sm">{message.message}<AttachmentLinks files={message.attachments} id={message.id} source="contact" /></div>
             </div>
             {replies.map((reply) => {
               const outgoing = reply.direction === "outbound";
@@ -173,7 +187,7 @@ function ContactConversationView({
                     <time dateTime={reply.createdAt}>{new Date(reply.createdAt).toLocaleString()}</time>
                     {outgoing && reply.deliveryStatus !== "sent" ? <span className="rounded-full border px-1.5 py-0.5">{reply.deliveryStatus === "pending" ? <EditableTranslation defaultText="Pending" description="Contact reply pending status." translationKey="admin.contacts.replies.pending" /> : <EditableTranslation defaultText="Delivery unconfirmed" description="Contact reply uncertain status." translationKey="admin.contacts.replies.unconfirmed" />}</span> : null}
                   </div>
-                  <div className={`max-w-[90%] whitespace-pre-wrap break-words rounded-2xl px-4 py-3 text-sm shadow-sm ${outgoing ? "rounded-tr-sm bg-primary text-primary-foreground" : "rounded-tl-sm border bg-background"}`}>{reply.body}</div>
+                  <div className={`max-w-[90%] whitespace-pre-wrap break-words rounded-2xl px-4 py-3 text-sm shadow-sm ${outgoing ? "rounded-tr-sm bg-primary text-primary-foreground" : "rounded-tl-sm border bg-background"}`}>{reply.body}<AttachmentLinks files={reply.attachments} id={reply.id} source="reply" /></div>
                 </div>
               );
             })}
@@ -185,9 +199,17 @@ function ContactConversationView({
           <div className="shrink-0 border-t bg-background px-4 py-3 sm:px-6">
             <div className="mb-2 font-medium text-sm" id="contact-conversation-reply-label"><EditableTranslation defaultText="Reply to customer" description="Contact conversation composer label." translationKey="admin.contacts.conversation.reply_label" /></div>
             <textarea aria-labelledby="contact-conversation-reply-label" className="min-h-20 max-h-40 w-full resize-y rounded-lg border bg-background p-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50" disabled={replyPending || replyError === "invalid" || replyError === "unconfirmed"} id="contact-conversation-reply" maxLength={10000} onChange={(event) => onReplyChange(event.target.value)} placeholder={translate("admin.contacts.reply.placeholder", "Write your response to the customer")} value={replyBody} />
+            <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm hover:bg-muted">
+              <Paperclip aria-hidden="true" className="size-4" />
+              <EditableTranslation defaultText="Add attachments" description="Add files to an admin contact reply." translationKey="admin.contacts.attachments.add" />
+              <input accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.docx" className="sr-only" disabled={replyPending || replyError === "invalid" || replyError === "unconfirmed"} key={message.id} multiple onChange={(event) => onReplyFilesChange(Array.from(event.target.files ?? []))} type="file" />
+            </label>
+            <p className="mt-1 text-muted-foreground text-xs"><EditableTranslation defaultText="Up to 3 files, 3 MB total. PDF, images, text, or DOCX." description="Contact reply attachment limits." translationKey="contact.form.attachments.help" /></p>
+            {replyFiles.length ? <ul className="mt-2 flex flex-wrap gap-2">{replyFiles.map((file, index) => <li className="inline-flex max-w-full items-center gap-1 rounded-md border px-2 py-1 text-xs" key={`${index}-${file.name}`}><span className="max-w-48 truncate" title={file.name}>{file.name}</span><button aria-label={translate("admin.contacts.attachments.remove", "Remove attachment")} className="cursor-pointer" disabled={replyPending} onClick={() => onRemoveReplyFile(index)} type="button"><X aria-hidden="true" className="size-3" /></button></li>)}</ul> : null}
+            {replyAttachmentError ? <p className="mt-1 text-destructive text-xs" role="alert">{replyAttachmentError}</p> : null}
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
               <p className="flex items-center gap-1.5 text-muted-foreground text-xs"><Mail aria-hidden="true" className="size-3.5" />{inboundConfigured ? <EditableTranslation defaultText="Sent by email; replies appear here." description="Contact conversation email delivery note." translationKey="admin.contacts.conversation.email_note" /> : <EditableTranslation defaultText="Sent by email." description="Contact conversation email delivery note when inbound mail is unavailable." translationKey="admin.contacts.conversation.email_only" />}</p>
-              <button className="inline-flex min-w-28 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm disabled:cursor-not-allowed disabled:opacity-50" disabled={replyPending || !replyBody.trim() || replyError === "invalid"} onClick={onSendReply} type="button">{replyPending ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : <SendHorizontal aria-hidden="true" className="size-4" />}{replyError === "unconfirmed" ? <EditableTranslation defaultText="Check delivery" description="Check contact reply delivery without resending." translationKey="admin.contacts.reply.check" /> : <EditableTranslation defaultText="Send reply" description="Send the contact reply email." translationKey="admin.contacts.reply.send" />}</button>
+              <button className="inline-flex min-w-28 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm disabled:cursor-not-allowed disabled:opacity-50" disabled={replyPending || (!replyBody.trim() && !replyFiles.length) || replyError === "invalid"} onClick={onSendReply} type="button">{replyPending ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : <SendHorizontal aria-hidden="true" className="size-4" />}{replyError === "unconfirmed" ? <EditableTranslation defaultText="Check delivery" description="Check contact reply delivery without resending." translationKey="admin.contacts.reply.check" /> : <EditableTranslation defaultText="Send reply" description="Send the contact reply email." translationKey="admin.contacts.reply.send" />}</button>
             </div>
             {replySent ? <output className="mt-2 block text-green-700 text-sm"><EditableTranslation defaultText="Reply sent to the contact." description="Contact reply success message." translationKey="admin.contacts.reply.sent" /></output> : null}
             {replyError === "invalid" ? <p className="mt-2 text-destructive text-sm" role="alert"><EditableTranslation defaultText="This contact has no valid reply address." description="Contact reply invalid recipient error." translationKey="admin.contacts.reply.invalid" /></p> : null}
@@ -248,6 +270,8 @@ export function ContactMessagesTable({
   const historyRequest = useRef(0);
   const [replyRequestId, setReplyRequestId] = useState<string | null>(null);
   const [replyBody, setReplyBody] = useState("");
+  const [replyFiles, setReplyFiles] = useState<File[]>([]);
+  const [replyAttachmentError, setReplyAttachmentError] = useState<string | null>(null);
   const [replyPending, setReplyPending] = useState(false);
   const [replySent, setReplySent] = useState(false);
   const [replyError, setReplyError] = useState<"invalid" | "unconfirmed" | null>(null);
@@ -301,6 +325,8 @@ export function ContactMessagesTable({
     if (kind === "contact") {
       setReplyRequestId(crypto.randomUUID());
       setReplyBody("");
+      setReplyFiles([]);
+      setReplyAttachmentError(null);
       setReplySent(false);
       setReplyError(null);
     }
@@ -375,18 +401,33 @@ export function ContactMessagesTable({
   }
 
   async function submitReply() {
-    if (!selectedId || !replyRequestId || replyPending || !replyBody.trim()) return;
+    if (!selectedId || !replyRequestId || replyPending || (!replyBody.trim() && !replyFiles.length)) return;
+    if (replyFiles.length > 3 || replyFiles.reduce((size, file) => size + file.size, 0) > 3 * 1024 * 1024) {
+      setReplyAttachmentError(translate("contact.form.attachments.error.too_large", "Select up to 3 files, 3 MB total."));
+      return;
+    }
     setReplyPending(true);
     setReplyError(null);
+    setReplyAttachmentError(null);
     try {
+      const formData = new FormData();
+      formData.set("id", selectedId);
+      formData.set("requestId", replyRequestId);
+      formData.set("body", replyBody.trim());
+      for (const file of replyFiles) formData.append("attachments", file);
       const response = await fetch("/api/admin/contact-messages/replies", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: selectedId, requestId: replyRequestId, body: replyBody.trim() }),
+        body: formData,
         cache: "no-store",
       });
+      if (response.status === 413 || response.status === 503) {
+        setReplyAttachmentError(translate(response.status === 413 ? "contact.form.attachments.error.too_large" : "contact.form.attachments.error.upload_failed", response.status === 413 ? "Attachments must be 3 MB or smaller in total." : "Could not upload the attachment. Please try again."));
+        return;
+      }
       if (response.status === 422 || response.status === 400) {
-        setReplyError("invalid");
+        const issue = await response.json().catch(() => ({})) as { attachmentError?: string };
+        if (issue.attachmentError) setReplyAttachmentError(translate(`contact.form.attachments.error.${issue.attachmentError}`, "Please check your attachments."));
+        else setReplyError("invalid");
         return;
       }
       if (!response.ok) throw new Error("Reply delivery unavailable");
@@ -394,6 +435,7 @@ export function ContactMessagesTable({
       if (result.deliveryStatus === "sent") {
         setReplySent(true);
         setReplyBody("");
+        setReplyFiles([]);
         setReplyRequestId(crypto.randomUUID());
         void loadReplies(selectedId, true);
       } else {
@@ -493,6 +535,8 @@ export function ContactMessagesTable({
               marking={markingId === selected.id}
               message={selected}
               onReplyChange={(value) => { setReplyBody(value); setReplySent(false); }}
+              onReplyFilesChange={(files) => { setReplyFiles(files); setReplyAttachmentError(null); setReplySent(false); }}
+              onRemoveReplyFile={(index) => setReplyFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
               onRetryHistory={() => void loadHistory(selected.id)}
               onRetryReplies={() => void loadReplies(selected.id, true)}
               onRetryViewed={() => void markViewed(selected)}
@@ -501,6 +545,8 @@ export function ContactMessagesTable({
               repliesBusy={repliesBusy}
               repliesError={repliesError}
               replyBody={replyBody}
+              replyFiles={replyFiles}
+              replyAttachmentError={replyAttachmentError}
               replyError={replyError}
               replyPending={replyPending}
               replySent={replySent}

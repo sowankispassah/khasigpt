@@ -6411,11 +6411,13 @@ export async function updateAccountDeletionRequestStatus({
 }
 
 export type CreateContactMessageInput = {
+  id?: string;
   name: string;
   email: string;
   phone?: string | null;
   subject: string;
   message: string;
+  attachments?: ContactMessage["attachments"];
   kind?: ContactMessage["kind"];
   status?: ContactMessageStatus;
 };
@@ -6430,11 +6432,13 @@ export async function createContactMessage(
     const [record] = await db
       .insert(contactMessage)
       .values({
+        ...(input.id ? { id: input.id } : {}),
         name: input.name,
         email: normalizedEmail,
         phone: input.phone ?? null,
         subject: input.subject,
         message: input.message,
+        attachments: input.attachments ?? [],
         kind: input.kind ?? "contact",
         status: input.status ?? "new",
         createdAt: now,
