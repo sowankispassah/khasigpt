@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { summarizeContactMessage } from "@/lib/admin/contact-message-summary";
+import { type ContactAccountSummary, isContactAccountSummary } from "@/lib/contact/account-summary";
 import type { ContactAttachment, ContactMessage } from "@/lib/db/schema";
 
 export type ContactTableMessage = Omit<ContactMessage, "createdAt" | "updatedAt" | "lastInboundAt"> & {
@@ -104,6 +105,10 @@ function Field({
 function ContactConversationView({
   message,
   inboundConfigured,
+  account,
+  accountBusy,
+  accountLoaded,
+  accountError,
   replies,
   repliesBusy,
   repliesError,
@@ -127,10 +132,15 @@ function ContactConversationView({
   onSendReply,
   onRetryReplies,
   onRetryHistory,
+  onRetryAccount,
   onRetryViewed,
 }: {
   message: ContactTableMessage;
   inboundConfigured?: boolean;
+  account: ContactAccountSummary | null;
+  accountBusy: boolean;
+  accountLoaded: boolean;
+  accountError: boolean;
   replies: ContactReply[];
   repliesBusy: boolean;
   repliesError: boolean;
@@ -154,6 +164,7 @@ function ContactConversationView({
   onSendReply: () => void;
   onRetryReplies: () => void;
   onRetryHistory: () => void;
+  onRetryAccount: () => void;
   onRetryViewed: () => void;
 }) {
   const { translate } = useTranslation();
@@ -173,8 +184,8 @@ function ContactConversationView({
         </DialogDescription>
       </DialogHeader>
 
-      <div className="grid min-h-0 flex-1 md:grid-cols-[minmax(0,1fr)_260px]">
-        <div className="flex min-h-0 min-w-0 flex-col md:border-r">
+      <div className="grid min-h-0 flex-1 overflow-y-auto md:grid-cols-[230px_minmax(0,1fr)_240px] md:overflow-hidden">
+        <div className="order-1 flex min-h-[420px] min-w-0 flex-col md:order-2 md:min-h-0 md:border-r">
           <section aria-label={translate("admin.contacts.conversation.title", "Conversation")} className="min-h-0 flex-1 space-y-5 overflow-y-auto bg-muted/20 px-4 py-5 sm:px-6">
             <div className="flex flex-col items-start gap-1">
               <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
@@ -234,10 +245,11 @@ function ContactConversationView({
           </div>
         </div>
 
-        <aside className="max-h-52 space-y-5 overflow-y-auto border-t bg-background px-4 py-4 text-sm md:max-h-none md:min-h-0 md:border-t-0">
+        <aside className="order-2 max-h-52 space-y-5 overflow-y-auto border-t bg-background px-4 py-4 text-sm md:order-1 md:max-h-none md:min-h-0 md:border-r md:border-t-0">
           <section>
             <h3 className="mb-3 font-semibold"><EditableTranslation defaultText="Customer details" description="Contact conversation customer information heading." translationKey="admin.contacts.conversation.customer_details" /></h3>
             <dl className="space-y-3">
+              <Field label="Name" translationKey="admin.contacts.account.name">{message.name}</Field>
               <Field label="Email" translationKey="admin.contacts.dialog.email"><a className="break-all text-primary hover:underline" href={`mailto:${message.email}`}>{message.email}</a></Field>
               <Field label="Phone" translationKey="admin.contacts.table.phone">{message.phone || "—"}</Field>
               <Field label="Received" translationKey="admin.contacts.table.received">{message.receivedAt}</Field>
@@ -251,6 +263,23 @@ function ContactConversationView({
             <h3 className="mb-2 font-semibold"><EditableTranslation defaultText="Action history" description="Contact action history heading." translationKey="admin.reports.history.title" /></h3>
             {historyBusy ? <Loader2 aria-label={translate("admin.reports.history.loading", "Loading action history")} className="size-4 animate-spin" /> : historyError ? <div className="text-destructive text-xs"><EditableTranslation defaultText="Could not load action history." description="Contact action history error." translationKey="admin.reports.history.error" /> <button className="cursor-pointer underline" onClick={onRetryHistory} type="button"><EditableTranslation defaultText="Retry" description="Retry contact action history." translationKey="admin.reports.filter.retry" /></button></div> : history.length ? <ol className="space-y-3">{history.map((event) => <li className="border-l-2 pl-2 text-xs" key={event.id}><div className="flex flex-wrap items-center gap-1"><Status value={event.toStatus} /><time className="text-muted-foreground" dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString()}</time></div>{event.note ? <p className="mt-1 whitespace-pre-wrap break-words">{event.note}</p> : null}</li>)}</ol> : <p className="text-muted-foreground text-xs"><EditableTranslation defaultText="No actions recorded yet." description="Empty contact action history." translationKey="admin.reports.history.empty" /></p>}
           </section>
+        </aside>
+        <aside className="order-3 max-h-52 space-y-4 overflow-y-auto border-t bg-background px-4 py-4 text-sm md:max-h-none md:min-h-0 md:border-t-0">
+          <h3 className="font-semibold"><EditableTranslation defaultText="Account details" description="Matching account information in the contact conversation." translationKey="admin.contacts.account.title" /></h3>
+          {accountBusy || !accountLoaded && !accountError ? <p className="flex items-center gap-2 text-muted-foreground text-xs"><Loader2 aria-hidden="true" className="size-3 animate-spin" /><EditableTranslation defaultText="Checking for an account..." description="Contact account lookup loading message." translationKey="admin.contacts.account.loading" /></p> : accountError ? <div className="text-destructive text-xs"><EditableTranslation defaultText="Account details could not be loaded." description="Contact account lookup failure message." translationKey="admin.contacts.account.error" /> <button className="cursor-pointer underline disabled:cursor-not-allowed disabled:opacity-50" disabled={accountBusy} onClick={onRetryAccount} type="button"><EditableTranslation defaultText="Retry" description="Retry contact account lookup." translationKey="admin.reports.filter.retry" /></button></div> : account ? <>
+            <p className="text-muted-foreground text-xs"><EditableTranslation defaultText="Matched by email. This does not verify who submitted the contact message." description="Contact email match identity caveat." translationKey="admin.contacts.account.match_note" /></p>
+            <dl className="space-y-3">
+              <Field label="Name" translationKey="admin.contacts.account.name">{[account.firstName, account.lastName].filter(Boolean).join(" ") || <EditableTranslation defaultText="No name set" description="Account profile has no name." translationKey="admin.contacts.account.no_name" />}</Field>
+              <Field label="Email" translationKey="admin.contacts.dialog.email"><span className="break-all">{account.email}</span></Field>
+              <Field label="Account status" translationKey="admin.users.filters.account_status.label">{account.isActive ? <EditableTranslation defaultText="Active" description="Matched contact account is active." translationKey="admin.users.filters.account_status.active" /> : <EditableTranslation defaultText="Suspended" description="Matched contact account is suspended." translationKey="admin.users.filters.account_status.suspended" />}</Field>
+              <Field label="Role" translationKey="admin.users.filters.role.label"><EditableTranslation defaultText={account.role === "admin" ? "Admin" : account.role === "creator" ? "Creator" : "Regular"} description="Matched contact account role." translationKey={`admin.contacts.account.role.${account.role}`} /></Field>
+              <Field label="Sign-in method" translationKey="admin.contacts.account.provider"><EditableTranslation defaultText={account.authProvider === "google" ? "Google" : "Email and password"} description="Matched contact account sign-in method." translationKey={account.authProvider === "google" ? "admin.contacts.account.provider.google" : "admin.contacts.account.provider.credentials"} /></Field>
+              <Field label="Joined" translationKey="admin.contacts.account.joined"><time dateTime={account.createdAt}>{new Date(account.createdAt).toLocaleDateString()}</time></Field>
+              <Field label="Plan" translationKey="admin.contacts.account.plan">{account.subscriptionUnavailable ? <EditableTranslation defaultText="Unavailable" description="Matched account plan could not be loaded." translationKey="admin.contacts.account.unavailable" /> : account.subscription ? account.subscription.planName || <EditableTranslation defaultText="Unknown plan" description="Matched account plan name is unavailable." translationKey="admin.contacts.account.unknown_plan" /> : <EditableTranslation defaultText="No active plan" description="Matched account has no active plan." translationKey="subscriptions.plan_overview.no_active_plan" />}</Field>
+              {account.subscription ? <><Field label="Credits remaining" translationKey="subscriptions.plan_overview.credits_remaining">{new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(account.subscription.creditsRemaining)}</Field><Field label="Plan expires" translationKey="subscriptions.plan_overview.plan_expires"><time dateTime={account.subscription.expiresAt}>{new Date(account.subscription.expiresAt).toLocaleDateString()}</time></Field></> : null}
+            </dl>
+            <a className="inline-flex cursor-pointer text-primary text-xs underline-offset-2 hover:underline" href={`/admin/users?q=${encodeURIComponent(account.email)}`} rel="noopener noreferrer" target="_blank"><EditableTranslation defaultText="Open in Users" description="Open matching account in admin users list." translationKey="admin.contacts.account.open_user" /></a>
+          </> : <p className="text-muted-foreground text-xs"><EditableTranslation defaultText="No KhasiGPT account matches this contact email." description="Contact email does not match any account." translationKey="admin.contacts.account.no_match" /></p>}
         </aside>
       </div>
     </>
@@ -297,6 +326,11 @@ export function ContactMessagesTable({
   const [repliesBusy, setRepliesBusy] = useState(false);
   const [repliesError, setRepliesError] = useState(false);
   const repliesRequest = useRef(0);
+  const [account, setAccount] = useState<ContactAccountSummary | null>(null);
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [accountLoaded, setAccountLoaded] = useState(false);
+  const [accountError, setAccountError] = useState(false);
+  const accountRequest = useRef(0);
   const conversationEnd = useRef<HTMLDivElement>(null);
   const effectiveMessages = messages.map((message) => statusOverrides[message.id]
     ? { ...message, status: statusOverrides[message.id] }
@@ -351,7 +385,10 @@ export function ContactMessagesTable({
     }
     void markViewed(message);
     void loadHistory(message.id);
-    if (kind === "contact") void loadReplies(message.id);
+    if (kind === "contact") {
+      void loadReplies(message.id);
+      void loadAccount(message.id);
+    }
   }
 
   async function loadHistory(id: string) {
@@ -386,6 +423,28 @@ export function ContactMessagesTable({
       if (requestId === repliesRequest.current) setRepliesError(true);
     } finally {
       if (requestId === repliesRequest.current) setRepliesBusy(false);
+    }
+  }
+
+  async function loadAccount(id: string) {
+    const requestId = ++accountRequest.current;
+    setAccountBusy(true);
+    setAccountLoaded(false);
+    setAccountError(false);
+    setAccount(null);
+    try {
+      const response = await fetch(`/api/admin/contact-messages/account?id=${encodeURIComponent(id)}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("Unable to load account");
+      const data = await response.json() as { account: unknown };
+      if (data.account !== null && !isContactAccountSummary(data.account)) throw new Error("Invalid account details");
+      if (requestId === accountRequest.current) {
+        setAccount(data.account);
+        setAccountLoaded(true);
+      }
+    } catch {
+      if (requestId === accountRequest.current) setAccountError(true);
+    } finally {
+      if (requestId === accountRequest.current) setAccountBusy(false);
     }
   }
 
@@ -547,6 +606,10 @@ export function ContactMessagesTable({
         <DialogContent className={kind === "contact" ? "flex h-[min(90dvh,900px)] w-[calc(100vw-2rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0" : "max-h-[90dvh] w-[calc(100vw-2rem)] max-w-3xl overflow-y-auto"}>
           {selected && selectedSummary ? (
             kind === "contact" ? <ContactConversationView
+              account={account}
+              accountBusy={accountBusy}
+              accountError={accountError}
+              accountLoaded={accountLoaded}
               conversationEnd={conversationEnd}
               inboundConfigured={inboundConfigured}
               history={history}
@@ -559,6 +622,7 @@ export function ContactMessagesTable({
               onReplyFilesChange={(files) => { setReplyFiles(files); setReplyAttachmentError(null); setReplySent(false); }}
               onRemoveReplyFile={(index) => setReplyFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
               onRetryHistory={() => void loadHistory(selected.id)}
+              onRetryAccount={() => void loadAccount(selected.id)}
               onRetryReplies={() => void loadReplies(selected.id, true)}
               onRetryViewed={() => void markViewed(selected)}
               onSendReply={() => void submitReply()}
