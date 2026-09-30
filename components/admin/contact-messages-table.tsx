@@ -1,7 +1,7 @@
 "use client";
 
-import { Loader2, MoreVertical } from "lucide-react";
-import { type ReactNode, useRef, useState } from "react";
+import { Loader2, Mail, MoreVertical, SendHorizontal, X } from "lucide-react";
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
@@ -93,6 +93,131 @@ function Field({
   );
 }
 
+function ContactConversationView({
+  message,
+  inboundConfigured,
+  replies,
+  repliesBusy,
+  repliesError,
+  history,
+  historyBusy,
+  historyError,
+  marking,
+  viewError,
+  replyBody,
+  replyPending,
+  replySent,
+  replyError,
+  conversationEnd,
+  onReplyChange,
+  onSendReply,
+  onRetryReplies,
+  onRetryHistory,
+  onRetryViewed,
+}: {
+  message: ContactTableMessage;
+  inboundConfigured?: boolean;
+  replies: ContactReply[];
+  repliesBusy: boolean;
+  repliesError: boolean;
+  history: StatusEvent[];
+  historyBusy: boolean;
+  historyError: boolean;
+  marking: boolean;
+  viewError: boolean;
+  replyBody: string;
+  replyPending: boolean;
+  replySent: boolean;
+  replyError: "invalid" | "unconfirmed" | null;
+  conversationEnd: RefObject<HTMLDivElement | null>;
+  onReplyChange: (value: string) => void;
+  onSendReply: () => void;
+  onRetryReplies: () => void;
+  onRetryHistory: () => void;
+  onRetryViewed: () => void;
+}) {
+  const { translate } = useTranslation();
+  return (
+    <>
+      <DialogHeader className="shrink-0 border-b px-5 py-4 pr-12 text-left sm:px-6">
+        <DialogClose aria-label={translate("admin.contacts.dialog.close", "Close")} className="absolute top-4 right-4 size-8 cursor-pointer p-0" disabled={replyPending} title={translate("admin.contacts.dialog.close", "Close")}><X aria-hidden="true" className="size-4" /></DialogClose>
+        <div className="flex flex-wrap items-center gap-2">
+          <DialogTitle className="min-w-0 break-words text-xl">{message.subject}</DialogTitle>
+          <Status value={message.status} />
+        </div>
+        <DialogDescription className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <EditableTranslation defaultText="Conversation with" description="Contact conversation participant label." translationKey="admin.contacts.conversation.with" />
+          <span className="font-medium text-foreground">{message.name}</span>
+          <span aria-hidden="true">·</span>
+          <span className="break-all">{message.email}</span>
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="grid min-h-0 flex-1 md:grid-cols-[minmax(0,1fr)_260px]">
+        <div className="flex min-h-0 min-w-0 flex-col md:border-r">
+          <section aria-label={translate("admin.contacts.conversation.title", "Conversation")} className="min-h-0 flex-1 space-y-5 overflow-y-auto bg-muted/20 px-4 py-5 sm:px-6">
+            <div className="flex flex-col items-start gap-1">
+              <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
+                <span className="font-medium text-foreground">{message.name}</span>
+                <time dateTime={message.createdAt}>{message.receivedAt}</time>
+              </div>
+              <div className="max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tl-sm border bg-background px-4 py-3 text-sm shadow-sm">{message.message}</div>
+            </div>
+            {replies.map((reply) => {
+              const outgoing = reply.direction === "outbound";
+              const adminName = [reply.actorFirstName, reply.actorLastName].filter(Boolean).join(" ");
+              return (
+                <div className={`flex flex-col gap-1 ${outgoing ? "items-end" : "items-start"}`} key={reply.id}>
+                  <div className={`flex flex-wrap items-center gap-2 text-muted-foreground text-xs ${outgoing ? "justify-end" : ""}`}>
+                    <span className="font-medium text-foreground">{outgoing ? adminName || translate("admin.reports.history.unknown_actor", "Admin") : message.name}</span>
+                    <time dateTime={reply.createdAt}>{new Date(reply.createdAt).toLocaleString()}</time>
+                    {outgoing && reply.deliveryStatus !== "sent" ? <span className="rounded-full border px-1.5 py-0.5">{reply.deliveryStatus === "pending" ? <EditableTranslation defaultText="Pending" description="Contact reply pending status." translationKey="admin.contacts.replies.pending" /> : <EditableTranslation defaultText="Delivery unconfirmed" description="Contact reply uncertain status." translationKey="admin.contacts.replies.unconfirmed" />}</span> : null}
+                  </div>
+                  <div className={`max-w-[90%] whitespace-pre-wrap break-words rounded-2xl px-4 py-3 text-sm shadow-sm ${outgoing ? "rounded-tr-sm bg-primary text-primary-foreground" : "rounded-tl-sm border bg-background"}`}>{reply.body}</div>
+                </div>
+              );
+            })}
+            {repliesBusy ? <div className="flex items-center gap-2 text-muted-foreground text-sm"><Loader2 aria-hidden="true" className="size-4 animate-spin" /><EditableTranslation defaultText="Loading replies" description="Contact conversation loading status." translationKey="admin.contacts.replies.loading" /></div> : null}
+            {repliesError ? <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-destructive text-sm"><EditableTranslation defaultText="Could not load replies." description="Contact reply history error." translationKey="admin.contacts.replies.error" /> <button className="cursor-pointer underline" onClick={onRetryReplies} type="button"><EditableTranslation defaultText="Retry" description="Retry loading contact replies." translationKey="admin.reports.filter.retry" /></button></div> : null}
+            <div ref={conversationEnd} />
+          </section>
+
+          <div className="shrink-0 border-t bg-background px-4 py-3 sm:px-6">
+            <div className="mb-2 font-medium text-sm" id="contact-conversation-reply-label"><EditableTranslation defaultText="Reply to customer" description="Contact conversation composer label." translationKey="admin.contacts.conversation.reply_label" /></div>
+            <textarea aria-labelledby="contact-conversation-reply-label" className="min-h-20 max-h-40 w-full resize-y rounded-lg border bg-background p-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50" disabled={replyPending || replyError === "invalid" || replyError === "unconfirmed"} id="contact-conversation-reply" maxLength={10000} onChange={(event) => onReplyChange(event.target.value)} placeholder={translate("admin.contacts.reply.placeholder", "Write your response to the customer")} value={replyBody} />
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="flex items-center gap-1.5 text-muted-foreground text-xs"><Mail aria-hidden="true" className="size-3.5" />{inboundConfigured ? <EditableTranslation defaultText="Sent by email; replies appear here." description="Contact conversation email delivery note." translationKey="admin.contacts.conversation.email_note" /> : <EditableTranslation defaultText="Sent by email." description="Contact conversation email delivery note when inbound mail is unavailable." translationKey="admin.contacts.conversation.email_only" />}</p>
+              <button className="inline-flex min-w-28 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm disabled:cursor-not-allowed disabled:opacity-50" disabled={replyPending || !replyBody.trim() || replyError === "invalid"} onClick={onSendReply} type="button">{replyPending ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : <SendHorizontal aria-hidden="true" className="size-4" />}{replyError === "unconfirmed" ? <EditableTranslation defaultText="Check delivery" description="Check contact reply delivery without resending." translationKey="admin.contacts.reply.check" /> : <EditableTranslation defaultText="Send reply" description="Send the contact reply email." translationKey="admin.contacts.reply.send" />}</button>
+            </div>
+            {replySent ? <output className="mt-2 block text-green-700 text-sm"><EditableTranslation defaultText="Reply sent to the contact." description="Contact reply success message." translationKey="admin.contacts.reply.sent" /></output> : null}
+            {replyError === "invalid" ? <p className="mt-2 text-destructive text-sm" role="alert"><EditableTranslation defaultText="This contact has no valid reply address." description="Contact reply invalid recipient error." translationKey="admin.contacts.reply.invalid" /></p> : null}
+            {replyError === "unconfirmed" ? <p className="mt-2 text-destructive text-sm" role="alert"><EditableTranslation defaultText="Delivery could not be confirmed. Check the reply history or email logs before sending another reply." description="Contact reply uncertain delivery warning." translationKey="admin.contacts.reply.unconfirmed" /></p> : null}
+          </div>
+        </div>
+
+        <aside className="max-h-52 space-y-5 overflow-y-auto border-t bg-background px-4 py-4 text-sm md:max-h-none md:min-h-0 md:border-t-0">
+          <section>
+            <h3 className="mb-3 font-semibold"><EditableTranslation defaultText="Customer details" description="Contact conversation customer information heading." translationKey="admin.contacts.conversation.customer_details" /></h3>
+            <dl className="space-y-3">
+              <Field label="Email" translationKey="admin.contacts.dialog.email"><a className="break-all text-primary hover:underline" href={`mailto:${message.email}`}>{message.email}</a></Field>
+              <Field label="Phone" translationKey="admin.contacts.table.phone">{message.phone || "—"}</Field>
+              <Field label="Received" translationKey="admin.contacts.table.received">{message.receivedAt}</Field>
+              <Field label="Last updated" translationKey="admin.contacts.dialog.updated">{message.updatedAtLabel}</Field>
+              <Field label="Request ID" translationKey="admin.contacts.dialog.request_id"><span className="break-all font-mono text-xs">{message.id}</span></Field>
+            </dl>
+          </section>
+          {marking ? <output className="flex items-center gap-2 text-muted-foreground text-xs"><Loader2 aria-hidden="true" className="size-3 animate-spin" /><EditableTranslation defaultText="Marking as read..." description="Pending admin contact read update." translationKey="admin.contacts.mark_viewed_pending" /></output> : null}
+          {viewError ? <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-destructive text-xs"><EditableTranslation defaultText="Could not mark this item as read." description="Admin contact read update error." translationKey="admin.contacts.mark_viewed_error" /> <button className="cursor-pointer underline" disabled={marking} onClick={onRetryViewed} type="button"><EditableTranslation defaultText="Retry" description="Retry marking admin contact as read." translationKey="admin.contacts.mark_viewed_retry" /></button></div> : null}
+          <section className="border-t pt-4">
+            <h3 className="mb-2 font-semibold"><EditableTranslation defaultText="Action history" description="Contact action history heading." translationKey="admin.reports.history.title" /></h3>
+            {historyBusy ? <Loader2 aria-label={translate("admin.reports.history.loading", "Loading action history")} className="size-4 animate-spin" /> : historyError ? <div className="text-destructive text-xs"><EditableTranslation defaultText="Could not load action history." description="Contact action history error." translationKey="admin.reports.history.error" /> <button className="cursor-pointer underline" onClick={onRetryHistory} type="button"><EditableTranslation defaultText="Retry" description="Retry contact action history." translationKey="admin.reports.filter.retry" /></button></div> : history.length ? <ol className="space-y-3">{history.map((event) => <li className="border-l-2 pl-2 text-xs" key={event.id}><div className="flex flex-wrap items-center gap-1"><Status value={event.toStatus} /><time className="text-muted-foreground" dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString()}</time></div>{event.note ? <p className="mt-1 whitespace-pre-wrap break-words">{event.note}</p> : null}</li>)}</ol> : <p className="text-muted-foreground text-xs"><EditableTranslation defaultText="No actions recorded yet." description="Empty contact action history." translationKey="admin.reports.history.empty" /></p>}
+          </section>
+        </aside>
+      </div>
+    </>
+  );
+}
+
 export function ContactMessagesTable({
   kind,
   inboundConfigured,
@@ -121,7 +246,6 @@ export function ContactMessagesTable({
   const [historyBusy, setHistoryBusy] = useState(false);
   const [historyError, setHistoryError] = useState(false);
   const historyRequest = useRef(0);
-  const [replyMessageId, setReplyMessageId] = useState<string | null>(null);
   const [replyRequestId, setReplyRequestId] = useState<string | null>(null);
   const [replyBody, setReplyBody] = useState("");
   const [replyPending, setReplyPending] = useState(false);
@@ -131,12 +255,19 @@ export function ContactMessagesTable({
   const [repliesBusy, setRepliesBusy] = useState(false);
   const [repliesError, setRepliesError] = useState(false);
   const repliesRequest = useRef(0);
+  const conversationEnd = useRef<HTMLDivElement>(null);
   const effectiveMessages = messages.map((message) => statusOverrides[message.id]
     ? { ...message, status: statusOverrides[message.id] }
     : message);
   const selected = effectiveMessages.find((message) => message.id === selectedId);
-  const replyMessage = effectiveMessages.find((message) => message.id === replyMessageId);
   const selectedSummary = selected ? summarizeContactMessage(selected.message) : null;
+  const chronologicalReplies = [...replies].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+  useEffect(() => {
+    if (kind === "contact" && selectedId && !repliesBusy && !repliesError) {
+      conversationEnd.current?.scrollIntoView({ block: "end" });
+    }
+  }, [kind, selectedId, repliesBusy, repliesError]);
 
   async function markViewed(message: ContactTableMessage) {
     if (message.isViewed || viewedIds.has(message.id) || markingId === message.id) {
@@ -167,6 +298,12 @@ export function ContactMessagesTable({
 
   function openDetails(message: ContactTableMessage) {
     setSelectedId(message.id);
+    if (kind === "contact") {
+      setReplyRequestId(crypto.randomUUID());
+      setReplyBody("");
+      setReplySent(false);
+      setReplyError(null);
+    }
     void markViewed(message);
     void loadHistory(message.id);
     if (kind === "contact") void loadReplies(message.id);
@@ -190,11 +327,11 @@ export function ContactMessagesTable({
     }
   }
 
-  async function loadReplies(id: string) {
+  async function loadReplies(id: string, preserveExisting = false) {
     const requestId = ++repliesRequest.current;
     setRepliesBusy(true);
     setRepliesError(false);
-    setReplies([]);
+    if (!preserveExisting) setReplies([]);
     try {
       const response = await fetch(`/api/admin/contact-messages/replies?id=${encodeURIComponent(id)}`, { cache: "no-store" });
       if (!response.ok) throw new Error("Unable to load replies");
@@ -212,15 +349,6 @@ export function ContactMessagesTable({
     setTargetStatus(next ?? (message.status === "new" ? "in_progress" : message.status));
     setStatusNote("");
     setStatusError(false);
-  }
-
-  function openReply(message: ContactTableMessage) {
-    setReplyMessageId(message.id);
-    setReplyRequestId(crypto.randomUUID());
-    setReplyBody("");
-    setReplySent(false);
-    setReplyError(null);
-    void markViewed(message);
   }
 
   async function submitStatus() {
@@ -247,14 +375,14 @@ export function ContactMessagesTable({
   }
 
   async function submitReply() {
-    if (!replyMessageId || !replyRequestId || replyPending || replySent || !replyBody.trim()) return;
+    if (!selectedId || !replyRequestId || replyPending || !replyBody.trim()) return;
     setReplyPending(true);
     setReplyError(null);
     try {
       const response = await fetch("/api/admin/contact-messages/replies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: replyMessageId, requestId: replyRequestId, body: replyBody.trim() }),
+        body: JSON.stringify({ id: selectedId, requestId: replyRequestId, body: replyBody.trim() }),
         cache: "no-store",
       });
       if (response.status === 422 || response.status === 400) {
@@ -265,7 +393,9 @@ export function ContactMessagesTable({
       const result = await response.json() as { deliveryStatus: ContactReply["deliveryStatus"] };
       if (result.deliveryStatus === "sent") {
         setReplySent(true);
-        if (selectedId === replyMessageId) void loadReplies(replyMessageId);
+        setReplyBody("");
+        setReplyRequestId(crypto.randomUUID());
+        void loadReplies(selectedId, true);
       } else {
         setReplyError("unconfirmed");
       }
@@ -341,7 +471,6 @@ export function ContactMessagesTable({
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onSelect={() => openDetails(message)}><EditableTranslation defaultText="View details" description="Open full report in a dialog." translationKey="admin.contacts.view_details" /></DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => openStatus(message)}><EditableTranslation defaultText="Change status" description="Open status action dialog." translationKey="admin.reports.actions.change_status" /></DropdownMenuItem>
-                        {kind === "contact" ? <DropdownMenuItem onSelect={() => openReply(message)}><EditableTranslation defaultText="Reply by email" description="Compose an email reply to a contact request." translationKey="admin.contacts.actions.reply" /></DropdownMenuItem> : null}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </td>
@@ -352,10 +481,31 @@ export function ContactMessagesTable({
         </table>
       </div>
 
-      <Dialog onOpenChange={(open) => { if (!open) setSelectedId(null); }} open={selected !== undefined}>
-        <DialogContent className="max-h-[90dvh] w-[calc(100vw-2rem)] max-w-3xl overflow-y-auto">
+      <Dialog onOpenChange={(open) => { if (!open && !replyPending) setSelectedId(null); }} open={selected !== undefined}>
+        <DialogContent className={kind === "contact" ? "flex h-[min(90dvh,900px)] w-[calc(100vw-2rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0" : "max-h-[90dvh] w-[calc(100vw-2rem)] max-w-3xl overflow-y-auto"}>
           {selected && selectedSummary ? (
-            <>
+            kind === "contact" ? <ContactConversationView
+              conversationEnd={conversationEnd}
+              inboundConfigured={inboundConfigured}
+              history={history}
+              historyBusy={historyBusy}
+              historyError={historyError}
+              marking={markingId === selected.id}
+              message={selected}
+              onReplyChange={(value) => { setReplyBody(value); setReplySent(false); }}
+              onRetryHistory={() => void loadHistory(selected.id)}
+              onRetryReplies={() => void loadReplies(selected.id, true)}
+              onRetryViewed={() => void markViewed(selected)}
+              onSendReply={() => void submitReply()}
+              replies={chronologicalReplies}
+              repliesBusy={repliesBusy}
+              repliesError={repliesError}
+              replyBody={replyBody}
+              replyError={replyError}
+              replyPending={replyPending}
+              replySent={replySent}
+              viewError={viewErrorId === selected.id}
+            /> : <>
               <DialogHeader>
                 <DialogTitle>{kind === "report" ? <EditableTranslation defaultText="Report details" description="Title of chat report details dialog." translationKey="admin.reports.dialog.title" /> : <EditableTranslation defaultText="Contact request details" description="Title of contact request details dialog." translationKey="admin.contacts.dialog.title" />}</DialogTitle>
                 <DialogDescription>{kind === "report" ? <EditableTranslation defaultText="Full feedback and related response information." description="Description of chat report details dialog." translationKey="admin.reports.dialog.description" /> : <EditableTranslation defaultText="Full contact message and sender information." description="Description of contact request details dialog." translationKey="admin.contacts.dialog.description" />}</DialogDescription>
@@ -383,10 +533,6 @@ export function ContactMessagesTable({
                 <h3 className="mb-2 font-medium text-sm"><EditableTranslation defaultText="Action history" description="Report action history heading." translationKey="admin.reports.history.title" /></h3>
                 {historyBusy ? <Loader2 aria-label={translate("admin.reports.history.loading", "Loading action history")} className="size-4 animate-spin" /> : historyError ? <div className="text-destructive text-sm"><EditableTranslation defaultText="Could not load action history." description="Report action history error." translationKey="admin.reports.history.error" /> <button className="cursor-pointer underline" onClick={() => void loadHistory(selected.id)} type="button"><EditableTranslation defaultText="Retry" description="Retry report action history." translationKey="admin.reports.filter.retry" /></button></div> : history.length ? <ol className="space-y-2">{history.map((event) => <li className="rounded-md border p-3 text-sm" key={event.id}><div><Status value={event.fromStatus} /> <span aria-hidden="true">→</span> <Status value={event.toStatus} /> <span className="ml-2 text-muted-foreground text-xs">{[event.actorFirstName, event.actorLastName].filter(Boolean).join(" ") || translate("admin.reports.history.unknown_actor", "Admin")}</span> <time className="ml-2 text-muted-foreground text-xs" dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString()}</time></div>{event.note ? <p className="mt-2 whitespace-pre-wrap break-words">{event.note}</p> : null}</li>)}</ol> : <p className="text-muted-foreground text-sm"><EditableTranslation defaultText="No actions recorded yet." description="Empty report action history." translationKey="admin.reports.history.empty" /></p>}
               </section>
-              {kind === "contact" ? <section>
-                <h3 className="mb-2 font-medium text-sm"><EditableTranslation defaultText="Email conversation" description="Incoming and outgoing emails for a contact request." translationKey="admin.contacts.replies.title" /></h3>
-                {repliesBusy ? <Loader2 aria-label={translate("admin.contacts.replies.loading", "Loading replies")} className="size-4 animate-spin" /> : repliesError ? <div className="text-destructive text-sm"><EditableTranslation defaultText="Could not load replies." description="Contact reply history error." translationKey="admin.contacts.replies.error" /> <button className="cursor-pointer underline" onClick={() => void loadReplies(selected.id)} type="button"><EditableTranslation defaultText="Retry" description="Retry loading replies." translationKey="admin.reports.filter.retry" /></button></div> : replies.length ? <ol className="space-y-2">{replies.map((reply) => <li className="rounded-md border p-3 text-sm" key={reply.id}><div className="flex flex-wrap items-center gap-2"><span className="rounded-full border px-2 py-0.5 text-xs">{reply.direction === "inbound" ? <EditableTranslation defaultText="From customer" description="Incoming email in contact conversation." translationKey="admin.contacts.replies.from_customer" /> : <EditableTranslation defaultText="To customer" description="Outgoing email in contact conversation." translationKey="admin.contacts.replies.to_customer" />}</span><strong>{reply.email}</strong><span className="text-muted-foreground text-xs">{new Date(reply.createdAt).toLocaleString()}</span>{reply.direction === "outbound" ? <span className="rounded-full border px-2 py-0.5 text-xs">{reply.deliveryStatus === "sent" ? <EditableTranslation defaultText="Sent" description="Contact reply delivered status." translationKey="admin.contacts.replies.sent" /> : reply.deliveryStatus === "pending" ? <EditableTranslation defaultText="Pending" description="Contact reply pending status." translationKey="admin.contacts.replies.pending" /> : <EditableTranslation defaultText="Delivery unconfirmed" description="Contact reply uncertain status." translationKey="admin.contacts.replies.unconfirmed" />}</span> : null}</div><p className="mt-2 whitespace-pre-wrap break-words">{reply.body}</p></li>)}</ol> : <p className="text-muted-foreground text-sm"><EditableTranslation defaultText="No email replies yet." description="No replies sent to a contact request." translationKey="admin.contacts.replies.empty" /></p>}
-              </section> : null}
               <DialogFooter><DialogClose className="cursor-pointer"><EditableTranslation defaultText="Close" description="Close contact request details dialog." translationKey="admin.contacts.dialog.close" /></DialogClose></DialogFooter>
             </>
           ) : null}
@@ -413,25 +559,6 @@ export function ContactMessagesTable({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {kind === "contact" ? <Dialog onOpenChange={(open) => { if (!open && !replyPending) setReplyMessageId(null); }} open={replyMessageId !== null}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle><EditableTranslation defaultText="Reply by email" description="Contact request email reply dialog title." translationKey="admin.contacts.reply.title" /></DialogTitle>
-            <DialogDescription><EditableTranslation defaultText="Your reply will be emailed to the contact. Incoming responses appear in the email conversation when inbound mail is connected." description="Contact reply delivery explanation." translationKey="admin.contacts.reply.description" /></DialogDescription>
-          </DialogHeader>
-          {replyMessage ? <div className="space-y-1 rounded-md border bg-muted/20 p-3 text-sm"><p><strong><EditableTranslation defaultText="To" description="Email reply recipient label." translationKey="admin.contacts.reply.to" />:</strong> {replyMessage.email}</p><p><strong><EditableTranslation defaultText="Subject" description="Email reply subject label." translationKey="admin.contacts.table.subject" />:</strong> {/^re\s*:/i.test(replyMessage.subject) ? replyMessage.subject : `Re: ${replyMessage.subject}`}</p></div> : null}
-          <label className="flex flex-col gap-2 text-sm"><EditableTranslation defaultText="Your reply" description="Contact reply message field." translationKey="admin.contacts.reply.body" />
-            <textarea className="min-h-40 resize-y rounded-md border bg-background p-3" disabled={replyPending || replySent || replyError === "unconfirmed"} maxLength={10000} onChange={(event) => setReplyBody(event.target.value)} placeholder={translate("admin.contacts.reply.placeholder", "Write your response to the customer")} value={replyBody} />
-          </label>
-          {replySent ? <p className="text-green-700 text-sm"><EditableTranslation defaultText="Reply sent to the contact." description="Contact reply success message." translationKey="admin.contacts.reply.sent" /></p> : null}
-          {replyError === "invalid" ? <p className="text-destructive text-sm"><EditableTranslation defaultText="This contact has no valid reply address." description="Contact reply invalid recipient error." translationKey="admin.contacts.reply.invalid" /></p> : null}
-          {replyError === "unconfirmed" ? <p className="text-destructive text-sm"><EditableTranslation defaultText="Delivery could not be confirmed. Check the reply history or email logs before sending another reply." description="Contact reply uncertain delivery warning." translationKey="admin.contacts.reply.unconfirmed" /></p> : null}
-          <DialogFooter>
-            <button className="cursor-pointer rounded-md border px-4 py-2 text-sm disabled:opacity-50" disabled={replyPending} onClick={() => setReplyMessageId(null)} type="button"><EditableTranslation defaultText="Close" description="Close contact reply dialog." translationKey="admin.contacts.dialog.close" /></button>
-            <button className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm disabled:cursor-not-allowed disabled:opacity-50" disabled={replyPending || replySent || !replyBody.trim() || replyError === "invalid"} onClick={() => void submitReply()} type="button">{replyPending ? <Loader2 className="size-4 animate-spin" /> : null}{replyError === "unconfirmed" ? <EditableTranslation defaultText="Check delivery" description="Check contact reply delivery without resending." translationKey="admin.contacts.reply.check" /> : <EditableTranslation defaultText="Send reply" description="Send the contact reply email." translationKey="admin.contacts.reply.send" />}</button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog> : null}
     </>
   );
 }
