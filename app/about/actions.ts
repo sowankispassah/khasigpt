@@ -1,9 +1,14 @@
 "use server";
 
+import { headers } from "next/headers";
 import { z } from "zod";
+import { ContactAttachmentError, contactFilesFromForm } from "@/lib/contact/attachment-validation";
+import { deleteContactFiles, uploadContactFiles } from "@/lib/contact/attachments";
 import { createContactMessage } from "@/lib/db/queries";
 import { sendContactMessageEmail } from "@/lib/email/brevo";
 import { ChatSDKError } from "@/lib/errors";
+import { incrementRateLimit } from "@/lib/security/rate-limit";
+import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 
 const PHONE_REGEX = /^[+0-9()\-\s]{6,20}$/;
 
@@ -43,6 +48,8 @@ export type ContactFormState =
       message: string;
       values: ContactFormValues;
       errors: ContactFormErrors;
+      attachmentError?: ContactAttachmentError["code"];
+      errorCode?: "rate_limited";
     };
 
 export async function submitContactFormAction(
@@ -84,26 +91,39 @@ export async function submitContactFormAction(
       };
     }
 
-    await createContactMessage({
-      name: parsed.data.name,
-      email: parsed.data.email,
-      phone: parsed.data.phone.length > 0 ? parsed.data.phone : null,
-      subject: parsed.data.subject,
-      message: parsed.data.message,
-    });
+    const requestHeaders = await headers();
+    const rateLimit = await incrementRateLimit(`web-contact:${getClientKeyFromHeaders(requestHeaders)}`, { limit: 5, windowMs: 60 * 60 * 1000 });
+    if (!rateLimit.allowed) return { status: "error", message: "Too many contact requests. Please try again later.", errorCode: "rate_limited", values: normalizedValues, errors: {} };
 
-    (async () => {
-      try {
-        await sendContactMessageEmail({
-          senderName: parsed.data.name,
-          senderEmail: parsed.data.email,
-          subject: parsed.data.subject,
-          message: parsed.data.message,
-        });
-      } catch (error) {
-        console.error("Failed to dispatch contact form email", error);
-      }
-    })();
+    const files = contactFilesFromForm(formData);
+    const id = crypto.randomUUID();
+    const attachments = await uploadContactFiles(files, "contact", id);
+    try {
+      await createContactMessage({
+        id,
+        name: parsed.data.name,
+        email: parsed.data.email,
+        phone: parsed.data.phone.length > 0 ? parsed.data.phone : null,
+        subject: parsed.data.subject,
+        message: parsed.data.message,
+        attachments,
+      });
+    } catch (error) {
+      await deleteContactFiles(attachments);
+      throw error;
+    }
+
+    try {
+      await sendContactMessageEmail({
+        senderName: parsed.data.name,
+        senderEmail: parsed.data.email,
+        subject: parsed.data.subject,
+        message: parsed.data.message,
+        attachments,
+      });
+    } catch (error) {
+      console.error("Failed to dispatch contact form email", error);
+    }
 
     return {
       status: "success",
@@ -113,7 +133,9 @@ export async function submitContactFormAction(
     const cause =
       error instanceof ChatSDKError
         ? String(error.cause ?? error.message ?? "Something went wrong.")
-        : "Something went wrong.";
+        : error instanceof ContactAttachmentError
+          ? "Please check your attachments."
+          : "Something went wrong.";
 
     return {
       status: "error",
@@ -126,6 +148,7 @@ export async function submitContactFormAction(
         message: String(formData.get("message") ?? "").trim(),
       },
       errors: {},
+      ...(error instanceof ContactAttachmentError ? { attachmentError: error.code } : {}),
     };
   }
 }

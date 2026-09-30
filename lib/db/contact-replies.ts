@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db/queries";
-import { contactMessage, contactMessageInboundEmail, contactMessageReply, contactMessageStatusEvent, user } from "@/lib/db/schema";
+import { type ContactAttachment, contactMessage, contactMessageInboundEmail, contactMessageReply, contactMessageStatusEvent, user } from "@/lib/db/schema";
 import { contactReplySubject, sendContactReplyEmail } from "@/lib/email/brevo";
 import type { ParsedInboundContactEmail } from "@/lib/email/contact-inbound";
 
@@ -15,6 +15,7 @@ export async function listContactReplies(messageId: string) {
     email: contactMessageReply.recipientEmail,
     subject: contactMessageReply.subject,
     body: contactMessageReply.body,
+    attachments: contactMessageReply.attachments,
     deliveryStatus: contactMessageReply.deliveryStatus,
     createdAt: contactMessageReply.createdAt,
     sentAt: contactMessageReply.sentAt,
@@ -39,6 +40,7 @@ export async function listContactReplies(messageId: string) {
     ...inbound.map((reply) => ({
       ...reply,
       direction: "inbound" as const,
+      attachments: [] as ContactAttachment[],
       deliveryStatus: null,
       sentAt: null,
       actorFirstName: null,
@@ -97,6 +99,7 @@ export async function sendContactReply(input: {
   requestId: string;
   actorUserId: string;
   body: string;
+  attachments?: ContactAttachment[];
 }) {
   const [contact] = await db.select().from(contactMessage)
     .where(and(eq(contactMessage.id, input.messageId), eq(contactMessage.kind, "contact"))).limit(1);
@@ -111,14 +114,16 @@ export async function sendContactReply(input: {
     recipientEmail,
     subject: contactReplySubject(contact.subject),
     body: input.body,
+    attachments: input.attachments ?? [],
   }).onConflictDoNothing().returning({ id: contactMessageReply.id });
   if (!claimed) {
     const [existing] = await db.select({
       messageId: contactMessageReply.messageId,
       body: contactMessageReply.body,
+      attachments: contactMessageReply.attachments,
       deliveryStatus: contactMessageReply.deliveryStatus,
     }).from(contactMessageReply).where(eq(contactMessageReply.id, input.requestId)).limit(1);
-    if (!existing || existing.messageId !== input.messageId || existing.body !== input.body) return { deliveryStatus: "invalid_request" as const };
+    if (!existing || existing.messageId !== input.messageId || existing.body !== input.body || JSON.stringify(existing.attachments) !== JSON.stringify(input.attachments ?? [])) return { deliveryStatus: "invalid_request" as const };
     return { deliveryStatus: existing.deliveryStatus };
   }
 
@@ -129,6 +134,7 @@ export async function sendContactReply(input: {
       toName: contact.name,
       subject: contact.subject,
       body: input.body,
+      attachments: input.attachments ?? [],
     });
     await db.update(contactMessageReply).set({ deliveryStatus: "sent", sentAt: new Date() })
       .where(eq(contactMessageReply.id, input.requestId));

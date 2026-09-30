@@ -124,6 +124,7 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   ...(distDir ? { distDir } : {}),
+  experimental: { serverActions: { bodySizeLimit: "4mb" } },
   images: {
     remotePatterns: [
       {

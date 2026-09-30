@@ -5,6 +5,7 @@ import {
   useActionState,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -44,6 +45,8 @@ export function ContactForm({ translations = {} }: ContactFormProps) {
     FormData
   >(submitContactFormAction, initialState);
   const [values, setValues] = useState<FormValues>(emptyValues);
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
+  const fileInput = useRef<HTMLInputElement>(null);
   const { translate: runtimeTranslate } = useTranslation();
   const translate = useCallback(
     (key: string, fallback: string) =>
@@ -74,6 +77,8 @@ export function ContactForm({ translations = {} }: ContactFormProps) {
   useEffect(() => {
     if (state.status === "success") {
       setValues(emptyValues);
+      setSelectedFiles([]);
+      if (fileInput.current) fileInput.current.value = "";
     } else if (state.status === "error") {
       setValues(state.values);
     }
@@ -210,6 +215,24 @@ export function ContactForm({ translations = {} }: ContactFormProps) {
         ) : null}
       </label>
       <div className="flex flex-col gap-2">
+        <label className="font-medium text-sm" htmlFor="contact-attachments">
+          <EditableTranslation defaultText="Attachments (optional)" description="Contact form file picker label." translationKey="contact.form.attachments.label" />
+        </label>
+        <input
+          accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.docx"
+          className="w-full cursor-pointer rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:cursor-pointer file:rounded file:border-0 file:bg-muted file:px-3 file:py-1"
+          id="contact-attachments"
+          multiple
+          name="attachments"
+          onChange={(event) => setSelectedFiles(Array.from(event.target.files ?? [], (file) => file.name))}
+          ref={fileInput}
+          type="file"
+        />
+        <p className="text-muted-foreground text-xs"><EditableTranslation defaultText="Up to 3 files, 3 MB total. PDF, images, text, or DOCX." description="Contact attachment size and format guidance." translationKey="contact.form.attachments.help" /></p>
+        {selectedFiles.length ? <ul className="list-inside list-disc text-xs">{selectedFiles.map((name, index) => <li className="break-all" key={`${index}-${name}`}>{name}</li>)}</ul> : null}
+        {state.status === "error" && state.attachmentError ? <p className="text-destructive text-xs" role="alert">{translate(`contact.form.attachments.error.${state.attachmentError}`, state.attachmentError === "too_many" ? "Select up to 3 files." : state.attachmentError === "too_large" ? "Attachments must be 3 MB or smaller in total." : state.attachmentError === "invalid_type" ? "Choose PDF, image, text, or DOCX files." : "Could not upload the attachment. Please try again.")}</p> : null}
+      </div>
+      <div className="flex flex-col gap-2">
         <button
           className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground text-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
           disabled={isPending}
@@ -240,7 +263,9 @@ export function ContactForm({ translations = {} }: ContactFormProps) {
         >
           {state.status === "error" ? (
             <span className="text-destructive">
-              {state.message && state.message.trim().length > 0
+              {state.errorCode === "rate_limited"
+                ? translate("contact.form.submit.rate_limited", "Too many contact requests. Please try again later.")
+                : state.message && state.message.trim().length > 0
                 ? state.message
                 : translate(
                     "contact.form.submit.error_generic",

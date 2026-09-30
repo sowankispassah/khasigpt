@@ -252,6 +252,7 @@ type ContactMessagePayload = {
   senderEmail: string;
   subject: string;
   message: string;
+  attachments?: import("@/lib/db/schema").ContactAttachment[];
 };
 
 export async function sendContactMessageEmail({
@@ -259,6 +260,7 @@ export async function sendContactMessageEmail({
   senderEmail,
   subject,
   message,
+  attachments = [],
 }: ContactMessagePayload) {
   const supportEmail = process.env.BREVO_SENDER_EMAIL;
   const supportName = process.env.BREVO_SENDER_NAME ?? "Support";
@@ -290,6 +292,8 @@ export async function sendContactMessageEmail({
     </html>
   `;
 
+  if (attachments.length) email.attachment = await (await import("@/lib/contact/attachments")).contactAttachmentEmailParts(attachments);
+
   try {
     await client.sendTransacEmail(email);
   } catch (error) {
@@ -319,12 +323,14 @@ export async function sendContactReplyEmail({
   toName,
   subject,
   body,
+  attachments = [],
 }: {
   messageId: string;
   toEmail: string;
   toName: string;
   subject: string;
   body: string;
+  attachments?: import("@/lib/db/schema").ContactAttachment[];
 }) {
   const senderEmail = process.env.BREVO_SENDER_EMAIL;
   const senderName = process.env.BREVO_SENDER_NAME ?? "Support";
@@ -335,7 +341,8 @@ export async function sendContactReplyEmail({
   email.sender = { email: senderEmail, name: senderName };
   email.replyTo = { email: contactReplyAddress(messageId) ?? senderEmail, name: senderName };
   email.to = [{ email: toEmail, name: toName }];
-  email.textContent = body;
-  email.htmlContent = contactReplyHtml(body);
+  email.textContent = body || "Please see the attached file.";
+  email.htmlContent = contactReplyHtml(body || "Please see the attached file.");
+  if (attachments.length) email.attachment = await (await import("@/lib/contact/attachments")).contactAttachmentEmailParts(attachments);
   await getBrevoClient().sendTransacEmail(email);
 }

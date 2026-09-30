@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { ContactAttachmentError, contactFilesFromForm } from "@/lib/contact/attachment-validation";
+import { deleteContactFiles, uploadContactFiles } from "@/lib/contact/attachments";
 import { createContactMessage } from "@/lib/db/queries";
 import { sendContactMessageEmail } from "@/lib/email/brevo";
 import { ChatSDKError } from "@/lib/errors";
@@ -61,15 +63,26 @@ async function enforceContactRateLimit(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (Number(request.headers.get("content-length")) > 4 * 1024 * 1024) {
+    return NextResponse.json({ message: "Attachments are too large.", attachmentError: "too_large" }, { status: 413 });
+  }
   const rateLimited = await enforceContactRateLimit(request);
   if (rateLimited) {
     return rateLimited;
   }
 
   let body: unknown;
+  let files: File[] = [];
   try {
-    body = await request.json();
-  } catch {
+    if (request.headers.get("content-type")?.toLowerCase().includes("multipart/form-data")) {
+      const formData = await request.formData();
+      files = contactFilesFromForm(formData);
+      body = Object.fromEntries(["name", "email", "phone", "subject", "message"].map((key) => [key, formData.get(key)]));
+    } else {
+      body = await request.json();
+    }
+  } catch (error) {
+    if (error instanceof ContactAttachmentError) return NextResponse.json({ message: "Please check your attachments.", attachmentError: error.code }, { status: 400 });
     return NextResponse.json(
       { message: "Invalid request body.", errors: {} },
       { status: 400 }
@@ -127,19 +140,29 @@ export async function POST(request: Request) {
   }
 
   try {
-    await createContactMessage({
-      name: parsed.data.name,
-      email: parsed.data.email,
-      phone: parsed.data.phone.length > 0 ? parsed.data.phone : null,
-      subject: parsed.data.subject,
-      message: parsed.data.message,
-    });
+    const id = crypto.randomUUID();
+    const attachments = await uploadContactFiles(files, "contact", id);
+    try {
+      await createContactMessage({
+        id,
+        name: parsed.data.name,
+        email: parsed.data.email,
+        phone: parsed.data.phone.length > 0 ? parsed.data.phone : null,
+        subject: parsed.data.subject,
+        message: parsed.data.message,
+        attachments,
+      });
+    } catch (error) {
+      await deleteContactFiles(attachments);
+      throw error;
+    }
 
-    sendContactMessageEmail({
+    await sendContactMessageEmail({
       senderName: parsed.data.name,
       senderEmail: parsed.data.email,
       subject: parsed.data.subject,
       message: parsed.data.message,
+      attachments,
     }).catch((error) => {
       console.error("Failed to dispatch mobile contact form email", error);
     });
@@ -149,6 +172,7 @@ export async function POST(request: Request) {
       message: "Thanks! We'll reach out soon.",
     });
   } catch (error) {
+    if (error instanceof ContactAttachmentError) return NextResponse.json({ message: "Please check your attachments.", attachmentError: error.code }, { status: error.code === "upload_failed" ? 503 : 400 });
     const message =
       error instanceof ChatSDKError
         ? String(error.cause ?? error.message ?? "Something went wrong.")

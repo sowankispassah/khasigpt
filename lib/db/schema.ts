@@ -1602,6 +1602,7 @@ export const contactMessage = pgTable(
     phone: varchar("phone", { length: 32 }),
     subject: varchar("subject", { length: 200 }).notNull(),
     message: text("message").notNull(),
+    attachments: jsonb("attachments").$type<ContactAttachment[]>().notNull().default([]),
     kind: varchar("kind", { length: 16, enum: ["contact", "report"] })
       .notNull()
       .default("contact"),
@@ -1633,6 +1634,14 @@ export const contactMessage = pgTable(
 
 export type ContactMessage = InferSelectModel<typeof contactMessage>;
 
+export type ContactAttachment = {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  path: string;
+};
+
 export const contactMessageStatusEvent = pgTable(
   "ContactMessageStatusEvent",
   {
@@ -1660,6 +1669,7 @@ export const contactMessageReply = pgTable(
     recipientEmail: varchar("recipientEmail", { length: 128 }).notNull(),
     subject: varchar("subject", { length: 240 }).notNull(),
     body: text("body").notNull(),
+    attachments: jsonb("attachments").$type<ContactAttachment[]>().notNull().default([]),
     deliveryStatus: varchar("deliveryStatus", { length: 16, enum: ["pending", "sent", "unconfirmed"] }).notNull().default("pending"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     sentAt: timestamp("sentAt"),
