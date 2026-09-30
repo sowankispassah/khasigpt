@@ -2,7 +2,8 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { ContactAttachmentError, contactFilesFromForm } from "@/lib/contact/attachment-validation";
 import { deleteContactFiles, uploadContactFiles } from "@/lib/contact/attachments";
-import { listContactReplies, sendContactReply } from "@/lib/db/contact-replies";
+import { contactConversationEntrySchema } from "@/lib/contact/conversation-entry-input";
+import { listContactReplies, saveContactInternalNote, sendContactReply } from "@/lib/db/contact-replies";
 import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
@@ -10,11 +11,6 @@ import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 const noStore = { "Cache-Control": "no-store" };
-const bodySchema = z.object({
-  id: z.string().uuid(),
-  requestId: z.string().uuid(),
-  body: z.string().trim().max(10000),
-});
 
 export async function GET(request: NextRequest) {
   const admin = await requireAdminApiUser(request);
@@ -47,19 +43,21 @@ export async function POST(request: NextRequest) {
     if (request.headers.get("content-type")?.toLowerCase().includes("multipart/form-data")) {
       const formData = await request.formData();
       files = contactFilesFromForm(formData);
-      input = Object.fromEntries(["id", "requestId", "body"].map((key) => [key, formData.get(key)]));
+      input = Object.fromEntries(["id", "requestId", "body", "kind"].map((key) => [key, formData.get(key)]));
+      if (!formData.has("kind")) (input as Record<string, unknown>).kind = "public_reply";
     } else {
       input = await request.json();
     }
   } catch (error) {
     return NextResponse.json({ error: "Invalid attachment", ...(error instanceof ContactAttachmentError ? { attachmentError: error.code } : {}) }, { status: 400, headers: noStore });
   }
-  const parsed = bodySchema.safeParse(input);
+  const parsed = contactConversationEntrySchema.safeParse(input);
   if (!parsed.success) return NextResponse.json({ error: "Invalid reply" }, { status: 400, headers: noStore });
   if (!parsed.data.body && !files.length) return NextResponse.json({ error: "Reply is empty" }, { status: 400, headers: noStore });
   try {
     const attachments = await uploadContactFiles(files, "reply", parsed.data.requestId);
-    const result = await sendContactReply({
+    const saveEntry = parsed.data.kind === "internal_note" ? saveContactInternalNote : sendContactReply;
+    const result = await saveEntry({
       messageId: parsed.data.id,
       requestId: parsed.data.requestId,
       actorUserId: admin.id,
@@ -70,9 +68,9 @@ export async function POST(request: NextRequest) {
     if (!result) return NextResponse.json({ error: "Contact not found" }, { status: 404, headers: noStore });
     if (result.deliveryStatus === "invalid_recipient") return NextResponse.json({ error: "Invalid recipient email" }, { status: 422, headers: noStore });
     if (result.deliveryStatus === "invalid_request") return NextResponse.json({ error: "Reply request ID already used" }, { status: 409, headers: noStore });
-    return NextResponse.json(result, { status: result.deliveryStatus === "sent" ? 200 : 202, headers: noStore });
+    return NextResponse.json(result, { status: result.deliveryStatus === "sent" || result.deliveryStatus === "saved" ? 200 : 202, headers: noStore });
   } catch (error) {
     if (error instanceof ContactAttachmentError) return NextResponse.json({ error: "Unable to upload attachment", attachmentError: error.code }, { status: error.code === "upload_failed" ? 503 : 400, headers: noStore });
-    return NextResponse.json({ error: "Unable to confirm reply delivery" }, { status: 500, headers: noStore });
+    return NextResponse.json({ error: parsed.data.kind === "internal_note" ? "Unable to save internal note" : "Unable to confirm reply delivery" }, { status: 500, headers: noStore });
   }
 }

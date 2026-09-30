@@ -15,6 +15,7 @@ export async function listContactReplies(messageId: string) {
     email: contactMessageReply.recipientEmail,
     subject: contactMessageReply.subject,
     body: contactMessageReply.body,
+    kind: contactMessageReply.kind,
     attachments: contactMessageReply.attachments,
     deliveryStatus: contactMessageReply.deliveryStatus,
     createdAt: contactMessageReply.createdAt,
@@ -36,10 +37,15 @@ export async function listContactReplies(messageId: string) {
       .orderBy(desc(contactMessageInboundEmail.receivedAt), desc(contactMessageInboundEmail.id))
       .limit(50)]);
   return [
-    ...outbound.map((reply) => ({ ...reply, direction: "outbound" as const })),
+    ...outbound.map((reply) => ({
+      ...reply,
+      direction: reply.kind === "internal_note" ? "note" as const : "outbound" as const,
+      deliveryStatus: reply.kind === "internal_note" ? null : reply.deliveryStatus,
+    })),
     ...inbound.map((reply) => ({
       ...reply,
       direction: "inbound" as const,
+      kind: "public_reply" as const,
       attachments: [] as ContactAttachment[],
       deliveryStatus: null,
       sentAt: null,
@@ -119,11 +125,12 @@ export async function sendContactReply(input: {
   if (!claimed) {
     const [existing] = await db.select({
       messageId: contactMessageReply.messageId,
+      kind: contactMessageReply.kind,
       body: contactMessageReply.body,
       attachments: contactMessageReply.attachments,
       deliveryStatus: contactMessageReply.deliveryStatus,
     }).from(contactMessageReply).where(eq(contactMessageReply.id, input.requestId)).limit(1);
-    if (!existing || existing.messageId !== input.messageId || existing.body !== input.body || JSON.stringify(existing.attachments) !== JSON.stringify(input.attachments ?? [])) return { deliveryStatus: "invalid_request" as const };
+    if (!existing || existing.messageId !== input.messageId || existing.kind !== "public_reply" || existing.body !== input.body || JSON.stringify(existing.attachments) !== JSON.stringify(input.attachments ?? [])) return { deliveryStatus: "invalid_request" as const };
     return { deliveryStatus: existing.deliveryStatus };
   }
 
@@ -144,4 +151,41 @@ export async function sendContactReply(input: {
       .where(eq(contactMessageReply.id, input.requestId));
     return { deliveryStatus: "unconfirmed" as const };
   }
+}
+
+export async function saveContactInternalNote(input: {
+  messageId: string;
+  requestId: string;
+  actorUserId: string;
+  body: string;
+  attachments?: ContactAttachment[];
+}) {
+  const [contact] = await db.select({ id: contactMessage.id }).from(contactMessage)
+    .where(and(eq(contactMessage.id, input.messageId), eq(contactMessage.kind, "contact"))).limit(1);
+  if (!contact) return null;
+
+  const [created] = await db.insert(contactMessageReply).values({
+    id: input.requestId,
+    messageId: contact.id,
+    actorUserId: input.actorUserId,
+    recipientEmail: "",
+    subject: "",
+    body: input.body,
+    kind: "internal_note",
+    attachments: input.attachments ?? [],
+    deliveryStatus: "internal",
+  }).onConflictDoNothing().returning({ id: contactMessageReply.id });
+  if (created) return { deliveryStatus: "saved" as const };
+
+  const [existing] = await db.select({
+    messageId: contactMessageReply.messageId,
+    kind: contactMessageReply.kind,
+    body: contactMessageReply.body,
+    attachments: contactMessageReply.attachments,
+  }).from(contactMessageReply).where(eq(contactMessageReply.id, input.requestId)).limit(1);
+  if (!existing || existing.messageId !== input.messageId || existing.kind !== "internal_note"
+    || existing.body !== input.body || JSON.stringify(existing.attachments) !== JSON.stringify(input.attachments ?? [])) {
+    return { deliveryStatus: "invalid_request" as const };
+  }
+  return { deliveryStatus: "saved" as const };
 }

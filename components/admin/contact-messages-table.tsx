@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Mail, MoreVertical, Paperclip, SendHorizontal, X } from "lucide-react";
+import { ChevronDown, Loader2, Mail, MoreVertical, Paperclip, SendHorizontal, StickyNote, X } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
@@ -47,7 +47,7 @@ type StatusEvent = {
 type ContactReply = {
   id: string;
   email: string;
-  direction: "inbound" | "outbound";
+  direction: "inbound" | "outbound" | "note";
   subject: string;
   body: string;
   attachments: ContactAttachment[];
@@ -57,6 +57,8 @@ type ContactReply = {
   actorFirstName: string | null;
   actorLastName: string | null;
 };
+
+type ReplyKind = "public_reply" | "internal_note";
 
 function AttachmentLinks({ files, source, id }: { files: ContactAttachment[]; source: "contact" | "reply"; id: string }) {
   if (!Array.isArray(files) || !files.length) return null;
@@ -111,6 +113,7 @@ function ContactConversationView({
   marking,
   viewError,
   replyBody,
+  replyKind,
   replyFiles,
   replyAttachmentError,
   replyPending,
@@ -118,6 +121,7 @@ function ContactConversationView({
   replyError,
   conversationEnd,
   onReplyChange,
+  onReplyKindChange,
   onReplyFilesChange,
   onRemoveReplyFile,
   onSendReply,
@@ -136,6 +140,7 @@ function ContactConversationView({
   marking: boolean;
   viewError: boolean;
   replyBody: string;
+  replyKind: ReplyKind;
   replyFiles: File[];
   replyAttachmentError: string | null;
   replyPending: boolean;
@@ -143,6 +148,7 @@ function ContactConversationView({
   replyError: "invalid" | "unconfirmed" | null;
   conversationEnd: RefObject<HTMLDivElement | null>;
   onReplyChange: (value: string) => void;
+  onReplyKindChange: (value: ReplyKind) => void;
   onReplyFilesChange: (files: File[]) => void;
   onRemoveReplyFile: (index: number) => void;
   onSendReply: () => void;
@@ -178,16 +184,18 @@ function ContactConversationView({
               <div className="max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tl-sm border bg-background px-4 py-3 text-sm shadow-sm">{message.message}<AttachmentLinks files={message.attachments} id={message.id} source="contact" /></div>
             </div>
             {replies.map((reply) => {
-              const outgoing = reply.direction === "outbound";
+              const note = reply.direction === "note";
+              const outgoing = reply.direction !== "inbound";
               const adminName = [reply.actorFirstName, reply.actorLastName].filter(Boolean).join(" ");
               return (
                 <div className={`flex flex-col gap-1 ${outgoing ? "items-end" : "items-start"}`} key={reply.id}>
                   <div className={`flex flex-wrap items-center gap-2 text-muted-foreground text-xs ${outgoing ? "justify-end" : ""}`}>
                     <span className="font-medium text-foreground">{outgoing ? adminName || translate("admin.reports.history.unknown_actor", "Admin") : message.name}</span>
                     <time dateTime={reply.createdAt}>{new Date(reply.createdAt).toLocaleString()}</time>
-                    {outgoing && reply.deliveryStatus !== "sent" ? <span className="rounded-full border px-1.5 py-0.5">{reply.deliveryStatus === "pending" ? <EditableTranslation defaultText="Pending" description="Contact reply pending status." translationKey="admin.contacts.replies.pending" /> : <EditableTranslation defaultText="Delivery unconfirmed" description="Contact reply uncertain status." translationKey="admin.contacts.replies.unconfirmed" />}</span> : null}
+                    {note ? <span className="rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100"><EditableTranslation defaultText="Internal note" description="Private contact conversation note label." translationKey="admin.contacts.notes.label" /></span> : null}
+                    {reply.direction === "outbound" && reply.deliveryStatus !== "sent" ? <span className="rounded-full border px-1.5 py-0.5">{reply.deliveryStatus === "pending" ? <EditableTranslation defaultText="Pending" description="Contact reply pending status." translationKey="admin.contacts.replies.pending" /> : <EditableTranslation defaultText="Delivery unconfirmed" description="Contact reply uncertain status." translationKey="admin.contacts.replies.unconfirmed" />}</span> : null}
                   </div>
-                  <div className={`max-w-[90%] whitespace-pre-wrap break-words rounded-2xl px-4 py-3 text-sm shadow-sm ${outgoing ? "rounded-tr-sm bg-primary text-primary-foreground" : "rounded-tl-sm border bg-background"}`}>{reply.body}<AttachmentLinks files={reply.attachments} id={reply.id} source="reply" /></div>
+                  <div className={`max-w-[90%] whitespace-pre-wrap break-words rounded-2xl px-4 py-3 text-sm shadow-sm ${note ? "rounded-tr-sm border border-amber-300 bg-amber-50 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100" : outgoing ? "rounded-tr-sm bg-primary text-primary-foreground" : "rounded-tl-sm border bg-background"}`}>{reply.body}<AttachmentLinks files={reply.attachments} id={reply.id} source="reply" /></div>
                 </div>
               );
             })}
@@ -197,21 +205,30 @@ function ContactConversationView({
           </section>
 
           <div className="shrink-0 border-t bg-background px-4 py-3 sm:px-6">
-            <div className="mb-2 font-medium text-sm" id="contact-conversation-reply-label"><EditableTranslation defaultText="Reply to customer" description="Contact conversation composer label." translationKey="admin.contacts.conversation.reply_label" /></div>
-            <textarea aria-labelledby="contact-conversation-reply-label" className="min-h-20 max-h-40 w-full resize-y rounded-lg border bg-background p-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50" disabled={replyPending || replyError === "invalid" || replyError === "unconfirmed"} id="contact-conversation-reply" maxLength={10000} onChange={(event) => onReplyChange(event.target.value)} placeholder={translate("admin.contacts.reply.placeholder", "Write your response to the customer")} value={replyBody} />
+            <DropdownMenu>
+              <DropdownMenuTrigger aria-label={translate("admin.contacts.composer.mode", "Message type")} className="mb-2 inline-flex cursor-pointer items-center gap-1 rounded-md px-1 py-0.5 font-medium text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50" disabled={replyPending || replyError === "unconfirmed"} id="contact-conversation-reply-label" type="button">
+                {replyKind === "public_reply" ? <EditableTranslation defaultText="Public reply" description="Contact composer public reply mode." translationKey="admin.contacts.composer.public" /> : <EditableTranslation defaultText="Internal note" description="Contact composer private note mode." translationKey="admin.contacts.notes.label" />}
+                <ChevronDown aria-hidden="true" className="size-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem className="cursor-pointer" onSelect={() => onReplyKindChange("public_reply")}><Mail aria-hidden="true" className="mr-2 size-4" /><EditableTranslation defaultText="Public reply" description="Select public email reply mode." translationKey="admin.contacts.composer.public" /></DropdownMenuItem>
+                <DropdownMenuItem className="cursor-pointer" onSelect={() => onReplyKindChange("internal_note")}><StickyNote aria-hidden="true" className="mr-2 size-4" /><EditableTranslation defaultText="Internal note" description="Select private note mode." translationKey="admin.contacts.notes.label" /></DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <textarea aria-labelledby="contact-conversation-reply-label" className={`min-h-20 max-h-40 w-full resize-y rounded-lg border p-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${replyKind === "internal_note" ? "border-amber-300 bg-amber-50/50 dark:bg-amber-950/20" : "bg-background"}`} disabled={replyPending || (replyKind === "public_reply" && (replyError === "invalid" || replyError === "unconfirmed"))} id="contact-conversation-reply" maxLength={10000} onChange={(event) => onReplyChange(event.target.value)} placeholder={replyKind === "public_reply" ? translate("admin.contacts.reply.placeholder", "Write your response to the customer") : translate("admin.contacts.notes.placeholder", "Write a note for your team")} value={replyBody} />
             <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm hover:bg-muted">
               <Paperclip aria-hidden="true" className="size-4" />
               <EditableTranslation defaultText="Add attachments" description="Add files to an admin contact reply." translationKey="admin.contacts.attachments.add" />
-              <input accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.docx" className="sr-only" disabled={replyPending || replyError === "invalid" || replyError === "unconfirmed"} key={message.id} multiple onChange={(event) => onReplyFilesChange(Array.from(event.target.files ?? []))} type="file" />
+              <input accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.docx" className="sr-only" disabled={replyPending || (replyKind === "public_reply" && (replyError === "invalid" || replyError === "unconfirmed"))} key={message.id} multiple onChange={(event) => onReplyFilesChange(Array.from(event.target.files ?? []))} type="file" />
             </label>
             <p className="mt-1 text-muted-foreground text-xs"><EditableTranslation defaultText="Up to 3 files, 3 MB total. PDF, images, text, or DOCX." description="Contact reply attachment limits." translationKey="contact.form.attachments.help" /></p>
             {replyFiles.length ? <ul className="mt-2 flex flex-wrap gap-2">{replyFiles.map((file, index) => <li className="inline-flex max-w-full items-center gap-1 rounded-md border px-2 py-1 text-xs" key={`${index}-${file.name}`}><span className="max-w-48 truncate" title={file.name}>{file.name}</span><button aria-label={translate("admin.contacts.attachments.remove", "Remove attachment")} className="cursor-pointer" disabled={replyPending} onClick={() => onRemoveReplyFile(index)} type="button"><X aria-hidden="true" className="size-3" /></button></li>)}</ul> : null}
             {replyAttachmentError ? <p className="mt-1 text-destructive text-xs" role="alert">{replyAttachmentError}</p> : null}
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-              <p className="flex items-center gap-1.5 text-muted-foreground text-xs"><Mail aria-hidden="true" className="size-3.5" />{inboundConfigured ? <EditableTranslation defaultText="Sent by email; replies appear here." description="Contact conversation email delivery note." translationKey="admin.contacts.conversation.email_note" /> : <EditableTranslation defaultText="Sent by email." description="Contact conversation email delivery note when inbound mail is unavailable." translationKey="admin.contacts.conversation.email_only" />}</p>
-              <button className="inline-flex min-w-28 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm disabled:cursor-not-allowed disabled:opacity-50" disabled={replyPending || (!replyBody.trim() && !replyFiles.length) || replyError === "invalid"} onClick={onSendReply} type="button">{replyPending ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : <SendHorizontal aria-hidden="true" className="size-4" />}{replyError === "unconfirmed" ? <EditableTranslation defaultText="Check delivery" description="Check contact reply delivery without resending." translationKey="admin.contacts.reply.check" /> : <EditableTranslation defaultText="Send reply" description="Send the contact reply email." translationKey="admin.contacts.reply.send" />}</button>
+              <p className="flex items-center gap-1.5 text-muted-foreground text-xs">{replyKind === "internal_note" ? <><StickyNote aria-hidden="true" className="size-3.5" /><EditableTranslation defaultText="Visible only to admins. Not emailed to the customer." description="Private contact note delivery explanation." translationKey="admin.contacts.notes.private" /></> : <><Mail aria-hidden="true" className="size-3.5" />{inboundConfigured ? <EditableTranslation defaultText="Sent by email; replies appear here." description="Contact conversation email delivery note." translationKey="admin.contacts.conversation.email_note" /> : <EditableTranslation defaultText="Sent by email." description="Contact conversation email delivery note when inbound mail is unavailable." translationKey="admin.contacts.conversation.email_only" />}</>}</p>
+              <button className="inline-flex min-w-28 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm disabled:cursor-not-allowed disabled:opacity-50" disabled={replyPending || (!replyBody.trim() && !replyFiles.length) || (replyKind === "public_reply" && replyError === "invalid")} onClick={onSendReply} type="button">{replyPending ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : replyKind === "internal_note" ? <StickyNote aria-hidden="true" className="size-4" /> : <SendHorizontal aria-hidden="true" className="size-4" />}{replyKind === "internal_note" ? <EditableTranslation defaultText="Add note" description="Save a private contact conversation note." translationKey="admin.contacts.notes.add" /> : replyError === "unconfirmed" ? <EditableTranslation defaultText="Check delivery" description="Check contact reply delivery without resending." translationKey="admin.contacts.reply.check" /> : <EditableTranslation defaultText="Send reply" description="Send the contact reply email." translationKey="admin.contacts.reply.send" />}</button>
             </div>
-            {replySent ? <output className="mt-2 block text-green-700 text-sm"><EditableTranslation defaultText="Reply sent to the contact." description="Contact reply success message." translationKey="admin.contacts.reply.sent" /></output> : null}
+            {replySent ? <output className="mt-2 block text-green-700 text-sm">{replyKind === "internal_note" ? <EditableTranslation defaultText="Internal note saved." description="Private contact note success message." translationKey="admin.contacts.notes.saved" /> : <EditableTranslation defaultText="Reply sent to the contact." description="Contact reply success message." translationKey="admin.contacts.reply.sent" />}</output> : null}
             {replyError === "invalid" ? <p className="mt-2 text-destructive text-sm" role="alert"><EditableTranslation defaultText="This contact has no valid reply address." description="Contact reply invalid recipient error." translationKey="admin.contacts.reply.invalid" /></p> : null}
             {replyError === "unconfirmed" ? <p className="mt-2 text-destructive text-sm" role="alert"><EditableTranslation defaultText="Delivery could not be confirmed. Check the reply history or email logs before sending another reply." description="Contact reply uncertain delivery warning." translationKey="admin.contacts.reply.unconfirmed" /></p> : null}
           </div>
@@ -269,6 +286,7 @@ export function ContactMessagesTable({
   const [historyError, setHistoryError] = useState(false);
   const historyRequest = useRef(0);
   const [replyRequestId, setReplyRequestId] = useState<string | null>(null);
+  const [replyKind, setReplyKind] = useState<ReplyKind>("public_reply");
   const [replyBody, setReplyBody] = useState("");
   const [replyFiles, setReplyFiles] = useState<File[]>([]);
   const [replyAttachmentError, setReplyAttachmentError] = useState<string | null>(null);
@@ -323,6 +341,7 @@ export function ContactMessagesTable({
   function openDetails(message: ContactTableMessage) {
     setSelectedId(message.id);
     if (kind === "contact") {
+      setReplyKind("public_reply");
       setReplyRequestId(crypto.randomUUID());
       setReplyBody("");
       setReplyFiles([]);
@@ -414,6 +433,7 @@ export function ContactMessagesTable({
       formData.set("id", selectedId);
       formData.set("requestId", replyRequestId);
       formData.set("body", replyBody.trim());
+      formData.set("kind", replyKind);
       for (const file of replyFiles) formData.append("attachments", file);
       const response = await fetch("/api/admin/contact-messages/replies", {
         method: "POST",
@@ -431,8 +451,8 @@ export function ContactMessagesTable({
         return;
       }
       if (!response.ok) throw new Error("Reply delivery unavailable");
-      const result = await response.json() as { deliveryStatus: ContactReply["deliveryStatus"] };
-      if (result.deliveryStatus === "sent") {
+      const result = await response.json() as { deliveryStatus: ContactReply["deliveryStatus"] | "saved" };
+      if (result.deliveryStatus === (replyKind === "internal_note" ? "saved" : "sent")) {
         setReplySent(true);
         setReplyBody("");
         setReplyFiles([]);
@@ -535,6 +555,7 @@ export function ContactMessagesTable({
               marking={markingId === selected.id}
               message={selected}
               onReplyChange={(value) => { setReplyBody(value); setReplySent(false); }}
+              onReplyKindChange={(value) => { setReplyKind(value); setReplyRequestId(crypto.randomUUID()); setReplyError(null); setReplyAttachmentError(null); setReplySent(false); }}
               onReplyFilesChange={(files) => { setReplyFiles(files); setReplyAttachmentError(null); setReplySent(false); }}
               onRemoveReplyFile={(index) => setReplyFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
               onRetryHistory={() => void loadHistory(selected.id)}
@@ -545,6 +566,7 @@ export function ContactMessagesTable({
               repliesBusy={repliesBusy}
               repliesError={repliesError}
               replyBody={replyBody}
+              replyKind={replyKind}
               replyFiles={replyFiles}
               replyAttachmentError={replyAttachmentError}
               replyError={replyError}

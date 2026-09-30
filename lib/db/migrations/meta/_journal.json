@@ -778,6 +778,13 @@
       "when": 1788998400011,
       "tag": "0108_contact_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1788998400012,
+      "tag": "0109_contact_internal_notes",
+      "breakpoints": true
     }
   ]
 }
