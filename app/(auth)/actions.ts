@@ -140,7 +140,7 @@ export const register = async (
       getUser(validatedData.email)
     );
 
-    if (existingUser?.isActive) {
+    if (existingUser && !existingUser.emailVerificationPending) {
       return { status: "user_exists" };
     }
 

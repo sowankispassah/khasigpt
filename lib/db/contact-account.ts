@@ -17,6 +17,7 @@ export async function getContactAccountSummary(contactId: string): Promise<Conta
       role: user.role,
       authProvider: user.authProvider,
       isActive: user.isActive,
+      emailVerificationPending: user.emailVerificationPending,
       createdAt: user.createdAt,
     }).from(contactMessage)
       .leftJoin(user, sql`lower(${user.email}) = lower(trim(${contactMessage.email}))`)
@@ -24,7 +25,7 @@ export async function getContactAccountSummary(contactId: string): Promise<Conta
       .limit(1);
 
     if (!match) return undefined;
-    if (!match.id || !match.email || !match.role || !match.authProvider || match.isActive === null || !match.createdAt) return null;
+    if (!match.id || !match.email || !match.role || !match.authProvider || match.isActive === null || match.emailVerificationPending === null || !match.createdAt) return null;
 
     const account: ContactAccountSummary = {
       id: match.id,
@@ -34,6 +35,7 @@ export async function getContactAccountSummary(contactId: string): Promise<Conta
       role: match.role,
       authProvider: match.authProvider,
       isActive: match.isActive,
+      emailVerificationPending: match.emailVerificationPending,
       createdAt: match.createdAt.toISOString(),
       subscription: null,
       subscriptionUnavailable: false,

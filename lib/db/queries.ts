@@ -33,6 +33,7 @@ import postgres from "postgres";
 import type { ArtifactKind } from "@/components/artifact";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { CHAT_REPORT_SUBJECTS, FORUM_REPORT_SUBJECTS } from "@/lib/admin/report-source";
+import type { AdminUserAccountStatusFilter } from "@/lib/admin/user-account-status";
 import { normalizeCharacterText } from "@/lib/ai/character-normalize";
 import {
   calculateImageTokenProviderCostUsd,
@@ -959,6 +960,7 @@ export async function createUser(
         email: normalizedEmail,
         password: hashedPassword,
         isActive: false,
+        emailVerificationPending: true,
         authProvider: "credentials",
       })
       .returning();
@@ -1287,7 +1289,7 @@ export async function verifyUserEmailByToken(
       return { status: "expired" };
     }
 
-    if (matchingUser.isActive) {
+    if (!matchingUser.emailVerificationPending) {
       await db
         .delete(emailVerificationToken)
         .where(eq(emailVerificationToken.id, tokenRecord.id));
@@ -1297,7 +1299,7 @@ export async function verifyUserEmailByToken(
 
     const [updatedUser] = await db
       .update(user)
-      .set({ isActive: true, updatedAt: new Date() })
+      .set({ isActive: true, emailVerificationPending: false, updatedAt: new Date() })
       .where(eq(user.id, matchingUser.id))
       .returning();
 
@@ -4382,6 +4384,7 @@ export type AdminUserListItem = Pick<
   | "allowPersonalKnowledge"
   | "createdAt"
   | "email"
+  | "emailVerificationPending"
   | "id"
   | "isActive"
   | "role"
@@ -4475,6 +4478,7 @@ function adminUserOrderBy(sort: AdminUserSortOption) {
 const adminUserListColumns = {
   allowPersonalKnowledge: user.allowPersonalKnowledge,
   email: user.email,
+  emailVerificationPending: user.emailVerificationPending,
   id: user.id,
   isActive: user.isActive,
   role: user.role,
@@ -4491,6 +4495,7 @@ export async function listUsers({
   search,
   role,
   isActive,
+  accountStatus = "all",
   presence = "all",
   sort = "created_desc",
 }: {
@@ -4499,6 +4504,7 @@ export async function listUsers({
   search?: string | null;
   role?: User["role"] | "all" | null;
   isActive?: boolean | "all" | null;
+  accountStatus?: AdminUserAccountStatusFilter;
   presence?: AdminUserPresenceFilter;
   sort?: AdminUserSortOption;
 } = {}): Promise<AdminUserListItem[]> {
@@ -4522,7 +4528,13 @@ export async function listUsers({
       conditions.push(eq(user.role, role) as SQL<boolean>);
     }
 
-    if (typeof isActive === "boolean") {
+    if (accountStatus === "active") {
+      conditions.push(eq(user.isActive, true) as SQL<boolean>);
+    } else if (accountStatus === "suspended") {
+      conditions.push(and(eq(user.isActive, false), eq(user.emailVerificationPending, false)) as SQL<boolean>);
+    } else if (accountStatus === "not_verified") {
+      conditions.push(and(eq(user.isActive, false), eq(user.emailVerificationPending, true)) as SQL<boolean>);
+    } else if (typeof isActive === "boolean") {
       conditions.push(eq(user.isActive, isActive) as SQL<boolean>);
     }
 
@@ -4574,11 +4586,13 @@ export async function getUserCount({
   search,
   role,
   isActive,
+  accountStatus = "all",
   presence = "all",
 }: {
   search?: string | null;
   role?: User["role"] | "all" | null;
   isActive?: boolean | "all" | null;
+  accountStatus?: AdminUserAccountStatusFilter;
   presence?: AdminUserPresenceFilter;
 } = {}): Promise<number> {
   try {
@@ -4601,7 +4615,13 @@ export async function getUserCount({
       conditions.push(eq(user.role, role) as SQL<boolean>);
     }
 
-    if (typeof isActive === "boolean") {
+    if (accountStatus === "active") {
+      conditions.push(eq(user.isActive, true) as SQL<boolean>);
+    } else if (accountStatus === "suspended") {
+      conditions.push(and(eq(user.isActive, false), eq(user.emailVerificationPending, false)) as SQL<boolean>);
+    } else if (accountStatus === "not_verified") {
+      conditions.push(and(eq(user.isActive, false), eq(user.emailVerificationPending, true)) as SQL<boolean>);
+    } else if (typeof isActive === "boolean") {
       conditions.push(eq(user.isActive, isActive) as SQL<boolean>);
     }
 
@@ -4703,6 +4723,7 @@ export async function getAdminUsersSnapshot({
   search,
   role = "all",
   isActive = "all",
+  accountStatus = "all",
   presence = "all",
   sort = "created_desc",
 }: {
@@ -4711,6 +4732,7 @@ export async function getAdminUsersSnapshot({
   search?: string | null;
   role?: User["role"] | "all" | null;
   isActive?: boolean | "all" | null;
+  accountStatus?: AdminUserAccountStatusFilter;
   presence?: AdminUserPresenceFilter;
   sort?: AdminUserSortOption;
 } = {}): Promise<AdminUsersSnapshot> {
@@ -4722,6 +4744,7 @@ export async function getAdminUsersSnapshot({
     Boolean(normalizedSearch) ||
     (role ?? "all") !== "all" ||
     isActive !== "all" ||
+    accountStatus !== "all" ||
     presence !== "all" ||
     sort !== "created_desc";
 
@@ -4733,10 +4756,11 @@ export async function getAdminUsersSnapshot({
         search: normalizedSearch,
         role,
         isActive,
+        accountStatus,
         presence,
         sort,
       }),
-      getUserCount({ search: normalizedSearch, role, isActive, presence }),
+      getUserCount({ search: normalizedSearch, role, isActive, accountStatus, presence }),
     ]);
 
     return { totalUsers, users };
@@ -4762,6 +4786,7 @@ export async function getAdminUsersSnapshot({
               u."email",
               u."role",
               u."isActive",
+              u."emailVerificationPending",
               u."allowPersonalKnowledge",
               u."createdAt",
               (
@@ -4840,6 +4865,7 @@ export async function getAdminUsersPageSnapshot({
           u."email",
           u."role",
           u."isActive",
+          u."emailVerificationPending",
           u."allowPersonalKnowledge",
           u."createdAt",
           (

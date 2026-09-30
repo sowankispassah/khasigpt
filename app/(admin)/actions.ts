@@ -80,6 +80,7 @@ import {
   getPricingPlanById,
   getTranslationFeatureLanguageByIdRaw,
   getTranslationKeyByKey,
+  getUserById,
   grantUserCredits,
   hardDeleteChatById,
   hardDeleteImageModelConfig,
@@ -500,6 +501,13 @@ export async function setUserActiveStateAction({
   isActive: boolean;
 }) {
   const actor = await requireAdmin();
+
+  if (isActive) {
+    const existing = await withTimeout(getUserById(userId), ADMIN_USER_MUTATION_TIMEOUT_MS);
+    if (existing?.emailVerificationPending) {
+      throw new Error("Email verification is still pending for this account.");
+    }
+  }
 
   await withTimeout(
     updateUserActiveState({ id: userId, isActive }),
