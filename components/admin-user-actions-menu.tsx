@@ -28,6 +28,7 @@ import {
 
 type AdminUserActionsMenuProps = {
   email: string;
+  emailVerificationPending: boolean;
   userId: string;
   isActive: boolean;
   allowPersonalKnowledge: boolean;
@@ -107,6 +108,7 @@ function LoadingMenuLabel({
 
 export function AdminUserActionsMenu({
   email,
+  emailVerificationPending,
   userId,
   isActive,
   allowPersonalKnowledge,
@@ -265,7 +267,7 @@ export function AdminUserActionsMenu({
           </button>
         </DropdownMenuItem>
 
-        <DropdownMenuItem
+        {!emailVerificationPending ? <DropdownMenuItem
           className="p-0"
           onSelect={(event) => event.preventDefault()}
         >
@@ -291,7 +293,7 @@ export function AdminUserActionsMenu({
                   : "Restore"}
             </LoadingMenuLabel>
           </button>
-        </DropdownMenuItem>
+        </DropdownMenuItem> : null}
 
         <DropdownMenuItem
           className="p-0"

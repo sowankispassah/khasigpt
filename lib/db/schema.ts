@@ -45,6 +45,9 @@ export const user = pgTable(
       .notNull()
       .default("credentials"),
     isActive: boolean("isActive").notNull().default(true),
+    emailVerificationPending: boolean("emailVerificationPending")
+      .notNull()
+      .default(false),
     allowPersonalKnowledge: boolean("allowPersonalKnowledge")
       .notNull()
       .default(false),

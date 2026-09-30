@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { auth } from "@/app/(auth)/auth";
 import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
 import { AdminUserChatsButton } from "@/components/admin-user-chats-button";
+import { AdminUserStatusBadge } from "@/components/admin-user-status-badge";
 import {
   AdminUsersBulkDeleteButton,
   AdminUsersSelectionCheckbox,
@@ -12,6 +13,7 @@ import {
   type AdminQueryResult,
   adminQueryResult,
 } from "@/lib/admin/safe-query";
+import { type AdminUserAccountStatusFilter, parseAdminUserAccountStatus } from "@/lib/admin/user-account-status";
 import {
   type ActiveSubscriptionSummary,
   type AdminUserPresenceFilter,
@@ -56,23 +58,6 @@ function parseRole(value: string | string[] | undefined): UserRole | "all" {
     : "all";
 }
 
-function parseAccountStatus(
-  value: string | string[] | undefined
-): "all" | "active" | "suspended" {
-  const rawValue = Array.isArray(value) ? value[0] : value;
-  if (rawValue === "active" || rawValue === "true") {
-    return "active";
-  }
-  if (
-    rawValue === "inactive" ||
-    rawValue === "false" ||
-    rawValue === "suspended"
-  ) {
-    return "suspended";
-  }
-  return "all";
-}
-
 function parsePresence(
   value: string | string[] | undefined
 ): AdminUserPresenceFilter {
@@ -103,16 +88,9 @@ export default async function AdminUsersPage({
   const requestedPage = parsePage(resolvedSearchParams?.page);
   const search = parseSearch(resolvedSearchParams?.q);
   const role = parseRole(resolvedSearchParams?.role);
-  const accountStatus = parseAccountStatus(resolvedSearchParams?.active);
+  const accountStatus = parseAdminUserAccountStatus(Array.isArray(resolvedSearchParams?.active) ? resolvedSearchParams?.active[0] : resolvedSearchParams?.active);
   const presence = parsePresence(resolvedSearchParams?.presence);
   const sort = parseSort(resolvedSearchParams?.sort);
-  const isActive =
-    accountStatus === "active"
-      ? true
-      : accountStatus === "suspended"
-        ? false
-        : "all";
-
   const withQueryState = async <T,>(
     label: string,
     promise: Promise<T>,
@@ -137,7 +115,7 @@ export default async function AdminUsersPage({
     getAdminUsersSnapshot({
       limit: USERS_PAGE_SIZE,
       offset: (requestedPage - 1) * USERS_PAGE_SIZE,
-      isActive,
+      accountStatus,
       presence,
       role,
       search,
@@ -159,7 +137,7 @@ export default async function AdminUsersPage({
       getAdminUsersSnapshot({
         limit: USERS_PAGE_SIZE,
         offset: (page - 1) * USERS_PAGE_SIZE,
-        isActive,
+        accountStatus,
         presence,
         role,
         search,
@@ -271,7 +249,7 @@ function UsersTableSection({
   currentUserId: string | undefined;
   page: number;
   pagedUsers: AdminUsersSnapshot["users"];
-  accountStatus: "all" | "active" | "suspended";
+  accountStatus: AdminUserAccountStatusFilter;
   presence: AdminUserPresenceFilter;
   role: UserRole | "all";
   search: string;
@@ -326,31 +304,7 @@ function UsersTableSection({
                 <td className="py-3">{user.email}</td>
                 <td className="py-3 capitalize">{user.role}</td>
                 <td className="py-3">
-                  {user.isOnline ? (
-                    <span className="rounded-full bg-sky-100 px-2 py-1 text-sky-700 text-xs">
-                      <EditableTranslation
-                        defaultText="Online"
-                        description="Status badge for an admin user who has sent a recent presence heartbeat."
-                        translationKey="admin.users.status.online"
-                      />
-                    </span>
-                  ) : user.isActive ? (
-                    <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700 text-xs">
-                      <EditableTranslation
-                        defaultText="Active"
-                        description="Status badge for an active admin user account."
-                        translationKey="admin.users.status.active"
-                      />
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-rose-100 px-2 py-1 text-rose-700 text-xs">
-                      <EditableTranslation
-                        defaultText="Suspended"
-                        description="Status badge for a suspended admin user account."
-                        translationKey="admin.users.status.suspended"
-                      />
-                    </span>
-                  )}
+                  <AdminUserStatusBadge emailVerificationPending={user.emailVerificationPending} isActive={user.isActive} isOnline={user.isOnline} />
                 </td>
                 <td className="py-3">
                   <time dateTime={user.createdAt.toISOString()}>
@@ -390,6 +344,7 @@ function UsersTableSection({
                       )}
                       currentRole={user.role as UserRole}
                       email={user.email}
+                      emailVerificationPending={user.emailVerificationPending}
                       isActive={user.isActive}
                       isSelf={user.id === currentUserId}
                       userId={user.id}

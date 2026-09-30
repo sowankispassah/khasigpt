@@ -8,6 +8,7 @@ export type ContactAccountSummary = {
   role: UserRole;
   authProvider: AuthProvider;
   isActive: boolean;
+  emailVerificationPending: boolean;
   createdAt: string;
   subscription: {
     planName: string | null;
@@ -24,6 +25,7 @@ export function isContactAccountSummary(value: unknown): value is ContactAccount
     || !["regular", "creator", "admin"].includes(String(account.role))
     || !["credentials", "google"].includes(String(account.authProvider))
     || typeof account.isActive !== "boolean"
+    || typeof account.emailVerificationPending !== "boolean"
     || typeof account.createdAt !== "string" || !Number.isFinite(Date.parse(account.createdAt))
     || !(account.firstName === null || typeof account.firstName === "string")
     || !(account.lastName === null || typeof account.lastName === "string")

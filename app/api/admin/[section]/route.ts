@@ -3,6 +3,7 @@ import { asc, count, desc, eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { getAdminQueryTimeoutMs } from "@/lib/admin/safe-query";
+import { parseAdminUserAccountStatus } from "@/lib/admin/user-account-status";
 import { requireAdminUser } from "@/lib/api/auth";
 import { CACHE_CONTROL, cacheHeaders } from "@/lib/api/cache";
 import { withApiTiming } from "@/lib/api/observability";
@@ -76,16 +77,6 @@ function parsePositiveInt(value: string | null, fallback: number, max = MAX_PAGE
   return Math.min(parsed, max);
 }
 
-function parseBooleanFilter(value: string | null): boolean | "all" {
-  if (value === "true" || value === "1" || value === "active") {
-    return true;
-  }
-  if (value === "false" || value === "0" || value === "inactive") {
-    return false;
-  }
-  return "all";
-}
-
 function parseContactStatus(value: string | null): ContactMessageStatus | "all" {
   return value === "new" ||
     value === "in_progress" ||
@@ -152,7 +143,7 @@ async function loadUsers(searchParams: URLSearchParams) {
     roleParam === "admin" || roleParam === "creator" || roleParam === "regular"
       ? (roleParam as UserRole)
       : "all";
-  const isActive = parseBooleanFilter(searchParams.get("active"));
+  const accountStatus = parseAdminUserAccountStatus(searchParams.get("active"));
   const presenceParam = searchParams.get("presence");
   const presence = isAdminUserPresenceFilter(presenceParam)
     ? presenceParam
@@ -162,12 +153,12 @@ async function loadUsers(searchParams: URLSearchParams) {
   const [items, total] = await Promise.all([
     sectionQuery(
       "users.items",
-      listUsers({ isActive, limit, offset, presence, role, search, sort }),
+      listUsers({ accountStatus, limit, offset, presence, role, search, sort }),
       []
     ),
     sectionQuery(
       "users.total",
-      getUserCount({ isActive, presence, role, search }),
+      getUserCount({ accountStatus, presence, role, search }),
       0
     ),
   ]);

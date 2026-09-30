@@ -3,6 +3,7 @@ import { noStoreHeaders } from "@/lib/api/cache";
 import {
   createAuditLogEntry,
   deleteUserForAdmin,
+  getUserById,
   updateUserActiveState,
   updateUserPersonalKnowledgePermission,
   updateUserRole,
@@ -166,6 +167,16 @@ export async function PATCH(
           { error: "invalid_active_state" },
           { headers: noStoreHeaders(), status: 400 }
         );
+      }
+
+      if (isActive) {
+        const existing = await withTimeout(getUserById(userId), ADMIN_USER_UPDATE_TIMEOUT_MS);
+        if (existing?.emailVerificationPending) {
+          return NextResponse.json(
+            { error: "email_not_verified", message: "Email verification is still pending for this account." },
+            { headers: noStoreHeaders(), status: 409 }
+          );
+        }
       }
 
       const updated = await withTimeout(

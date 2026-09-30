@@ -12,6 +12,7 @@ import {
 } from "react";
 import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
 import { AdminUserChatsButton } from "@/components/admin-user-chats-button";
+import { AdminUserStatusBadge } from "@/components/admin-user-status-badge";
 import {
   AdminUsersBulkActionBar,
   AdminUsersSelectAllCheckbox,
@@ -24,6 +25,7 @@ import {
   useEditableTranslation,
 } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
+import type { AdminUserAccountStatusFilter } from "@/lib/admin/user-account-status";
 import type {
   AdminUserPresenceFilter,
   AdminUserSortOption,
@@ -39,6 +41,7 @@ type AdminUserRow = {
   chatCount: number;
   createdAt: string | Date;
   email: string;
+  emailVerificationPending: boolean;
   id: string;
   isActive: boolean;
   isOnline: boolean;
@@ -83,6 +86,7 @@ function isAdminUserRow(value: unknown): value is Omit<AdminUserRow, "creditsRem
     isValidDateValue(row.createdAt) &&
     typeof row.email === "string" &&
     row.email.length > 0 &&
+    typeof row.emailVerificationPending === "boolean" &&
     typeof row.id === "string" &&
     row.id.length > 0 &&
     typeof row.isActive === "boolean" &&
@@ -119,8 +123,6 @@ function LoadingLabel({ children }: { children: ReactNode }) {
     </span>
   );
 }
-
-type AdminUserAccountStatusFilter = "active" | "all" | "suspended";
 
 type AdminUsersFilterValues = {
   accountStatus: AdminUserAccountStatusFilter;
@@ -216,10 +218,7 @@ function AdminUsersSearchForm({
       params.set("role", nextRole);
     }
     if (nextAccountStatus !== "all") {
-      params.set(
-        "active",
-        nextAccountStatus === "active" ? "true" : "false"
-      );
+      params.set("active", nextAccountStatus);
     }
     if (nextPresence !== "all") {
       params.set("presence", nextPresence);
@@ -313,6 +312,9 @@ function AdminUsersSearchForm({
               "admin.users.filters.account_status.suspended",
               "Suspended"
             )}
+          </option>
+          <option value="not_verified">
+            {translate("admin.users.filters.account_status.not_verified", "Not verified")}
           </option>
         </select>
       </div>
@@ -430,31 +432,7 @@ function LoadedUserRow({
       <td className="py-3">{user.email}</td>
       <td className="py-3 capitalize">{user.role}</td>
       <td className="py-3">
-        {user.isOnline ? (
-          <span className="rounded-full bg-sky-100 px-2 py-1 text-sky-700 text-xs">
-            <EditableTranslation
-              defaultText="Online"
-              description="Status badge for an admin user who has sent a recent presence heartbeat."
-              translationKey="admin.users.status.online"
-            />
-          </span>
-        ) : user.isActive ? (
-          <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700 text-xs">
-            <EditableTranslation
-              defaultText="Active"
-              description="Status badge for an active admin user account."
-              translationKey="admin.users.status.active"
-            />
-          </span>
-        ) : (
-          <span className="rounded-full bg-rose-100 px-2 py-1 text-rose-700 text-xs">
-            <EditableTranslation
-              defaultText="Suspended"
-              description="Status badge for a suspended admin user account."
-              translationKey="admin.users.status.suspended"
-            />
-          </span>
-        )}
+        <AdminUserStatusBadge emailVerificationPending={user.emailVerificationPending} isActive={user.isActive} isOnline={user.isOnline} />
       </td>
       <td className="py-3">
         {createdAt ? (
@@ -495,6 +473,7 @@ function LoadedUserRow({
             allowPersonalKnowledge={user.allowPersonalKnowledge}
             currentRole={user.role}
             email={user.email}
+            emailVerificationPending={user.emailVerificationPending}
             isActive={user.isActive}
             isSelf={user.id === currentUserId}
             userId={user.id}
@@ -591,10 +570,7 @@ export function AdminUsersTable({
         params.set("role", initialRole);
       }
       if (initialAccountStatus !== "all") {
-        params.set(
-          "active",
-          initialAccountStatus === "active" ? "true" : "false"
-        );
+        params.set("active", initialAccountStatus);
       }
       if (initialPresence !== "all") {
         params.set("presence", initialPresence);

@@ -759,6 +759,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Status badge for a suspended admin user account.",
   },
   {
+    key: "admin.users.status.not_verified",
+    defaultText: "Not verified",
+    description: "Status badge for an account awaiting email verification.",
+  },
+  {
     key: "admin.users.status.online",
     defaultText: "Online",
     description:
@@ -824,6 +829,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     defaultText: "Suspended",
     description:
       "Option that filters the admin user list to suspended accounts.",
+  },
+  {
+    key: "admin.users.filters.account_status.not_verified",
+    defaultText: "Not verified",
+    description: "Option that filters the admin user list to accounts awaiting email verification.",
   },
   {
     key: "admin.users.filters.presence.label",

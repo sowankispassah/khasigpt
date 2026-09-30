@@ -9,6 +9,7 @@ const account = {
   role: "regular",
   authProvider: "credentials",
   isActive: true,
+  emailVerificationPending: false,
   createdAt: "2026-09-01T10:00:00.000Z",
   subscription: { planName: "Standard", creditsRemaining: 125, expiresAt: "2026-10-01T10:00:00.000Z" },
   subscriptionUnavailable: false,
