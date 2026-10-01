@@ -1,8 +1,10 @@
 "use client";
 
 import { Search, X } from "lucide-react";
-import { useDeferredValue, useMemo, useState } from "react";
+import { useSession } from "next-auth/react";
+import { useDeferredValue, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { JobsInfiniteList } from "@/components/jobs/jobs-infinite-list";
+import { useTranslation } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { EMPTY_JOBS_FILTERS as EMPTY_FILTERS, getJobsListViewKey, JOBS_PAGE_SIZE, type JobsLocalFilters, readJobsListView, rememberJobsListDeparture, saveJobsListView } from "@/lib/jobs/list-view-state";
 import type { JobListItem } from "@/lib/jobs/types";
 import { cn } from "@/lib/utils";
 
@@ -21,20 +24,6 @@ type JobsModeListPanelProps = {
   isLoading?: boolean;
   jobs: JobListItem[];
   onRetry?: () => void;
-};
-
-type JobsLocalFilters = {
-  q: string;
-  company: string;
-  location: string;
-  type: string;
-};
-
-const EMPTY_FILTERS: JobsLocalFilters = {
-  q: "",
-  company: "",
-  location: "",
-  type: "",
 };
 
 const ALL_COMPANIES_VALUE = "__all_companies__";
@@ -88,15 +77,60 @@ function JobsFilterSelect({
   );
 }
 
-export function JobsModeListPanel({
+export function JobsModeListPanel(props: JobsModeListPanelProps) {
+  const { data: session } = useSession();
+  const { activeLanguage } = useTranslation();
+  const viewKey = getJobsListViewKey(session?.user?.id, activeLanguage.code);
+  return <JobsListView key={viewKey} viewKey={viewKey} {...props} />;
+}
+
+function JobsListView({
   errorMessage = null,
   isDegraded = false,
   isLoading = false,
   jobs,
   onRetry,
-}: JobsModeListPanelProps) {
-  const [filters, setFilters] = useState<JobsLocalFilters>(EMPTY_FILTERS);
+  viewKey,
+}: JobsModeListPanelProps & { viewKey: string }) {
+  const [restoredView] = useState(() => readJobsListView(viewKey));
+  const [filters, updateFilters] = useState<JobsLocalFilters>(restoredView.filters);
+  const [visibleCount, setVisibleCount] = useState(restoredView.visibleCount);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const scrollRestored = useRef(false);
+  const currentView = useRef(restoredView);
   const deferredFilters = useDeferredValue(filters);
+
+  const setFilters: typeof updateFilters = (next) => {
+    updateFilters(next);
+    setVisibleCount(JOBS_PAGE_SIZE);
+    const container = panelRef.current?.closest<HTMLElement>("[data-jobs-scroll-container]");
+    if (container) container.scrollTop = 0;
+    currentView.current = { ...currentView.current, scrollTop: 0 };
+  };
+
+  useLayoutEffect(() => {
+    currentView.current = { ...currentView.current, filters, visibleCount };
+  }, [filters, visibleCount]);
+
+  useLayoutEffect(() => {
+    if (isLoading) return;
+    const container = panelRef.current?.closest<HTMLElement>("[data-jobs-scroll-container]");
+    if (!container) return;
+    if (!scrollRestored.current) {
+      container.scrollTop = restoredView.scrollTop;
+      scrollRestored.current = true;
+    }
+    const save = () => {
+      currentView.current = { ...currentView.current, scrollTop: container.scrollTop };
+      saveJobsListView(viewKey, currentView.current);
+    };
+    save();
+    container.addEventListener("scroll", save, { passive: true });
+    return () => {
+      save();
+      container.removeEventListener("scroll", save);
+    };
+  }, [isLoading, restoredView.scrollTop, viewKey]);
 
   const companies = useMemo(
     () => Array.from(new Set(jobs.map((job) => job.company.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
@@ -190,7 +224,15 @@ export function JobsModeListPanel({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" ref={panelRef}
+      onClickCapture={(event) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        const link = (event.target as Element).closest<HTMLAnchorElement>("a[href]");
+        if (!link || link.target === "_blank") return;
+        const container = panelRef.current?.closest<HTMLElement>("[data-jobs-scroll-container]");
+        saveJobsListView(viewKey, { filters, visibleCount, scrollTop: container?.scrollTop ?? 0 });
+        rememberJobsListDeparture(viewKey, link.pathname, `${window.location.pathname}${window.location.search}`, window.history.length);
+      }}>
       <div className="rounded-[28px] border border-border/60 bg-gradient-to-br from-background via-background to-muted/35 p-3 shadow-sm sm:p-4">
         <div className="flex flex-col gap-1.5 sm:gap-3">
           {errorMessage ? (
@@ -288,7 +330,7 @@ export function JobsModeListPanel({
           </div>
         </div>
       </div>
-      <JobsInfiniteList jobs={filteredJobs} />
+      <JobsInfiniteList jobs={filteredJobs} visibleCount={visibleCount} onVisibleCountChange={setVisibleCount} />
     </div>
   );
 }
