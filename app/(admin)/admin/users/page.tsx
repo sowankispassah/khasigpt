@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { auth } from "@/app/(auth)/auth";
 import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
+import { AddCreditsForm } from "@/components/admin-user-add-credits-form";
 import { AdminUserChatsButton } from "@/components/admin-user-chats-button";
 import { AdminUserStatusBadge } from "@/components/admin-user-status-badge";
 import {
@@ -27,7 +28,6 @@ import {
   type UserBalanceSummary,
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
-import { AddCreditsForm } from "./add-credits-form";
 import { AdminUsersTable } from "./admin-users-table";
 
 export const dynamic = "force-dynamic";

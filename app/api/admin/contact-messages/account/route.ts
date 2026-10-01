@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   try {
     const account = await getContactAccountSummary(id.data);
     if (account === undefined) return NextResponse.json({ error: "Contact not found" }, { status: 404, headers: noStore });
-    return NextResponse.json({ account }, { headers: noStore });
+    return NextResponse.json({ account, currentAdminId: admin.id }, { headers: noStore });
   } catch (error) {
     console.error("[admin.contacts] Account lookup failed.", { reason: error instanceof Error ? error.name : "unknown" });
     return NextResponse.json({ error: "Unable to load account" }, { status: 503, headers: noStore });

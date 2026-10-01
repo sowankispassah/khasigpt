@@ -2,7 +2,7 @@
 
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
@@ -212,9 +212,11 @@ function ChatList({
 
 export function AdminUserChatsButton({
   chatCount,
+  label,
   userId,
 }: {
-  chatCount: number;
+  chatCount: number | null;
+  label?: ReactNode;
   userId: string;
 }) {
   const { translate } = useTranslation();
@@ -351,7 +353,7 @@ export function AdminUserChatsButton({
         {isLoading ? (
           <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
         ) : (
-          chatCount
+          label ?? chatCount ?? "—"
         )}
       </Button>
       <DialogContent className="max-w-xl">

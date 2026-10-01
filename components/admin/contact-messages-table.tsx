@@ -2,6 +2,8 @@
 
 import { ChevronDown, Loader2, Mail, Maximize2, Minimize2, MoreVertical, Paperclip, SendHorizontal, StickyNote, X } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import { ContactAccountPanel } from "@/components/admin/contact-account-panel";
+import type { UserUpdatePayload } from "@/components/admin-user-actions-menu";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
@@ -18,6 +20,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { summarizeContactMessage } from "@/lib/admin/contact-message-summary";
 import { type ContactAccountSummary, isContactAccountSummary } from "@/lib/contact/account-summary";
 import type { ContactAttachment, ContactMessage } from "@/lib/db/schema";
+import { fetchWithResponseTimeout } from "@/lib/utils/async";
 
 export type ContactTableMessage = Omit<ContactMessage, "createdAt" | "updatedAt" | "lastInboundAt"> & {
   createdAt: string;
@@ -110,6 +113,7 @@ function ContactConversationView({
   accountBusy,
   accountLoaded,
   accountError,
+  currentAdminId,
   isFullscreen,
   replies,
   repliesBusy,
@@ -135,6 +139,8 @@ function ContactConversationView({
   onRetryReplies,
   onRetryHistory,
   onRetryAccount,
+  onAccountUpdated,
+  onAccountRefresh,
   onRetryViewed,
   onToggleFullscreen,
 }: {
@@ -144,6 +150,7 @@ function ContactConversationView({
   accountBusy: boolean;
   accountLoaded: boolean;
   accountError: boolean;
+  currentAdminId: string | null;
   isFullscreen: boolean;
   replies: ContactReply[];
   repliesBusy: boolean;
@@ -169,6 +176,8 @@ function ContactConversationView({
   onRetryReplies: () => void;
   onRetryHistory: () => void;
   onRetryAccount: () => void;
+  onAccountUpdated: (patch: UserUpdatePayload) => void;
+  onAccountRefresh: () => void;
   onRetryViewed: () => void;
   onToggleFullscreen: () => void;
 }) {
@@ -195,7 +204,7 @@ function ContactConversationView({
         </DialogDescription>
       </DialogHeader>
 
-      <div className="grid min-h-0 flex-1 overflow-y-auto md:grid-cols-[230px_minmax(0,1fr)_240px] md:overflow-hidden">
+      <div className="grid min-h-0 flex-1 overflow-y-auto md:grid-cols-[220px_minmax(0,1fr)_260px] md:overflow-hidden">
         <div className="order-1 flex min-h-[420px] min-w-0 flex-col md:order-2 md:min-h-0 md:border-r">
           <section aria-label={translate("admin.contacts.conversation.title", "Conversation")} className="min-h-0 flex-1 space-y-5 overflow-y-auto bg-muted/20 px-4 py-5 sm:px-6">
             <div className="flex flex-col items-start gap-1">
@@ -275,22 +284,11 @@ function ContactConversationView({
             {historyBusy ? <Loader2 aria-label={translate("admin.reports.history.loading", "Loading action history")} className="size-4 animate-spin" /> : historyError ? <div className="text-destructive text-xs"><EditableTranslation defaultText="Could not load action history." description="Contact action history error." translationKey="admin.reports.history.error" /> <button className="cursor-pointer underline" onClick={onRetryHistory} type="button"><EditableTranslation defaultText="Retry" description="Retry contact action history." translationKey="admin.reports.filter.retry" /></button></div> : history.length ? <ol className="space-y-3">{history.map((event) => <li className="border-l-2 pl-2 text-xs" key={event.id}><div className="flex flex-wrap items-center gap-1"><Status value={event.toStatus} /><time className="text-muted-foreground" dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString()}</time></div>{event.note ? <p className="mt-1 whitespace-pre-wrap break-words">{event.note}</p> : null}</li>)}</ol> : <p className="text-muted-foreground text-xs"><EditableTranslation defaultText="No actions recorded yet." description="Empty contact action history." translationKey="admin.reports.history.empty" /></p>}
           </section>
         </aside>
-        <aside className="order-3 max-h-52 space-y-4 overflow-y-auto border-t bg-background px-4 py-4 text-sm md:max-h-none md:min-h-0 md:border-t-0">
+        <aside className="order-3 space-y-4 border-t bg-background px-4 py-4 text-sm md:min-h-0 md:overflow-y-auto md:border-t-0">
           <h3 className="font-semibold"><EditableTranslation defaultText="Account details" description="Matching account information in the contact conversation." translationKey="admin.contacts.account.title" /></h3>
-          {accountBusy || !accountLoaded && !accountError ? <p className="flex items-center gap-2 text-muted-foreground text-xs"><Loader2 aria-hidden="true" className="size-3 animate-spin" /><EditableTranslation defaultText="Checking for an account..." description="Contact account lookup loading message." translationKey="admin.contacts.account.loading" /></p> : accountError ? <div className="text-destructive text-xs"><EditableTranslation defaultText="Account details could not be loaded." description="Contact account lookup failure message." translationKey="admin.contacts.account.error" /> <button className="cursor-pointer underline disabled:cursor-not-allowed disabled:opacity-50" disabled={accountBusy} onClick={onRetryAccount} type="button"><EditableTranslation defaultText="Retry" description="Retry contact account lookup." translationKey="admin.reports.filter.retry" /></button></div> : account ? <>
-            <p className="text-muted-foreground text-xs"><EditableTranslation defaultText="Matched by email. This does not verify who submitted the contact message." description="Contact email match identity caveat." translationKey="admin.contacts.account.match_note" /></p>
-            <dl className="space-y-3">
-              <Field label="Name" translationKey="admin.contacts.account.name">{[account.firstName, account.lastName].filter(Boolean).join(" ") || <EditableTranslation defaultText="No name set" description="Account profile has no name." translationKey="admin.contacts.account.no_name" />}</Field>
-              <Field label="Email" translationKey="admin.contacts.dialog.email"><span className="break-all">{account.email}</span></Field>
-              <Field label="Account status" translationKey="admin.users.filters.account_status.label">{account.isActive ? <EditableTranslation defaultText="Active" description="Matched contact account is active." translationKey="admin.users.filters.account_status.active" /> : account.emailVerificationPending ? <EditableTranslation defaultText="Not verified" description="Matched contact account awaits email verification." translationKey="admin.users.status.not_verified" /> : <EditableTranslation defaultText="Suspended" description="Matched contact account is suspended." translationKey="admin.users.filters.account_status.suspended" />}</Field>
-              <Field label="Role" translationKey="admin.users.filters.role.label"><EditableTranslation defaultText={account.role === "admin" ? "Admin" : account.role === "creator" ? "Creator" : "Regular"} description="Matched contact account role." translationKey={`admin.contacts.account.role.${account.role}`} /></Field>
-              <Field label="Sign-in method" translationKey="admin.contacts.account.provider"><EditableTranslation defaultText={account.authProvider === "google" ? "Google" : "Email and password"} description="Matched contact account sign-in method." translationKey={account.authProvider === "google" ? "admin.contacts.account.provider.google" : "admin.contacts.account.provider.credentials"} /></Field>
-              <Field label="Joined" translationKey="admin.contacts.account.joined"><time dateTime={account.createdAt}>{new Date(account.createdAt).toLocaleDateString()}</time></Field>
-              <Field label="Plan" translationKey="admin.contacts.account.plan">{account.subscriptionUnavailable ? <EditableTranslation defaultText="Unavailable" description="Matched account plan could not be loaded." translationKey="admin.contacts.account.unavailable" /> : account.subscription ? account.subscription.planName || <EditableTranslation defaultText="Unknown plan" description="Matched account plan name is unavailable." translationKey="admin.contacts.account.unknown_plan" /> : <EditableTranslation defaultText="No active plan" description="Matched account has no active plan." translationKey="subscriptions.plan_overview.no_active_plan" />}</Field>
-              {account.subscription ? <><Field label="Credits remaining" translationKey="subscriptions.plan_overview.credits_remaining">{new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(account.subscription.creditsRemaining)}</Field><Field label="Plan expires" translationKey="subscriptions.plan_overview.plan_expires"><time dateTime={account.subscription.expiresAt}>{new Date(account.subscription.expiresAt).toLocaleDateString()}</time></Field></> : null}
-            </dl>
-            <a className="inline-flex cursor-pointer text-primary text-xs underline-offset-2 hover:underline" href={`/admin/users?q=${encodeURIComponent(account.email)}`} rel="noopener noreferrer" target="_blank"><EditableTranslation defaultText="Open in Users" description="Open matching account in admin users list." translationKey="admin.contacts.account.open_user" /></a>
-          </> : <p className="text-muted-foreground text-xs"><EditableTranslation defaultText="No KhasiGPT account matches this contact email." description="Contact email does not match any account." translationKey="admin.contacts.account.no_match" /></p>}
+          {accountBusy ? <p className="flex items-center gap-2 text-muted-foreground text-xs"><Loader2 aria-hidden="true" className="size-3 animate-spin" /><EditableTranslation defaultText="Checking for an account..." description="Contact account lookup loading message." translationKey="admin.contacts.account.loading" /></p> : null}
+          {accountError ? <div className="text-destructive text-xs"><EditableTranslation defaultText="Account details could not be loaded." description="Contact account lookup failure message." translationKey="admin.contacts.account.error" /> <button className="cursor-pointer underline disabled:cursor-not-allowed disabled:opacity-50" disabled={accountBusy} onClick={onRetryAccount} type="button"><EditableTranslation defaultText="Retry" description="Retry contact account lookup." translationKey="admin.reports.filter.retry" /></button></div> : null}
+          {account ? <ContactAccountPanel account={account} currentAdminId={currentAdminId} onRefresh={onAccountRefresh} onUpdated={onAccountUpdated} refreshing={accountBusy || accountError} /> : accountLoaded && !accountBusy && !accountError ? <p className="text-muted-foreground text-xs"><EditableTranslation defaultText="No KhasiGPT account matches this contact email." description="Contact email does not match any account." translationKey="admin.contacts.account.no_match" /></p> : null}
         </aside>
       </div>
     </>
@@ -312,6 +310,7 @@ export function ContactMessagesTable({
 }) {
   const { translate } = useTranslation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedContactId = useRef<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [viewedIds, setViewedIds] = useState<Set<string>>(() => new Set());
   const [markingId, setMarkingId] = useState<string | null>(null);
@@ -339,6 +338,7 @@ export function ContactMessagesTable({
   const [repliesError, setRepliesError] = useState(false);
   const repliesRequest = useRef(0);
   const [account, setAccount] = useState<ContactAccountSummary | null>(null);
+  const [currentAdminId, setCurrentAdminId] = useState<string | null>(null);
   const [accountBusy, setAccountBusy] = useState(false);
   const [accountLoaded, setAccountLoaded] = useState(false);
   const [accountError, setAccountError] = useState(false);
@@ -385,6 +385,7 @@ export function ContactMessagesTable({
   }
 
   function openDetails(message: ContactTableMessage) {
+    selectedContactId.current = message.id;
     setSelectedId(message.id);
     setIsFullscreen(false);
     if (kind === "contact") {
@@ -439,25 +440,28 @@ export function ContactMessagesTable({
     }
   }
 
-  async function loadAccount(id: string) {
+  async function loadAccount(id: string, preserveExisting = false) {
+    if (selectedContactId.current !== id) return;
     const requestId = ++accountRequest.current;
     setAccountBusy(true);
-    setAccountLoaded(false);
+    if (!preserveExisting) setAccountLoaded(false);
     setAccountError(false);
-    setAccount(null);
+    if (!preserveExisting) { setAccount(null); setCurrentAdminId(null); }
     try {
-      const response = await fetch(`/api/admin/contact-messages/account?id=${encodeURIComponent(id)}`, { cache: "no-store" });
-      if (!response.ok) throw new Error("Unable to load account");
-      const data = await response.json() as { account: unknown };
+      const data = await fetchWithResponseTimeout(`/api/admin/contact-messages/account?id=${encodeURIComponent(id)}`, { cache: "no-store", credentials: "same-origin" }, 10_000, async (response) => {
+        if (!response.ok) throw new Error("Unable to load account");
+        return await response.json() as { account: unknown; currentAdminId?: unknown };
+      });
       if (data.account !== null && !isContactAccountSummary(data.account)) throw new Error("Invalid account details");
-      if (requestId === accountRequest.current) {
+      if (requestId === accountRequest.current && selectedContactId.current === id) {
         setAccount(data.account);
+        setCurrentAdminId(typeof data.currentAdminId === "string" ? data.currentAdminId : null);
         setAccountLoaded(true);
       }
     } catch {
-      if (requestId === accountRequest.current) setAccountError(true);
+      if (requestId === accountRequest.current && selectedContactId.current === id) setAccountError(true);
     } finally {
-      if (requestId === accountRequest.current) setAccountBusy(false);
+      if (requestId === accountRequest.current && selectedContactId.current === id) setAccountBusy(false);
     }
   }
 
@@ -615,7 +619,7 @@ export function ContactMessagesTable({
         </table>
       </div>
 
-      <Dialog onOpenChange={(open) => { if (!open && !replyPending) { setSelectedId(null); setIsFullscreen(false); } }} open={selected !== undefined}>
+      <Dialog onOpenChange={(open) => { if (!open && !replyPending) { selectedContactId.current = null; setSelectedId(null); setIsFullscreen(false); } }} open={selected !== undefined}>
         <DialogContent className={kind === "contact" ? `flex flex-col gap-0 overflow-hidden p-0 ${isFullscreen ? "left-0 top-0 h-dvh w-dvw max-w-none translate-x-0 translate-y-0 rounded-none border-0 shadow-none sm:rounded-none" : "h-[min(90dvh,900px)] w-[calc(100vw-2rem)] max-w-6xl"}` : "max-h-[90dvh] w-[calc(100vw-2rem)] max-w-3xl overflow-y-auto"}>
           {selected && selectedSummary ? (
             kind === "contact" ? <ContactConversationView
@@ -623,6 +627,7 @@ export function ContactMessagesTable({
               accountBusy={accountBusy}
               accountError={accountError}
               accountLoaded={accountLoaded}
+              currentAdminId={currentAdminId}
               isFullscreen={isFullscreen}
               conversationEnd={conversationEnd}
               inboundConfigured={inboundConfigured}
@@ -636,7 +641,9 @@ export function ContactMessagesTable({
               onReplyFilesChange={(files) => { setReplyFiles(files); setReplyAttachmentError(null); setReplySent(false); }}
               onRemoveReplyFile={(index) => setReplyFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
               onRetryHistory={() => void loadHistory(selected.id)}
-              onRetryAccount={() => void loadAccount(selected.id)}
+              onRetryAccount={() => void loadAccount(selected.id, Boolean(account))}
+              onAccountRefresh={() => void loadAccount(selected.id, true)}
+              onAccountUpdated={(patch) => { if (selectedContactId.current !== selected.id) return; setAccount((current) => current ? { ...current, ...patch } : null); void loadAccount(selected.id, true); }}
               onRetryReplies={() => void loadReplies(selected.id, true)}
               onRetryViewed={() => void markViewed(selected)}
               onToggleFullscreen={() => setIsFullscreen((current) => !current)}

@@ -11,6 +11,7 @@ import {
   useTransition,
 } from "react";
 import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
+import { AddCreditsForm } from "@/components/admin-user-add-credits-form";
 import { AdminUserChatsButton } from "@/components/admin-user-chats-button";
 import { AdminUserStatusBadge } from "@/components/admin-user-status-badge";
 import {
@@ -32,7 +33,6 @@ import type {
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
 import { doneGlobalProgress, startGlobalProgress } from "@/lib/ui/global-progress";
-import { AddCreditsForm } from "./add-credits-form";
 
 const LOAD_MORE_TIMEOUT_MS = 15_000;
 

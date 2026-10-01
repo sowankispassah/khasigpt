@@ -1,8 +1,11 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
+import { type ReactNode, useEffect, useState } from "react";
 import { InfoIcon } from "@/components/icons";
+import { useTranslation } from "@/components/language-provider";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,16 +26,22 @@ function isAbortError(error: unknown) {
 
 export function AdminUserCreditHistoryMenu({
   userId,
+  label,
 }: {
   userId: string;
+  label?: ReactNode;
 }) {
+  const { translate } = useTranslation();
   const [entries, setEntries] = useState<CreditHistoryMenuEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  const [retryAttempt, setRetryAttempt] = useState(0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Retry deliberately restarts the request without coupling it to loading state.
   useEffect(() => {
-    if (!open || entries !== null || error || isLoading) {
+    if (!open) {
+      setIsLoading(false);
       return;
     }
 
@@ -44,6 +53,7 @@ export function AdminUserCreditHistoryMenu({
     );
 
     setIsLoading(true);
+    setError(null);
 
     fetch(`/api/admin/users/${userId}/credit-history`, {
       cache: "no-store",
@@ -57,7 +67,7 @@ export function AdminUserCreditHistoryMenu({
 
         if (!response.ok) {
           throw new Error(
-            body?.message ?? body?.error ?? "Unable to load credit history"
+            body?.message ?? body?.error ?? translate("admin.users.credits.history_error", "Unable to load credit history")
           );
         }
 
@@ -69,10 +79,10 @@ export function AdminUserCreditHistoryMenu({
         if (!cancelled) {
           setError(
             isAbortError(fetchError)
-              ? "Credit history timed out. Retry this section."
+              ? translate("admin.users.credits.history_timeout", "Credit history timed out. Retry this section.")
               : fetchError instanceof Error
               ? fetchError.message
-              : "Unable to load credit history"
+              : translate("admin.users.credits.history_error", "Unable to load credit history")
           );
         }
       })
@@ -88,17 +98,18 @@ export function AdminUserCreditHistoryMenu({
       controller.abort();
       window.clearTimeout(timeoutId);
     };
-  }, [entries, error, isLoading, open, userId]);
+  }, [open, retryAttempt, translate, userId]);
 
   return (
     <DropdownMenu onOpenChange={setOpen} open={open}>
       <DropdownMenuTrigger asChild>
         <button
-          className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-background/60 hover:text-foreground"
+          aria-busy={isLoading}
+          className={label ? "inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-xs hover:bg-muted" : "flex h-5 w-5 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-background/60 hover:text-foreground"}
           type="button"
         >
-          <InfoIcon size={10} />
-          <span className="sr-only">View credit history</span>
+          {isLoading ? <Loader2 aria-hidden="true" className="size-3 animate-spin" /> : <InfoIcon size={label ? 12 : 10} />}
+          {label ?? <span className="sr-only"><EditableTranslation defaultText="Credit history" description="Open user credit history." translationKey="admin.users.credits.history" /></span>}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -107,19 +118,18 @@ export function AdminUserCreditHistoryMenu({
         side="top"
       >
         {isLoading ? (
-          <p className="text-muted-foreground text-xs">Loading credit history...</p>
+          <p className="flex items-center gap-2 text-muted-foreground text-xs"><Loader2 aria-hidden="true" className="size-3 animate-spin" /><EditableTranslation defaultText="Loading credit history..." description="User credit history loading status." translationKey="admin.users.credits.history_loading" /></p>
         ) : error ? (
           <div className="space-y-2">
             <p className="text-destructive text-xs">{error}</p>
             <button
               className="cursor-pointer rounded-md border px-2 py-1 text-xs"
               onClick={() => {
-                setEntries(null);
-                setError(null);
+                setRetryAttempt((attempt) => attempt + 1);
               }}
               type="button"
             >
-              Retry
+              <EditableTranslation defaultText="Retry" description="Retry credit history lookup." translationKey="admin.reports.filter.retry" />
             </button>
           </div>
         ) : entries && entries.length > 0 ? (
@@ -137,7 +147,7 @@ export function AdminUserCreditHistoryMenu({
           ))
         ) : (
           <p className="text-muted-foreground text-xs">
-            No credit activity recorded yet.
+            <EditableTranslation defaultText="No credit activity recorded yet." description="Empty user credit history." translationKey="admin.users.credits.history_empty" />
           </p>
         )}
       </DropdownMenuContent>
