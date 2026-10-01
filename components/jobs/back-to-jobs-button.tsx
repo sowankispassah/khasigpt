@@ -1,14 +1,20 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
+import { useTranslation } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
+import { getJobsListReturn, getJobsListViewKey } from "@/lib/jobs/list-view-state";
+import { startGlobalProgress } from "@/lib/ui/global-progress";
 
 const JOBS_ROUTE = "/chat?mode=jobs";
 
 export function BackToJobsButton() {
   const router = useRouter();
+  const { data: session } = useSession();
+  const { activeLanguage } = useTranslation();
   const [isNavigating, setIsNavigating] = useState(false);
 
   useEffect(() => {
@@ -28,7 +34,13 @@ export function BackToJobsButton() {
           return;
         }
         setIsNavigating(true);
-        router.push(JOBS_ROUTE);
+        startGlobalProgress();
+        const destination = getJobsListReturn(
+          getJobsListViewKey(session?.user?.id, activeLanguage.code),
+          window.location.pathname, window.history.length,
+        );
+        if (destination?.useHistoryBack) router.back();
+        else router.push(destination?.href ?? JOBS_ROUTE, { scroll: false });
       }}
       onFocus={prefetchJobsRoute}
       onMouseEnter={prefetchJobsRoute}

@@ -6,6 +6,7 @@ import { BookOpen, LoaderCircle, Newspaper } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import {
   useCallback,
   useEffect,
@@ -248,6 +249,7 @@ export function Chat({
   customKnowledgeEnabled: boolean;
 }) {
   const router = useRouter();
+  const { data: session } = useSession();
   const searchParams = useSearchParams();
   const query = searchParams.get("query");
   const embeddedMode = searchParams.get("embedded");
@@ -350,10 +352,12 @@ export function Chat({
     isLoading: isJobsModeListLoading,
     mutate: retryJobsModeList,
   } = useSWR<JobsListPayload>(
-    shouldLoadJobsListFromApi ? JOBS_LIST_API_ROUTE : null,
-    fetcher,
+    shouldLoadJobsListFromApi ? [JOBS_LIST_API_ROUTE, session?.user?.id ?? "guest"] : null,
+    ([url]: [string, string]) => fetcher(url),
     {
       revalidateOnFocus: false,
+      // Back navigation reuses the loaded list; older data refreshes in the background.
+      dedupingInterval: 5 * 60_000,
     }
   );
   const jobsModeListApiItems = Array.isArray(jobsModeListItemsData)
@@ -2271,7 +2275,7 @@ export function Chat({
         />
 
         {isJobsMode && !isReadonly ? (
-          <div className="overscroll-behavior-contain -webkit-overflow-scrolling-touch relative flex-1 touch-pan-y overflow-y-scroll [scrollbar-gutter:stable_both-edges] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div data-jobs-scroll-container className="overscroll-behavior-contain -webkit-overflow-scrolling-touch relative flex-1 touch-pan-y overflow-y-scroll [scrollbar-gutter:stable_both-edges] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 px-2 pb-6 pt-[10px] md:px-4">
               {jobsHeader}
             </div>

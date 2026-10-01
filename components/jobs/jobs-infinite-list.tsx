@@ -1,24 +1,22 @@
 "use client";
 
 import { BriefcaseBusiness, Building2, FileText, MapPin } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { ViewDetailsButton } from "@/components/jobs/view-details-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { JOBS_PAGE_SIZE } from "@/lib/jobs/list-view-state";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
 import type { JobListItem } from "@/lib/jobs/types";
 
-const JOBS_PAGE_SIZE = 12;
-
-export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
-  const [visibleCount, setVisibleCount] = useState(Math.min(JOBS_PAGE_SIZE, jobs.length));
+export function JobsInfiniteList({ jobs, visibleCount, onVisibleCountChange: setVisibleCount }: {
+  jobs: JobListItem[];
+  visibleCount: number;
+  onVisibleCountChange: Dispatch<SetStateAction<number>>;
+}) {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-
-  useEffect(() => {
-    setVisibleCount(Math.min(JOBS_PAGE_SIZE, jobs.length));
-    setIsLoadingMore(false);
-  }, [jobs]);
 
   const visibleJobs = useMemo(() => jobs.slice(0, visibleCount), [jobs, visibleCount]);
   const hasMoreJobs = visibleCount < jobs.length;
@@ -34,7 +32,7 @@ export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
       );
       setIsLoadingMore(false);
     }, 120);
-  }, [isLoadingMore, jobs.length]);
+  }, [isLoadingMore, jobs.length, setVisibleCount]);
 
   return (
     <>
