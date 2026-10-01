@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { noStoreHeaders } from "@/lib/api/cache";
+import { verifyUserEmailForAdmin } from "@/lib/db/admin-user-email-verification";
 import {
   createAuditLogEntry,
   deleteUserForAdmin,
@@ -72,7 +73,7 @@ export async function PATCH(
   }
 
   const { id: userId } = await params;
-  if (!userId) {
+  if (!userId || !isValidUserId(userId)) {
     return NextResponse.json({ error: "missing_user_id" }, { status: 400 });
   }
 
@@ -95,11 +96,13 @@ export async function PATCH(
     allowPersonalKnowledge?: unknown;
     isActive?: unknown;
     role?: unknown;
+    verifyEmail?: unknown;
   };
   const requestedFields = [
     input.role !== undefined,
     input.isActive !== undefined,
     input.allowPersonalKnowledge !== undefined,
+    input.verifyEmail !== undefined,
   ].filter(Boolean).length;
 
   if (requestedFields !== 1) {
@@ -110,6 +113,26 @@ export async function PATCH(
   }
 
   try {
+    if (input.verifyEmail !== undefined) {
+      if (input.verifyEmail !== true) {
+        return NextResponse.json(
+          { error: "invalid_email_verification_action" },
+          { headers: noStoreHeaders(), status: 400 }
+        );
+      }
+      const updated = await verifyUserEmailForAdmin({ actorId: actor.id, userId });
+      if (!updated) {
+        return NextResponse.json(
+          { error: "not_found" },
+          { headers: noStoreHeaders(), status: 404 }
+        );
+      }
+      return NextResponse.json(
+        { ok: true, user: updated },
+        { headers: noStoreHeaders() }
+      );
+    }
+
     if (input.role !== undefined) {
       const role = typeof input.role === "string" ? input.role : "";
       if (!USER_ROLES.has(role)) {

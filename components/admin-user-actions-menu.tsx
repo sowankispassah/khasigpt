@@ -80,6 +80,7 @@ async function readUserActionError(response: Response, fallback: string) {
 export type UserUpdatePayload =
   | { allowPersonalKnowledge: boolean }
   | { isActive: boolean }
+  | { emailVerificationPending: false; isActive: boolean }
   | { role: "admin" | "creator" | "regular" };
 
 function roleLabel(role: "admin" | "creator" | "regular") {
@@ -147,7 +148,7 @@ export function AdminUserActionsMenu({
       pendingKey,
       successMessage,
     }: {
-      payload: UserUpdatePayload;
+      payload: UserUpdatePayload | { verifyEmail: true };
       pendingKey: string;
       successMessage: string;
     }) => {
@@ -172,9 +173,17 @@ export function AdminUserActionsMenu({
           throw new Error(await readUserActionError(response, translate("admin.users.actions.error", "Unable to update user.")));
         }
 
+        let appliedPatch: UserUpdatePayload;
+        if ("verifyEmail" in payload) {
+          const data = await response.json();
+          if (data?.user?.emailVerificationPending !== false || typeof data?.user?.isActive !== "boolean") {
+            throw new Error(translate("admin.users.actions.error", "Unable to update user."));
+          }
+          appliedPatch = { emailVerificationPending: false, isActive: data.user.isActive };
+        } else appliedPatch = payload;
         toast({ description: successMessage, type: "success" });
         handleDone();
-        if (onUpdated) onUpdated(payload);
+        if (onUpdated) onUpdated(appliedPatch);
         else startRefresh(() => {
           router.refresh();
         });
@@ -277,6 +286,26 @@ export function AdminUserActionsMenu({
             />
           </button>
         </DropdownMenuItem>
+
+        {emailVerificationPending ? <DropdownMenuItem
+          className="p-0"
+          onSelect={(event) => event.preventDefault()}
+        >
+          <button
+            className="flex w-full cursor-pointer items-center justify-start rounded-sm px-3 py-2 font-normal text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={isSelf || Boolean(pendingAction) || isRefreshing}
+            onClick={() => runUserUpdate({
+              payload: { verifyEmail: true },
+              pendingKey: "verifyEmail",
+              successMessage: translate("admin.users.actions.email_verified", "Email verified manually"),
+            })}
+            type="button"
+          >
+            <LoadingMenuLabel loading={pendingAction === "verifyEmail"}>
+              <EditableTranslation defaultText={pendingAction === "verifyEmail" ? "Verifying..." : "Verify email manually"} description="Manually verify a pending user email and activate the account." translationKey={pendingAction === "verifyEmail" ? "admin.users.actions.verifying_email" : "admin.users.actions.verify_email"} />
+            </LoadingMenuLabel>
+          </button>
+        </DropdownMenuItem> : null}
 
         {!emailVerificationPending ? <DropdownMenuItem
           className="p-0"
