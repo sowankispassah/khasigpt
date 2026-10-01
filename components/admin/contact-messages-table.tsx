@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { summarizeContactMessage } from "@/lib/admin/contact-message-summary";
 import { type ContactAccountSummary, isContactAccountSummary } from "@/lib/contact/account-summary";
 import type { ContactAttachment, ContactMessage } from "@/lib/db/schema";
@@ -182,6 +183,8 @@ function ContactConversationView({
   onToggleFullscreen: () => void;
 }) {
   const { translate } = useTranslation();
+  const replyFileInput = useRef<HTMLInputElement>(null);
+  const composerDisabled = replyPending || (replyKind === "public_reply" && (replyError === "invalid" || replyError === "unconfirmed"));
   const fullscreenLabel = isFullscreen
     ? translate("admin.contacts.dialog.restore", "Restore window")
     : translate("admin.contacts.dialog.fullscreen", "Full screen");
@@ -246,14 +249,26 @@ function ContactConversationView({
                 <DropdownMenuItem className="cursor-pointer" onSelect={() => onReplyKindChange("internal_note")}><StickyNote aria-hidden="true" className="mr-2 size-4" /><EditableTranslation defaultText="Internal note" description="Select private note mode." translationKey="admin.contacts.notes.label" /></DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <textarea aria-labelledby="contact-conversation-reply-label" className={`min-h-20 max-h-40 w-full resize-y rounded-lg border p-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${replyKind === "internal_note" ? "border-amber-300 bg-amber-50/50 dark:bg-amber-950/20" : "bg-background"}`} disabled={replyPending || (replyKind === "public_reply" && (replyError === "invalid" || replyError === "unconfirmed"))} id="contact-conversation-reply" maxLength={10000} onChange={(event) => onReplyChange(event.target.value)} placeholder={replyKind === "public_reply" ? translate("admin.contacts.reply.placeholder", "Write your response to the customer") : translate("admin.contacts.notes.placeholder", "Write a note for your team")} value={replyBody} />
-            <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm hover:bg-muted">
-              <Paperclip aria-hidden="true" className="size-4" />
-              <EditableTranslation defaultText="Add attachments" description="Add files to an admin contact reply." translationKey="admin.contacts.attachments.add" />
-              <input accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.docx" className="sr-only" disabled={replyPending || (replyKind === "public_reply" && (replyError === "invalid" || replyError === "unconfirmed"))} key={message.id} multiple onChange={(event) => onReplyFilesChange(Array.from(event.target.files ?? []))} type="file" />
-            </label>
-            <p className="mt-1 text-muted-foreground text-xs"><EditableTranslation defaultText="Up to 3 files, 3 MB total. PDF, images, text, or DOCX." description="Contact reply attachment limits." translationKey="contact.form.attachments.help" /></p>
-            {replyFiles.length ? <ul className="mt-2 flex flex-wrap gap-2">{replyFiles.map((file, index) => <li className="inline-flex max-w-full items-center gap-1 rounded-md border px-2 py-1 text-xs" key={`${index}-${file.name}`}><span className="max-w-48 truncate" title={file.name}>{file.name}</span><button aria-label={translate("admin.contacts.attachments.remove", "Remove attachment")} className="cursor-pointer" disabled={replyPending} onClick={() => onRemoveReplyFile(index)} type="button"><X aria-hidden="true" className="size-3" /></button></li>)}</ul> : null}
+            <div className={`rounded-lg border focus-within:ring-2 focus-within:ring-ring ${replyKind === "internal_note" ? "border-amber-300 bg-amber-50/50 dark:bg-amber-950/20" : "bg-background"}`}>
+              <textarea aria-labelledby="contact-conversation-reply-label" className="block min-h-20 max-h-40 w-full resize-y rounded-t-lg bg-transparent p-3 text-sm outline-none disabled:opacity-50" disabled={composerDisabled} id="contact-conversation-reply" maxLength={10000} onChange={(event) => onReplyChange(event.target.value)} placeholder={replyKind === "public_reply" ? translate("admin.contacts.reply.placeholder", "Write your response to the customer") : translate("admin.contacts.notes.placeholder", "Write a note for your team")} value={replyBody} />
+              <div className="flex items-start gap-2 px-2 pb-2">
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button aria-label={translate("admin.contacts.attachments.add", "Add attachments")} className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50" disabled={composerDisabled} onClick={() => replyFileInput.current?.click()} type="button">
+                        <Paperclip aria-hidden="true" className="size-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent align="start" className="max-w-64" side="top">
+                      <p className="font-medium"><EditableTranslation defaultText="Add attachments" description="Add files to an admin contact reply." translationKey="admin.contacts.attachments.add" /></p>
+                      <p className="mt-1 text-muted-foreground text-xs"><EditableTranslation defaultText="Up to 3 files, 3 MB total. PDF, images, text, or DOCX." description="Contact reply attachment limits." translationKey="contact.form.attachments.help" /></p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <input accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.docx" className="hidden" disabled={composerDisabled} key={message.id} multiple onChange={(event) => onReplyFilesChange(Array.from(event.target.files ?? []))} ref={replyFileInput} type="file" />
+                {replyFiles.length ? <ul className="flex min-w-0 flex-wrap gap-2 pt-0.5">{replyFiles.map((file, index) => <li className="inline-flex max-w-full items-center gap-1 rounded-md border px-2 py-1 text-xs" key={`${index}-${file.name}`}><span className="max-w-48 truncate" title={file.name}>{file.name}</span><button aria-label={translate("admin.contacts.attachments.remove", "Remove attachment")} className="cursor-pointer" disabled={replyPending} onClick={() => onRemoveReplyFile(index)} type="button"><X aria-hidden="true" className="size-3" /></button></li>)}</ul> : null}
+              </div>
+            </div>
             {replyAttachmentError ? <p className="mt-1 text-destructive text-xs" role="alert">{replyAttachmentError}</p> : null}
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
               <p className="flex items-center gap-1.5 text-muted-foreground text-xs">{replyKind === "internal_note" ? <><StickyNote aria-hidden="true" className="size-3.5" /><EditableTranslation defaultText="Visible only to admins. Not emailed to the customer." description="Private contact note delivery explanation." translationKey="admin.contacts.notes.private" /></> : <><Mail aria-hidden="true" className="size-3.5" />{inboundConfigured ? <EditableTranslation defaultText="Sent by email; replies appear here." description="Contact conversation email delivery note." translationKey="admin.contacts.conversation.email_note" /> : <EditableTranslation defaultText="Sent by email." description="Contact conversation email delivery note when inbound mail is unavailable." translationKey="admin.contacts.conversation.email_only" />}</>}</p>
