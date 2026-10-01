@@ -1,5 +1,6 @@
 import "server-only";
 
+import { contactAttachmentSignedUrlOptions } from "@/lib/contact/attachment-preview";
 import { CONTACT_FILE_TYPES, ContactAttachmentError, identifyContactFile, MAX_CONTACT_FILE_BYTES, MAX_CONTACT_FILES } from "@/lib/contact/attachment-validation";
 import type { ContactAttachment } from "@/lib/db/schema";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
@@ -47,8 +48,9 @@ export async function deleteContactFiles(attachments: ContactAttachment[]) {
   if (attachments.length) await createSupabaseAdminClient().storage.from(BUCKET).remove(attachments.map((file) => file.path));
 }
 
-export async function signedContactAttachmentUrl(attachment: ContactAttachment) {
-  const { data, error } = await createSupabaseAdminClient().storage.from(BUCKET).createSignedUrl(attachment.path, 60, { download: attachment.name });
+export async function signedContactAttachmentUrl(attachment: ContactAttachment, display: "download" | "inline" = "download") {
+  const options = contactAttachmentSignedUrlOptions(attachment, display);
+  const { data, error } = await createSupabaseAdminClient().storage.from(BUCKET).createSignedUrl(attachment.path, 60, options);
   if (error || !data?.signedUrl) throw new Error("Unable to open attachment");
   return data.signedUrl;
 }

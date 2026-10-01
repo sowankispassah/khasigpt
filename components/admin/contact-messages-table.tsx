@@ -3,6 +3,7 @@
 import { ChevronDown, Loader2, Mail, Maximize2, Minimize2, MoreVertical, Paperclip, SendHorizontal, StickyNote, X } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useEffectEvent, useRef, useState } from "react";
 import { ContactAccountPanel } from "@/components/admin/contact-account-panel";
+import { ContactAttachments } from "@/components/admin/contact-attachments";
 import type { UserUpdatePayload } from "@/components/admin-user-actions-menu";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
@@ -65,11 +66,6 @@ type ContactReply = {
 };
 
 type ReplyKind = "public_reply" | "internal_note";
-
-function AttachmentLinks({ files, source, id }: { files: ContactAttachment[]; source: "contact" | "reply"; id: string }) {
-  if (!Array.isArray(files) || !files.length) return null;
-  return <div className="mt-2 flex flex-wrap gap-2">{files.map((file) => <a className="inline-flex max-w-full cursor-pointer items-center gap-1 rounded-md border border-current/20 px-2 py-1 text-xs underline-offset-2 hover:underline" href={`/api/admin/contact-messages/attachments?source=${source}&id=${encodeURIComponent(id)}&attachmentId=${encodeURIComponent(file.id)}`} key={file.id} rel="noreferrer" target="_blank"><Paperclip aria-hidden="true" className="size-3 shrink-0" /><span className="max-w-56 truncate" title={file.name}>{file.name}</span></a>)}</div>;
-}
 
 function Status({ value }: { value: ContactMessage["status"] }) {
   const label = statusLabels[value] ?? { key: "admin.contacts.status.unknown", text: "Unknown" };
@@ -215,7 +211,7 @@ function ContactConversationView({
                 <span className="font-medium text-foreground">{message.name}</span>
                 <time dateTime={message.createdAt}>{message.receivedAt}</time>
               </div>
-              <div className="max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tl-sm border bg-background px-4 py-3 text-sm shadow-sm">{message.message}<AttachmentLinks files={message.attachments} id={message.id} source="contact" /></div>
+              <div className="max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tl-sm border bg-background px-4 py-3 text-sm shadow-sm">{message.message}<ContactAttachments files={message.attachments} id={message.id} source="contact" /></div>
             </div>
             {replies.map((reply) => {
               const note = reply.direction === "note";
@@ -229,7 +225,7 @@ function ContactConversationView({
                     {note ? <span className="rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100"><EditableTranslation defaultText="Internal note" description="Private contact conversation note label." translationKey="admin.contacts.notes.label" /></span> : null}
                     {reply.direction === "outbound" && reply.deliveryStatus !== "sent" ? <span className="rounded-full border px-1.5 py-0.5">{reply.deliveryStatus === "pending" ? <EditableTranslation defaultText="Pending" description="Contact reply pending status." translationKey="admin.contacts.replies.pending" /> : <EditableTranslation defaultText="Delivery unconfirmed" description="Contact reply uncertain status." translationKey="admin.contacts.replies.unconfirmed" />}</span> : null}
                   </div>
-                  <div className={`max-w-[90%] whitespace-pre-wrap break-words rounded-2xl px-4 py-3 text-sm shadow-sm ${note ? "rounded-tr-sm border border-amber-300 bg-amber-50 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100" : outgoing ? "rounded-tr-sm bg-primary text-primary-foreground" : "rounded-tl-sm border bg-background"}`}>{reply.body}<AttachmentLinks files={reply.attachments} id={reply.id} source="reply" /></div>
+                  <div className={`max-w-[90%] whitespace-pre-wrap break-words rounded-2xl px-4 py-3 text-sm shadow-sm ${note ? "rounded-tr-sm border border-amber-300 bg-amber-50 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100" : outgoing ? "rounded-tr-sm bg-primary text-primary-foreground" : "rounded-tl-sm border bg-background"}`}>{reply.body}<ContactAttachments files={reply.attachments} id={reply.id} source="reply" /></div>
                 </div>
               );
             })}
