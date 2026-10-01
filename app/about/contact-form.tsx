@@ -1,10 +1,12 @@
 "use client";
 
+import { useSession } from "next-auth/react";
 import {
   type ChangeEvent,
   useActionState,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -15,6 +17,7 @@ import {
   EditableTranslation,
   useEditableTranslation,
 } from "@/components/translation-edit-provider";
+import { applyContactPrefill, type ContactPrefill, getContactPrefill } from "@/lib/contact/profile-prefill";
 import { type ContactFormState, submitContactFormAction } from "./actions";
 
 const initialState: ContactFormState = { status: "idle" };
@@ -40,11 +43,15 @@ type ContactFormProps = {
 };
 
 export function ContactForm({ translations = {} }: ContactFormProps) {
+  const { data: session, status: sessionStatus } = useSession();
+  const prefill = useMemo(() => getContactPrefill(session?.user), [session?.user]);
+  const latestPrefill = useRef(prefill);
+  const editedIdentity = useRef(new Set<keyof ContactPrefill>());
   const [state, formAction, isPending] = useActionState<
     ContactFormState,
     FormData
   >(submitContactFormAction, initialState);
-  const [values, setValues] = useState<FormValues>(emptyValues);
+  const [values, setValues] = useState<FormValues>(() => ({ ...emptyValues, ...prefill }));
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
   const { translate: runtimeTranslate } = useTranslation();
@@ -75,8 +82,16 @@ export function ContactForm({ translations = {} }: ContactFormProps) {
   );
 
   useEffect(() => {
+    latestPrefill.current = prefill;
+    if (sessionStatus !== "loading") {
+      setValues((current) => applyContactPrefill(current, prefill, editedIdentity.current));
+    }
+  }, [prefill, sessionStatus]);
+
+  useEffect(() => {
     if (state.status === "success") {
-      setValues(emptyValues);
+      editedIdentity.current.clear();
+      setValues({ ...emptyValues, ...latestPrefill.current });
       setSelectedFiles([]);
       if (fileInput.current) fileInput.current.value = "";
     } else if (state.status === "error") {
@@ -88,6 +103,7 @@ export function ContactForm({ translations = {} }: ContactFormProps) {
     (field: keyof FormValues) =>
     (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       const nextValue = event.target.value;
+      if (field === "name" || field === "email" || field === "phone") editedIdentity.current.add(field);
       setValues((prev) => ({
         ...prev,
         [field]: nextValue,
@@ -109,6 +125,7 @@ export function ContactForm({ translations = {} }: ContactFormProps) {
           </span>
           {namePlaceholder.editButton}
           <input
+            autoComplete="name"
             className="h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             name="name"
             onChange={handleChange("name")}
@@ -132,6 +149,7 @@ export function ContactForm({ translations = {} }: ContactFormProps) {
           </span>
           {emailPlaceholder.editButton}
           <input
+            autoComplete="email"
             className="h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             name="email"
             onChange={handleChange("email")}
@@ -155,6 +173,7 @@ export function ContactForm({ translations = {} }: ContactFormProps) {
           </span>
           {phonePlaceholder.editButton}
           <input
+            autoComplete="tel"
             className="h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             name="phone"
             onChange={handleChange("phone")}
