@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, Loader2, Mail, Maximize2, Minimize2, MoreVertical, Paperclip, SendHorizontal, StickyNote, X } from "lucide-react";
-import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useEffect, useEffectEvent, useRef, useState } from "react";
 import { ContactAccountPanel } from "@/components/admin/contact-account-panel";
 import type { UserUpdatePayload } from "@/components/admin-user-actions-menu";
 import { useTranslation } from "@/components/language-provider";
@@ -301,12 +301,14 @@ export function ContactMessagesTable({
   messages,
   messagesConfirmed,
   onStatusChanged,
+  initialContact,
 }: {
   kind: ContactMessage["kind"];
   inboundConfigured?: boolean;
   messages: ContactTableMessage[];
   messagesConfirmed: boolean;
   onStatusChanged?: () => void;
+  initialContact?: ContactTableMessage;
 }) {
   const { translate } = useTranslation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -347,7 +349,9 @@ export function ContactMessagesTable({
   const effectiveMessages = messages.map((message) => statusOverrides[message.id]
     ? { ...message, status: statusOverrides[message.id] }
     : message);
-  const selected = effectiveMessages.find((message) => message.id === selectedId);
+  const initialSelected = initialContact?.id === selectedId ? { ...initialContact, status: statusOverrides[initialContact.id] ?? initialContact.status } : undefined;
+  const selected = effectiveMessages.find((message) => message.id === selectedId) ?? initialSelected;
+  const autoOpenedContact = useRef<string | null>(null);
   const selectedSummary = selected ? summarizeContactMessage(selected.message) : null;
   const chronologicalReplies = [...replies].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
@@ -404,6 +408,14 @@ export function ContactMessagesTable({
       void loadAccount(message.id);
     }
   }
+
+  const openInitialContact = useEffectEvent(openDetails);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Effect events must be omitted from dependencies.
+  useEffect(() => {
+    if (kind !== "contact" || !initialContact || autoOpenedContact.current === initialContact.id) return;
+    autoOpenedContact.current = initialContact.id;
+    openInitialContact(initialContact);
+  }, [initialContact, kind]);
 
   async function loadHistory(id: string) {
     const requestId = ++historyRequest.current;

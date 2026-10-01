@@ -1,7 +1,9 @@
+import { z } from "zod";
 import { AdminPagination } from "@/components/admin/admin-pagination";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { toContactTableMessage } from "@/lib/admin/contact-table-message";
 import { adminQueryResult } from "@/lib/admin/safe-query";
+import { getAdminContactById } from "@/lib/db/admin-user-details";
 import { listLatestInboundContactEmails } from "@/lib/db/contact-replies";
 import {
   getContactMessageCount,
@@ -29,8 +31,11 @@ export async function ContactMessagesPage({
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const requestedPage = parsePage(resolvedSearchParams?.page);
 
+  const contactParam = resolvedSearchParams?.contact;
+  const contactId = kind === "contact" ? z.string().uuid().safeParse(Array.isArray(contactParam) ? contactParam[0] : contactParam) : null;
+  const selectedContactPromise = contactId?.success ? adminQueryResult({ fallback: null, label: "contacts.selected", promise: getAdminContactById(contactId.data) }) : Promise.resolve(null);
   const offset = (requestedPage - 1) * CONTACTS_PAGE_SIZE;
-  const [messagesState, totalMessagesState] = await Promise.all([
+  const [messagesState, totalMessagesState, selectedContactState] = await Promise.all([
     adminQueryResult({
       fallback: [] as ContactMessage[],
       label: `${kind}.messages`,
@@ -45,6 +50,7 @@ export async function ContactMessagesPage({
       label: `${kind}.count`,
       promise: getContactMessageCount({ kind }),
     }),
+    selectedContactPromise,
   ]);
 
   const totalMessages = totalMessagesState.data;
@@ -91,6 +97,7 @@ export async function ContactMessagesPage({
       </header>
 
       <section className="rounded-lg border bg-card p-4 shadow-sm">
+        {kind === "contact" && contactParam !== undefined && (!contactId?.success || !selectedContactState?.ok || !selectedContactState.data) ? <div className="mb-3 rounded-md border border-amber-200 p-3 text-sm" role="alert"><EditableTranslation defaultText="The selected support request could not be opened. It may no longer exist; refresh this section to retry." description="Selected support conversation unavailable." translationKey="admin.users.details.support_target_error" /></div> : null}
         {kind === "contact" && (!messagesConfirmed || !totalMessagesState.ok) && (
           <AdminContactsWarning
             kind={kind}
@@ -100,7 +107,7 @@ export async function ContactMessagesPage({
         )}
         {kind === "report" ? (
           <ReportsWorkspace initialRows={messages.map(toContactTableMessage)} initialTotal={totalMessages} initialConfirmed={messagesConfirmed && totalMessagesState.ok} initialPage={page} />
-        ) : <ContactMessagesTable kind={kind} inboundConfigured={contactInboundConfigured()} messages={messages.map((message) => ({
+        ) : <ContactMessagesTable initialContact={selectedContactState?.data ? toContactTableMessage(selectedContactState.data) : undefined} kind={kind} inboundConfigured={contactInboundConfigured()} messages={messages.map((message) => ({
           ...toContactTableMessage(message),
           latestInboundPreview: latestInboundByMessage.get(message.id) ?? null,
         }))} messagesConfirmed={messagesConfirmed} />}

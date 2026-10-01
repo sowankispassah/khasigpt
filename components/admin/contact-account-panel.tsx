@@ -10,7 +10,8 @@ import { AdminUserStatusBadge } from "@/components/admin-user-status-badge";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { type ContactAccountSummary, getContactAccountAvatar } from "@/lib/contact/account-summary";
 
-export function ContactAccountPanel({ account, currentAdminId, refreshing, onUpdated, onRefresh }: {
+export function ContactAccountPanel({ account, currentAdminId, refreshing, onUpdated, onRefresh, showContactContext = true }: {
+  showContactContext?: boolean;
   account: ContactAccountSummary;
   currentAdminId: string | null;
   refreshing: boolean;
@@ -34,7 +35,7 @@ export function ContactAccountPanel({ account, currentAdminId, refreshing, onUpd
           <AdminUserActionsMenu allowPersonalKnowledge={account.allowPersonalKnowledge} currentRole={account.role} disabled={refreshing} email={account.email} emailVerificationPending={account.emailVerificationPending} isActive={account.isActive} isSelf={!currentAdminId || account.id === currentAdminId} onDeleted={onRefresh} onUpdated={onUpdated} triggerLabel={<EditableTranslation defaultText="More" description="Open matched account admin actions." translationKey="admin.contacts.account.more" />} userId={account.id} />
         </div>
       </div>
-      <p className="text-muted-foreground text-xs"><EditableTranslation defaultText="Matched by email. This does not verify who submitted the contact message." description="Contact email match identity caveat." translationKey="admin.contacts.account.match_note" /></p>
+      {showContactContext ? <p className="text-muted-foreground text-xs"><EditableTranslation defaultText="Matched by email. This does not verify who submitted the contact message." description="Contact email match identity caveat." translationKey="admin.contacts.account.match_note" /></p> : null}
       <dl className="space-y-3">
         <AccountField label="First name" translationKey="admin.contacts.account.first_name">{account.firstName || "—"}</AccountField>
         <AccountField label="Last name" translationKey="admin.contacts.account.last_name">{account.lastName || "—"}</AccountField>
@@ -51,7 +52,7 @@ export function ContactAccountPanel({ account, currentAdminId, refreshing, onUpd
         <AddCreditsForm creditsRemaining={account.subscriptionUnavailable ? null : account.subscription?.creditsRemaining ?? 0} disabled={refreshing} layout="stacked" onCreditsAdded={onRefresh} userId={account.id} />
         <AdminUserCreditHistoryMenu label={<EditableTranslation defaultText="Credit history" description="Open matched account credit history." translationKey="admin.users.credits.history" />} userId={account.id} />
       </div>
-      <a className="inline-flex cursor-pointer text-primary text-xs underline-offset-2 hover:underline" data-nav href={`/admin/users?q=${encodeURIComponent(account.email)}`} rel="noopener noreferrer" target="_blank"><EditableTranslation defaultText="Open in Users" description="Open matching account in admin users list." translationKey="admin.contacts.account.open_user" /></a>
+      {showContactContext ? <a className="inline-flex cursor-pointer text-primary text-xs underline-offset-2 hover:underline" data-nav href={`/admin/users?q=${encodeURIComponent(account.email)}`} rel="noopener noreferrer" target="_blank"><EditableTranslation defaultText="Open in Users" description="Open matching account in admin users list." translationKey="admin.contacts.account.open_user" /></a> : null}
     </div>
   );
 }

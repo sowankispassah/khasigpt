@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { auth } from "@/app/(auth)/auth";
+import { AdminUserDetailsButton } from "@/components/admin/admin-user-details-button";
 import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
 import { AddCreditsForm } from "@/components/admin-user-add-credits-form";
 import { AdminUserChatsButton } from "@/components/admin-user-chats-button";
@@ -301,7 +302,7 @@ function UsersTableSection({
                   email={user.email}
                   userId={user.id}
                 />
-                <td className="py-3">{user.email}</td>
+                <td className="py-3"><AdminUserDetailsButton email={user.email} userId={user.id} /></td>
                 <td className="py-3 capitalize">{user.role}</td>
                 <td className="py-3">
                   <AdminUserStatusBadge emailVerificationPending={user.emailVerificationPending} isActive={user.isActive} isOnline={user.isOnline} />
