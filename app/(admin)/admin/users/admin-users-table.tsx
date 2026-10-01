@@ -10,7 +10,7 @@ import {
   useState,
   useTransition,
 } from "react";
-import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
+import { AdminUserActionsMenu, type UserUpdatePayload } from "@/components/admin-user-actions-menu";
 import { AddCreditsForm } from "@/components/admin-user-add-credits-form";
 import { AdminUserChatsButton } from "@/components/admin-user-chats-button";
 import { AdminUserStatusBadge } from "@/components/admin-user-status-badge";
@@ -414,9 +414,11 @@ function AdminUsersSearchForm({
 
 function LoadedUserRow({
   currentUserId,
+  onUpdated,
   user,
 }: {
   currentUserId: string | undefined;
+  onUpdated: (patch: UserUpdatePayload) => void;
   user: AdminUserRow;
 }) {
   const createdAt = toDate(user.createdAt);
@@ -476,6 +478,7 @@ function LoadedUserRow({
             emailVerificationPending={user.emailVerificationPending}
             isActive={user.isActive}
             isSelf={user.id === currentUserId}
+            onUpdated={onUpdated}
             userId={user.id}
           />
           <AddCreditsForm
@@ -517,6 +520,7 @@ export function AdminUsersTable({
 }) {
   const { translate } = useTranslation();
   const { registerVisibleUserIds } = useAdminUsersSelection();
+  const router = useRouter();
   const loadMoreErrorMessage = translate(
     "admin.users.load_more.error",
     "Unable to load more users. Please retry."
@@ -721,6 +725,10 @@ export function AdminUsersTable({
             {loadedUsers.map((user) => (
               <LoadedUserRow
                 currentUserId={currentUserId}
+                onUpdated={(patch) => {
+                  setLoadedUsers((current) => current.map((row) => row.id === user.id ? { ...row, ...patch } : row));
+                  router.refresh();
+                }}
                 key={user.id}
                 user={user}
               />
