@@ -2,6 +2,8 @@ import { USER_FEATURE_DEFINITIONS } from "@/lib/feature-access-catalog";
 import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
+  { key: "jobs.details.about", defaultText: "About the job", description: "Heading for the complete job description and recruitment details." },
+  { key: "jobs.details.compensation", defaultText: "Compensation by role", description: "Heading for pay amounts for each advertised role." },
   { key: "chat.feedback.action", defaultText: "Dislike or report this response", description: "Accessible description of the thumbs-down response action." },
   { key: "chat.feedback.upvote", defaultText: "Thumbs up", description: "Accessible label for liking a response." },
   { key: "chat.feedback.undo_upvote", defaultText: "Undo thumbs up", description: "Accessible label for removing a thumbs-up vote." },

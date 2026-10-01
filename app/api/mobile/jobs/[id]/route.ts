@@ -186,6 +186,8 @@ export async function GET(
       location: job.location,
       employmentType: getJobTypeLabel(job.employmentType),
       salaryLabel: salaryInfo.summary,
+      description: detailMarkdown,
+      compensationEntries: salaryInfo.entries,
       notificationDateLabel: resolveJobNotificationDateLabel({
         content: detailMarkdown,
         pdfContent: pdfMetaText,
