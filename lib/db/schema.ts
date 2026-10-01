@@ -1631,6 +1631,7 @@ export const contactMessage = pgTable(
       table.createdAt
     ),
     createdIdx: index("ContactMessage_created_idx").on(table.createdAt),
+    emailKindCreatedAtIdx: index("ContactMessage_email_kind_createdAt_idx").on(sql`lower(trim(${table.email}))`, table.kind, table.createdAt, table.id),
     kindActivityAtIdx: index("ContactMessage_kind_activityAt_idx").on(table.kind, sql`coalesce(${table.lastInboundAt}, ${table.createdAt})`),
   })
 );

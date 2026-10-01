@@ -1,5 +1,6 @@
 "use client";
 
+
 import { Loader2, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
@@ -10,6 +11,7 @@ import {
   useState,
   useTransition,
 } from "react";
+import { AdminUserDetailsButton } from "@/components/admin/admin-user-details-button";
 import { AdminUserActionsMenu, type UserUpdatePayload } from "@/components/admin-user-actions-menu";
 import { AddCreditsForm } from "@/components/admin-user-add-credits-form";
 import { AdminUserChatsButton } from "@/components/admin-user-chats-button";
@@ -431,7 +433,7 @@ function LoadedUserRow({
         email={user.email}
         userId={user.id}
       />
-      <td className="py-3">{user.email}</td>
+      <td className="py-3"><AdminUserDetailsButton email={user.email} userId={user.id} onUpdated={onUpdated} /></td>
       <td className="py-3 capitalize">{user.role}</td>
       <td className="py-3">
         <AdminUserStatusBadge emailVerificationPending={user.emailVerificationPending} isActive={user.isActive} isOnline={user.isOnline} />
