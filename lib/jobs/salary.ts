@@ -484,12 +484,12 @@ function extractSingleSalaryText(text: string | null | undefined) {
   return null;
 }
 
-function dedupeCompensationEntries(entries: CompensationEntry[]) {
+function dedupeCompensationEntries(entries: CompensationEntry[], trustedRoles = false) {
   const deduped = new Map<string, CompensationEntry>();
   for (const entry of entries) {
-    const role = cleanRoleTitle(entry.role);
+    const role = trustedRoles ? normalizeWhitespace(entry.role) : cleanRoleTitle(entry.role);
     const salary = trimSalaryPunctuation(normalizeWhitespace(entry.salary));
-    if (!isLikelyRoleTitle(role) || !salary) {
+    if (!(trustedRoles ? role.length > 0 && role.length <= 220 : isLikelyRoleTitle(role)) || !salary) {
       continue;
     }
     const key = `${role.toLowerCase()}::${salary.toLowerCase()}`;
@@ -735,7 +735,8 @@ function resolveExtractedDataSalaryInfo(
   }
 
   const entries = dedupeCompensationEntries(
-    buildJobsPdfCompensationEntries(extractedData)
+    buildJobsPdfCompensationEntries(extractedData),
+    true
   );
   if (entries.length > 0) {
     return {

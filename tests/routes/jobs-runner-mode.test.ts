@@ -17,7 +17,7 @@ test("ChatGPT mode blocks every site scrape trigger", () => {
   expect(isJobsScrapeTriggerAllowed("chatgpt", "cron")).toBe(false);
   expect(isJobsScrapeTriggerAllowed("chatgpt", "auto")).toBe(false);
   expect(isJobsScrapeTriggerAllowed("chatgpt", "manual")).toBe(false);
-  expect(isJobsScrapeTriggerAllowed("chatgpt", "chatgpt")).toBe(true);
+  expect(isJobsScrapeTriggerAllowed("chatgpt", "chatgpt")).toBe(false);
 });
 
 test("project mode blocks the ChatGPT scheduled trigger", () => {

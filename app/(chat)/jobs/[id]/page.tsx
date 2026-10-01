@@ -173,7 +173,7 @@ export default async function JobPostingDetailPage(props: {
   const proxiedPdfUrl = pdfUrl ? `/api/jobs/${job.id}/pdf` : null;
   const sourcePreviewUrl = job.sourceUrl && !isPdfUrl(job.sourceUrl) ? job.sourceUrl : null;
   const hasAnyFileLinks = Boolean(proxiedPdfUrl || sourcePreviewUrl);
-  const showDescriptionText = !proxiedPdfUrl && detailMarkdown.length > 0;
+  const showDescriptionText = detailMarkdown.length > 0;
   const jobCard = toJobCard(job);
   const requestedChatId =
     typeof resolvedSearchParams?.chatId === "string" &&
@@ -347,7 +347,7 @@ export default async function JobPostingDetailPage(props: {
         {salaryInfo.entries.length > 0 ? (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Compensation by role</CardTitle>
+              <CardTitle className="text-base"><EditableTranslation translationKey="jobs.details.compensation" defaultText="Compensation by role" /></CardTitle>
               <CardDescription>Role-wise compensation extracted from the listing or PDF.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -376,7 +376,7 @@ export default async function JobPostingDetailPage(props: {
         {showDescriptionText ? (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">About the job</CardTitle>
+              <CardTitle className="text-base"><EditableTranslation translationKey="jobs.details.about" defaultText="About the job" /></CardTitle>
               <CardDescription>Detailed description extracted from the source listing.</CardDescription>
             </CardHeader>
             <CardContent>
