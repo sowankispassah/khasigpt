@@ -12,6 +12,7 @@ import {
 import { AdminUserDeleteDialog } from "@/components/admin-user-delete-dialog";
 import { AdminUserFeatureAccessDialog } from "@/components/admin-user-feature-access-dialog";
 import { LoaderIcon } from "@/components/icons";
+import { useTranslation } from "@/components/language-provider";
 import { SessionUsageChatLink } from "@/components/session-usage-chat-link";
 import { toast } from "@/components/toast";
 import { EditableTranslation } from "@/components/translation-edit-provider";
@@ -34,6 +35,10 @@ type AdminUserActionsMenuProps = {
   allowPersonalKnowledge: boolean;
   isSelf: boolean;
   currentRole: "admin" | "creator" | "regular";
+  disabled?: boolean;
+  triggerLabel?: ReactNode;
+  onUpdated?: (patch: UserUpdatePayload) => void;
+  onDeleted?: () => void;
 };
 
 const USER_ACTION_TIMEOUT_MS = 15_000;
@@ -61,7 +66,7 @@ async function fetchWithTimeout(
   }
 }
 
-async function readUserActionError(response: Response) {
+async function readUserActionError(response: Response, fallback: string) {
   const data = await response.json().catch(() => null);
   if (data && typeof data === "object" && "message" in data) {
     const message = (data as { message?: unknown }).message;
@@ -69,10 +74,10 @@ async function readUserActionError(response: Response) {
       return message;
     }
   }
-  return "Unable to update user.";
+  return fallback;
 }
 
-type UserUpdatePayload =
+export type UserUpdatePayload =
   | { allowPersonalKnowledge: boolean }
   | { isActive: boolean }
   | { role: "admin" | "creator" | "regular" };
@@ -114,7 +119,12 @@ export function AdminUserActionsMenu({
   allowPersonalKnowledge,
   isSelf,
   currentRole,
+  disabled = false,
+  triggerLabel,
+  onUpdated,
+  onDeleted,
 }: AdminUserActionsMenuProps) {
+  const { translate } = useTranslation();
   const [open, setOpen] = useState(false);
   const [impersonationLink, setImpersonationLink] = useState<string | null>(
     null
@@ -141,7 +151,7 @@ export function AdminUserActionsMenu({
       pendingKey: string;
       successMessage: string;
     }) => {
-      if (pendingAction) {
+      if (pendingAction || disabled) {
         return;
       }
 
@@ -159,29 +169,30 @@ export function AdminUserActionsMenu({
         );
 
         if (!response.ok) {
-          throw new Error(await readUserActionError(response));
+          throw new Error(await readUserActionError(response, translate("admin.users.actions.error", "Unable to update user.")));
         }
 
         toast({ description: successMessage, type: "success" });
         handleDone();
-        startRefresh(() => {
+        if (onUpdated) onUpdated(payload);
+        else startRefresh(() => {
           router.refresh();
         });
       } catch (error) {
         toast({
           description:
             isAbortError(error)
-              ? "User update timed out. Please retry."
+              ? translate("admin.users.actions.timeout", "User update timed out. Please retry.")
               : error instanceof Error
                 ? error.message
-                : "Unable to update user.",
+                : translate("admin.users.actions.error", "Unable to update user."),
           type: "error",
         });
       } finally {
         setPendingAction(null);
       }
     },
-    [handleDone, pendingAction, router, userId]
+    [disabled, handleDone, onUpdated, pendingAction, router, translate, userId]
   );
 
   useEffect(() => {
@@ -241,9 +252,9 @@ export function AdminUserActionsMenu({
     <>
       <DropdownMenu onOpenChange={setOpen} open={open}>
       <DropdownMenuTrigger asChild>
-        <Button size="sm" variant="outline">
+        <Button className="cursor-pointer" disabled={disabled} size="sm" type="button" variant="outline">
           <MoreVertical className="h-4 w-4" />
-          <span className="sr-only">Open actions</span>
+          {triggerLabel ?? <span className="sr-only"><EditableTranslation defaultText="Open actions" description="Open admin user actions." translationKey="admin.users.actions.open" /></span>}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52 p-1">
@@ -278,19 +289,13 @@ export function AdminUserActionsMenu({
               runUserUpdate({
                 payload: { isActive: !isActive },
                 pendingKey: "active",
-                successMessage: isActive ? "User suspended" : "User restored",
+                successMessage: isActive ? translate("admin.users.actions.suspended", "User suspended") : translate("admin.users.actions.restored", "User restored"),
               })
             }
             type="button"
           >
             <LoadingMenuLabel loading={pendingAction === "active"}>
-              {pendingAction === "active"
-                ? isActive
-                  ? "Suspending..."
-                  : "Restoring..."
-                : isActive
-                  ? "Suspend"
-                  : "Restore"}
+              <EditableTranslation defaultText={pendingAction === "active" ? isActive ? "Suspending..." : "Restoring..." : isActive ? "Suspend" : "Restore"} description="Suspend or restore a user account." translationKey={`admin.users.actions.${pendingAction === "active" ? isActive ? "suspending" : "restoring" : isActive ? "suspend" : "restore"}`} />
             </LoadingMenuLabel>
           </button>
         </DropdownMenuItem> : null}
@@ -303,7 +308,7 @@ export function AdminUserActionsMenu({
             className="flex w-full items-center rounded-sm px-3 py-2 font-normal text-sm hover:bg-muted hover:text-foreground"
             href={`/admin/users/${userId}/logs`}
           >
-            Logs
+            <EditableTranslation defaultText="Logs" description="View user activity logs." translationKey="admin.users.actions.logs" />
           </SessionUsageChatLink>
         </DropdownMenuItem>
 
@@ -318,17 +323,13 @@ export function AdminUserActionsMenu({
               runUserUpdate({
                 payload: { allowPersonalKnowledge: !allowPersonalKnowledge },
                 pendingKey: "rag",
-                successMessage: "Personal knowledge setting updated",
+                successMessage: translate("admin.users.actions.knowledge_updated", "Personal knowledge setting updated"),
               })
             }
             type="button"
           >
             <LoadingMenuLabel loading={pendingAction === "rag"}>
-              {pendingAction === "rag"
-                ? "Updating..."
-                : allowPersonalKnowledge
-                  ? "Disable RAG"
-                  : "Allow RAG"}
+              <EditableTranslation defaultText={pendingAction === "rag" ? "Updating..." : allowPersonalKnowledge ? "Disable RAG" : "Allow RAG"} description="Update user personal knowledge access." translationKey={`admin.users.actions.${pendingAction === "rag" ? "updating" : allowPersonalKnowledge ? "disable_rag" : "allow_rag"}`} />
             </LoadingMenuLabel>
           </button>
         </DropdownMenuItem>
@@ -336,12 +337,12 @@ export function AdminUserActionsMenu({
         <DropdownMenuItem className="p-0">
           {impersonationLink ? (
             <a
-              className="flex w-full items-center rounded-sm px-3 py-2 font-normal text-sm hover:bg-muted hover:text-foreground"
+              className="flex w-full cursor-pointer items-center rounded-sm px-3 py-2 font-normal text-sm hover:bg-muted hover:text-foreground"
               href={impersonationLink}
               rel="noreferrer"
               target="_blank"
             >
-              Login as user
+              <EditableTranslation defaultText="Login as user" description="Open the user account through admin impersonation." translationKey="admin.users.actions.login" />
             </a>
           ) : (
             <button
@@ -349,16 +350,14 @@ export function AdminUserActionsMenu({
               disabled
               type="button"
             >
-              {impersonateLoading
-                ? "Preparing link..."
-                : (impersonateError ?? "Preparing link...")}
+              <LoadingMenuLabel loading={impersonateLoading}><EditableTranslation defaultText={impersonateError ? "Login link unavailable" : "Preparing link..."} description="Admin impersonation link preparation status." translationKey={impersonateError ? "admin.users.actions.login_unavailable" : "admin.users.actions.preparing_link"} /></LoadingMenuLabel>
             </button>
           )}
         </DropdownMenuItem>
 
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger className="rounded-sm px-3 py-2 font-normal text-sm hover:bg-muted">
-            Update role
+          <DropdownMenuSubTrigger className="cursor-pointer rounded-sm px-3 py-2 font-normal text-sm hover:bg-muted">
+            <EditableTranslation defaultText="Update role" description="Choose a new user role." translationKey="admin.users.actions.update_role" />
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="w-40">
             {(["admin", "creator", "regular"] as const).map((role) => (
@@ -379,16 +378,14 @@ export function AdminUserActionsMenu({
                     runUserUpdate({
                       payload: { role },
                       pendingKey: `role:${role}`,
-                      successMessage: "User role updated",
+                      successMessage: translate("admin.users.actions.role_updated", "User role updated"),
                     })
                   }
                   type="button"
                 >
                   <LoadingMenuLabel loading={pendingAction === `role:${role}`}>
-                    {pendingAction === `role:${role}`
-                      ? "Updating..."
-                      : roleLabel(role)}
-                    {currentRole === role ? " (current)" : ""}
+                    <EditableTranslation defaultText={pendingAction === `role:${role}` ? "Updating..." : roleLabel(role)} description="User role action label." translationKey={pendingAction === `role:${role}` ? "admin.users.actions.updating" : `admin.contacts.account.role.${role}`} />
+                    {currentRole === role ? <> <EditableTranslation defaultText="(current)" description="Current role indicator." translationKey="admin.users.actions.current" /></> : null}
                   </LoadingMenuLabel>
                 </button>
               </DropdownMenuItem>
@@ -420,6 +417,8 @@ export function AdminUserActionsMenu({
       </DropdownMenu>
       <AdminUserDeleteDialog
         email={email}
+        onDeleted={onDeleted}
+        refreshOnDeleted={!onDeleted}
         onOpenChange={setDeleteDialogOpen}
         open={deleteDialogOpen}
         userId={userId}

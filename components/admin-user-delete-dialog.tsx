@@ -23,6 +23,7 @@ type AdminUserDeleteDialogProps = {
   email?: string;
   onOpenChange: (open: boolean) => void;
   onDeleted?: () => void;
+  refreshOnDeleted?: boolean;
   open: boolean;
   userId?: string;
   userIds?: string[];
@@ -57,6 +58,7 @@ export function AdminUserDeleteDialog({
   email,
   onOpenChange,
   onDeleted,
+  refreshOnDeleted = true,
   open,
   userId,
   userIds,
@@ -195,7 +197,7 @@ export function AdminUserDeleteDialog({
       });
       onDeleted?.();
       onOpenChange(false);
-      startRefresh(() => {
+      if (refreshOnDeleted) startRefresh(() => {
         window.location.reload();
       });
     } catch (error) {

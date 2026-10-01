@@ -5,6 +5,9 @@ export type ContactAccountSummary = {
   email: string;
   firstName: string | null;
   lastName: string | null;
+  image: string | null;
+  allowPersonalKnowledge: boolean;
+  chatCount: number | null;
   role: UserRole;
   authProvider: AuthProvider;
   isActive: boolean;
@@ -26,6 +29,9 @@ export function isContactAccountSummary(value: unknown): value is ContactAccount
     || !["credentials", "google"].includes(String(account.authProvider))
     || typeof account.isActive !== "boolean"
     || typeof account.emailVerificationPending !== "boolean"
+    || typeof account.allowPersonalKnowledge !== "boolean"
+    || !(account.image === null || typeof account.image === "string")
+    || !(account.chatCount === null || typeof account.chatCount === "number" && Number.isSafeInteger(account.chatCount) && account.chatCount >= 0)
     || typeof account.createdAt !== "string" || !Number.isFinite(Date.parse(account.createdAt))
     || !(account.firstName === null || typeof account.firstName === "string")
     || !(account.lastName === null || typeof account.lastName === "string")
@@ -36,4 +42,15 @@ export function isContactAccountSummary(value: unknown): value is ContactAccount
   return (subscription.planName === null || typeof subscription.planName === "string")
     && typeof subscription.creditsRemaining === "number" && Number.isFinite(subscription.creditsRemaining)
     && typeof subscription.expiresAt === "string" && Number.isFinite(Date.parse(subscription.expiresAt));
+}
+
+export function getContactAccountAvatar(image: string | null): string | null {
+  if (!image) return null;
+  if (image.startsWith("/") && !image.startsWith("//") && !image.includes("\\")) return image;
+  try {
+    const url = new URL(image);
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : null;
+  } catch {
+    return null;
+  }
 }
