@@ -20,7 +20,7 @@ import type { UserRole } from "@/app/(auth)/auth";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { budgetedModel } from "@/lib/ai/budgeted-model";
 import { entitlementsByUserRole } from "@/lib/ai/entitlements";
-import { KHASIGPT_IDENTITY_FINAL_REMINDER } from "@/lib/ai/identity";
+import { KHASIGPT_IDENTITY_FINAL_REMINDER, KHASIGPT_RESPONSE_LANGUAGE_INSTRUCTION } from "@/lib/ai/identity";
 import { getModelRegistry } from "@/lib/ai/model-registry";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { resolveLanguageModel } from "@/lib/ai/providers";
@@ -2117,7 +2117,7 @@ export async function POST(request: Request) {
           "Reply naturally and briefly like a normal LLM assistant.",
           "Do not return job cards for greetings or meta conversation.",
           "You may mention that you can help search Meghalaya jobs by place, salary, qualification, deadline, or source when relevant.",
-          "Always answer in the user's selected language unless the user explicitly asks for a different one.",
+          KHASIGPT_RESPONSE_LANGUAGE_INSTRUCTION,
         ].join("\n");
         const metaConversationResult = await generateText({
           model: paidLanguageModel,
@@ -2226,12 +2226,12 @@ export async function POST(request: Request) {
         const listingSummarySystemPrompt = [
           selectedLanguageSystemPrompt ?? "",
           "You are summarizing Meghalaya job search results for a chat UI.",
-          "Always answer in the user's selected language unless the user explicitly asks for another one.",
           "Keep the response concise, natural, and human.",
           "Do not translate or rewrite job titles, company names, source names, or locations from the result cards unless necessary.",
           "Do not mention internal retrieval, ranking, filtering, or system behavior.",
           "If there are no direct matches but statewide or all-district jobs are suggested, explain that naturally.",
           "Do not invent salary, location, or eligibility details.",
+          KHASIGPT_RESPONSE_LANGUAGE_INSTRUCTION,
         ].join("\n");
         const listingSummaryResult = await generateText({
           model: paidLanguageModel,
@@ -2341,7 +2341,7 @@ export async function POST(request: Request) {
           "If a requested detail is missing, say the listing does not mention it.",
           "Do not mention retrieval, search, or internal ranking.",
           "Format the answer in concise Markdown.",
-          "Always answer in the user's selected language unless the user explicitly asks for a different one.",
+          KHASIGPT_RESPONSE_LANGUAGE_INSTRUCTION,
         ].join("\n");
         const followUpResult = await generateText({
           model: paidLanguageModel,
