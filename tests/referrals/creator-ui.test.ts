@@ -15,8 +15,9 @@ test.beforeEach(async ({ context, baseURL }) => {
   try {
     const [creator] = await sql`select u.id, u."firstName", u."lastName", u."dateOfBirth" from "User" u join "CreatorReferral" r on r."creatorId" = u.id where u.role = 'creator' and u."isActive" = true limit 1`;
     test.skip(!creator, "No assigned active creator available for read-only verification.");
+    const token = { id: creator.id, role: "creator" as const, roleRefreshedAt: Date.now(), dbRefreshedAt: Date.now(), dateOfBirth: creator.dateOfBirth, imageVersion: null, firstName: creator.firstName, lastName: creator.lastName };
     for (const name of ["authjs.session-token", "__Secure-authjs.session-token"]) {
-      const value = await encode({ secret, salt: name, token: { id: creator.id, role: "creator", roleRefreshedAt: Date.now(), dbRefreshedAt: Date.now(), dateOfBirth: creator.dateOfBirth, imageVersion: null, firstName: creator.firstName, lastName: creator.lastName }, maxAge: 600 });
+      const value = await encode({ secret, salt: name, token, maxAge: 600 });
       await context.addCookies([{ name, value, domain: "localhost", path: "/", httpOnly: true, secure: name.startsWith("__Secure"), sameSite: "Lax" }]);
     }
   } finally { await sql.end(); }
