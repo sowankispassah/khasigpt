@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { FeatureAccessMode } from "@/lib/feature-access";
 import { REFERRAL_COPY } from "@/lib/referrals/copy";
+import { creatorPlayStoreUrl } from "@/lib/referrals/links";
 import type { ReferralDashboard } from "@/lib/referrals/service";
 import type { CreatorOption } from "./admin-coupons-manager";
 
@@ -70,7 +71,7 @@ export function AdminReferralsManager({ creators, creatorsConfirmed }: { creator
           <td className={cell}>{row.creatorName ?? "—"}</td><td className={`${cell} min-w-48 text-xs text-muted-foreground`}>{rule(row)}</td><td className={cell}>{row.percentage}%</td><td className={cell}>{row.signups}</td><td className={cell}>{row.balances.reduce((sum, balance) => sum + balance.recharges, 0)}</td><td className={`${cell} whitespace-nowrap`}>{totals(row, "revenue")}</td><td className={`${cell} whitespace-nowrap`}>{totals(row, "earned")}</td><td className={`${cell} whitespace-nowrap`}>{totals(row, "paid")}</td><td className={`${cell} whitespace-nowrap`}>{row.balances.length ? row.balances.map(balance => <div key={balance.currency}><T name={balance.remaining > 0 ? "remaining" : "paid"} />: {money(balance.remaining, balance.currency)}</div>) : <T name="no_activity" />}</td>
           <td className={cell}><span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${row.isActive ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}><T name={row.isActive ? "active" : "inactive"} /></span></td>
           <td className={cell}><PromotionActions label={translate("referrals.operations", REFERRAL_COPY.operations).replace("{code}", row.code)} disabled={pending !== null} items={[
-            { name: "copy", action: async () => { await navigator.clipboard.writeText(`${window.location.origin}/r/${row.code}`); toast.success(translate("referrals.copied", REFERRAL_COPY.copied)); } },
+            { name: "copy", action: async () => { await navigator.clipboard.writeText(creatorPlayStoreUrl(row.code)); toast.success(translate("referrals.copied", REFERRAL_COPY.copied)); } },
             { name: "details", action: () => setDetailsId(row.id) },
             { name: row.isActive ? "make_inactive" : "make_active", action: () => mutate(row.id, "/api/admin/referrals", { action: "status", id: row.id, active: !row.isActive }) },
             { name: "delete", destructive: true, disabled: row.signups > 0 || row.balances.length > 0, action: () => setDeleteId(row.id) },
@@ -110,7 +111,7 @@ export function AdminReferralsManager({ creators, creatorsConfirmed }: { creator
     {data?.referrals.filter(row => row.id === detailsId).map(referral => <div className="space-y-3 rounded-lg border p-4" key={referral.id}>
       <p className="font-medium">{referral.creatorName} · {referral.percentage}% · <T name={referral.duration as "indefinite"} /> {referral.months ?? referral.windowDays ?? ""} {referral.rechargeBefore ? new Date(referral.rechargeBefore).toLocaleString() : ""}</p>
       <p><T name="signups" />: {referral.signups}</p>
-      <a className="block cursor-pointer break-all underline" href={`/r/${referral.code}`} target="_blank" rel="noreferrer">{typeof window === "undefined" ? "" : window.location.origin}/r/{referral.code}</a>
+      <a className="block cursor-pointer break-all underline" href={creatorPlayStoreUrl(referral.code)} target="_blank" rel="noreferrer">{creatorPlayStoreUrl(referral.code)}</a>
       <Button variant="outline" disabled={pending !== null} onClick={() => void mutate(referral.id, "/api/admin/referrals", { action: "status", id: referral.id, active: !referral.isActive })}>{pending === referral.id ? <T name="saving" /> : <T name={referral.isActive ? "pause" : "activate"} />}</Button>
       {referral.balances.map(balance => <div className="space-y-3" key={balance.currency}>
         <p>{balance.currency} · <T name="earned" /> {(balance.earned / 100).toFixed(2)} · <T name="paid" /> {(balance.paid / 100).toFixed(2)} · <T name="remaining" /> {(balance.remaining / 100).toFixed(2)}</p>

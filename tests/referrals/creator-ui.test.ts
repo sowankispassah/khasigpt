@@ -73,7 +73,7 @@ test("creator table shows terms and supports sharing, copy and responsive scroll
   await expect(page.getByRole("button", { name: "Share link", exact: true })).toHaveCount(0);
   await expect(referralTable.getByText("http://localhost:3471/r/creator123", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "View link", exact: true }).click();
-  await expect(page.getByRole("dialog").getByRole("link")).toHaveAttribute("href", "/r/creator123");
+  await expect(page.getByRole("dialog").getByRole("link")).toHaveAttribute("href", "https://play.google.com/store/apps/details?id=khasigpt.com&referrer=creator_referral%3Dcreator123");
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("button", { name: "Referral options", exact: true }).click();
   await page.getByRole("menuitem", { name: "View details", exact: true }).click();
@@ -90,12 +90,12 @@ test("creator table shows terms and supports sharing, copy and responsive scroll
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("button", { name: "Referral options", exact: true }).click();
   await page.getByRole("menuitem", { name: "Share link", exact: true }).click();
-  expect(await page.evaluate(() => (window as unknown as { referralShares: ShareData[] }).referralShares[0].url)).toBe("http://localhost:3471/r/creator123");
+  expect(await page.evaluate(() => (window as unknown as { referralShares: ShareData[] }).referralShares[0].url)).toBe("https://play.google.com/store/apps/details?id=khasigpt.com&referrer=creator_referral%3Dcreator123");
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.getByRole("button", { name: "Referral options", exact: true }).click();
   await page.getByRole("menuitem", { name: "Copy referral link", exact: true }).click();
   await expect(page.getByText("Copied successfully.", { exact: true })).toBeVisible();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("http://localhost:3471/r/creator123");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("https://play.google.com/store/apps/details?id=khasigpt.com&referrer=creator_referral%3Dcreator123");
   await page.screenshot({ path: "tmp/creator-dashboard-desktop.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("button", { name: "View link", exact: true })).toBeVisible();

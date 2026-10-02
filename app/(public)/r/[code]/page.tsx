@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { REFERRAL_COPY } from "@/lib/referrals/copy";
+import { creatorPlayStoreUrl } from "@/lib/referrals/links";
 import { normalizeReferralCode } from "@/lib/referrals/rules";
 import { getReferralByCode } from "@/lib/referrals/service";
 import { getReferralSettings } from "@/lib/referrals/settings";
@@ -13,7 +14,7 @@ export default async function ReferralPage({ params }: { params: Promise<{ code:
   if (!code) notFound();
   const [referral, settings, session] = await withTimeout(Promise.all([getReferralByCode(code), getReferralSettings(), auth()]), 7000);
   if (!referral || settings.referralAccessMode === "disabled" || (settings.referralAccessMode === "admin_only" && session?.user.role !== "admin")) notFound();
-  const playUrl = `https://play.google.com/store/apps/details?id=khasigpt.com&referrer=${encodeURIComponent(`creator_referral=${code}`)}`;
+  const playUrl = creatorPlayStoreUrl(code);
   return <div className="mx-auto max-w-xl space-y-6 px-5 py-16">
     <h1 className="text-3xl font-semibold"><EditableTranslation translationKey="referrals.join" defaultText={REFERRAL_COPY.join} /></h1>
     <p><EditableTranslation translationKey="referrals.welcome" defaultText={REFERRAL_COPY.welcome} /></p>

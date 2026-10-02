@@ -9,6 +9,7 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, Di
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { REFERRAL_COPY } from "@/lib/referrals/copy";
 import type { CreatorReferralDashboard } from "@/lib/referrals/creator-dashboard";
+import { creatorPlayStoreUrl } from "@/lib/referrals/links";
 import { referralCompactExpiry, referralCompactTerm, referralDate, referralExpiry, referralStatus, referralTerm } from "@/lib/referrals/presentation";
 
 function T({ name, values }: { name: keyof typeof REFERRAL_COPY; values?: Record<string, string | number> }) {
@@ -31,7 +32,6 @@ export function CreatorReferrals() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [pending, setPending] = useState<{ id: string; action: "copy" | "share" } | null>(null);
-  const [origin, setOrigin] = useState("");
   const [selected, setSelected] = useState<{ row: ReferralRow; mode: "link" | "details" } | null>(null);
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -43,13 +43,12 @@ export function CreatorReferrals() {
     } catch { if (!signal?.aborted) setError(true); }
     finally { if (!signal?.aborted) setLoading(false); }
   }, [page]);
-  useEffect(() => { setOrigin(window.location.origin); }, []);
   useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort(); }, [load]);
   const act = async (id: string, code: string, action: "copy" | "share") => {
     if (pending) return;
     setPending({ id, action });
     try {
-      const url = `${window.location.origin}/r/${code}`;
+      const url = creatorPlayStoreUrl(code);
       if (action === "share" && navigator.share) {
         await navigator.share({ title: "KhasiGPT", text: translate("referrals.share_message", REFERRAL_COPY.share_message), url });
       } else {
@@ -98,7 +97,7 @@ export function CreatorReferrals() {
     <Dialog open={selected !== null} onOpenChange={open => { if (!open) setSelected(null); }}>
       {selected ? <DialogContent className="max-h-[85dvh] w-[calc(100%-2rem)] overflow-y-auto rounded-lg">
         <DialogHeader><DialogTitle><T name={selected.mode === "link" ? "link" : "link_details"} /></DialogTitle><DialogDescription><T name={selected.mode === "link" ? "share_message" : "link_details_description"} /></DialogDescription></DialogHeader>
-        <a className="cursor-pointer break-all underline" href={`/r/${selected.row.code}`} target="_blank" rel="noopener noreferrer">{origin}/r/{selected.row.code}</a>
+        <a className="cursor-pointer break-all underline" href={creatorPlayStoreUrl(selected.row.code)} target="_blank" rel="noopener noreferrer">{creatorPlayStoreUrl(selected.row.code)}</a>
         {selected.mode === "details" ? <>
           <dl className="grid grid-cols-2 gap-4 text-sm">{([
             ["commission_percentage", `${selected.row.percentage}%`], ["short_duration", <Term key="duration" label={referralTerm(selected.row)} />],
