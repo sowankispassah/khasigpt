@@ -22,7 +22,7 @@ test("expiry describes signup-relative terms without inventing a single link dea
   const rule = { duration: "months", months: 3, windowDays: null, rechargeBefore: null };
   assert.deepEqual(referralExpiry(rule), { key: "months_display", values: { count: 3 } });
   assert.deepEqual(referralExpiry({ ...rule, duration: "signup_window", months: null, windowDays: 14 }), { key: "days_display", values: { count: 14 } });
-  assert.equal(referralExpiry({ ...rule, duration: "first_recharge" }).key, "until_first_recharge");
+  assert.equal(referralExpiry({ ...rule, duration: "first_recharge" }).key, "users_first_recharge");
   assert.equal(referralExpiry({ ...rule, duration: "indefinite" }).key, "no_expiry");
 });
 

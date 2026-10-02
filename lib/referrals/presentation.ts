@@ -4,7 +4,7 @@ type TermLabel = { key: string; values: Record<string, string | number> };
 export function referralTerm(row: ReferralTerm): TermLabel {
   if (row.duration === "months") return { key: "months_display", values: { count: row.months ?? 0 } };
   if (row.duration === "signup_window" && row.windowDays) return { key: "days_display", values: { count: row.windowDays } };
-  return { key: row.duration === "signup_window" ? "cutoff_display" : row.duration === "first_recharge" ? "first_recharge" : "indefinite", values: {} };
+  return { key: row.duration === "signup_window" ? "cutoff_display" : row.duration === "first_recharge" ? "users_first_recharge" : "indefinite", values: {} };
 }
 
 export function referralDate(value: string | null | undefined, includeTime = false) {
@@ -16,7 +16,7 @@ export function referralExpiry(row: ReferralTerm): TermLabel {
   if (row.rechargeBefore) return { key: "expiry_at", values: { date: referralDate(row.rechargeBefore, true) } };
   if (row.duration === "months") return { key: "months_display", values: { count: row.months ?? 0 } };
   if (row.duration === "signup_window" && row.windowDays) return { key: "days_display", values: { count: row.windowDays } };
-  return { key: row.duration === "first_recharge" ? "until_first_recharge" : "no_expiry", values: {} };
+  return { key: row.duration === "first_recharge" ? "users_first_recharge" : "no_expiry", values: {} };
 }
 
 export function referralStatus(row: { isActive: boolean; rechargeBefore: string | null }, earningEnabled: boolean, now = Date.now()) {

@@ -9,6 +9,7 @@ export const REFERRAL_COPY = {
   short_months: "{count} months",
   short_days: "{count} days",
   short_first: "First recharge",
+  users_first_recharge: "User's first recharge",
   short_indefinite: "Indefinite",
   short_cutoff: "Until cutoff",
   link_options: "Referral options",
