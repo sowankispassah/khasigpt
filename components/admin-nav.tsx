@@ -9,6 +9,7 @@ import {
   Flag,
   Languages,
   LayoutDashboard,
+  Loader2,
   MessageSquare,
   MessagesSquare,
   Percent,
@@ -19,7 +20,7 @@ import {
   UserCog,
   Users,
 } from "lucide-react";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import {
   type ComponentType,
@@ -347,7 +348,7 @@ export function AdminNav({
             className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 font-semibold text-sidebar-foreground text-sm outline-none transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             href="/admin"
             onClick={(event) => handleLinkClick(event, "/admin")}
-            prefetch={false}
+            prefetch="auto"
           >
             <LayoutDashboard className="size-5 shrink-0" />
             <span className="truncate group-data-[collapsible=icon]:hidden">
@@ -379,7 +380,7 @@ export function AdminNav({
                       <SidebarMenuButton
                         asChild
                         className={cn(
-                          "h-9 cursor-pointer",
+                          "h-9 cursor-pointer has-[[data-pending=true]]:bg-primary/10 has-[[data-pending=true]]:text-primary",
                           isActive &&
                             "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
                         )}
@@ -393,10 +394,11 @@ export function AdminNav({
                           onClick={(event) =>
                             handleLinkClick(event, link.href)
                           }
-                          prefetch={false}
+                          // Dynamic admin routes preload their loading boundary,
+                          // keeping section data reads scoped to actual visits.
+                          prefetch="auto"
                         >
-                          <Icon className="size-4" />
-                          <span>{link.labelKey ? <EditableTranslation defaultText={link.label} description={`${link.label} admin navigation label.`} translationKey={link.labelKey} /> : link.label}</span>
+                          <AdminNavLinkContent icon={Icon} link={link} />
                         </Link>
                       </SidebarMenuButton>
                       {badgeCount > 0 ? (
@@ -424,6 +426,45 @@ export function AdminNav({
       </SidebarContent>
       <SidebarRail />
     </Sidebar>
+  );
+}
+
+function AdminNavLinkContent({
+  icon: Icon,
+  link,
+}: {
+  icon: AdminNavItem["icon"];
+  link: AdminNavItem;
+}) {
+  const { pending } = useLinkStatus();
+
+  return (
+    <>
+      <span
+        aria-busy={pending}
+        className="relative size-4 shrink-0"
+        data-pending={pending}
+      >
+        <Icon className={cn("size-4", pending && "invisible")} />
+        {pending ? (
+          <Loader2
+            aria-hidden="true"
+            className="absolute inset-0 size-4 animate-spin motion-reduce:animate-none"
+          />
+        ) : null}
+      </span>
+      <span>
+        {link.labelKey ? (
+          <EditableTranslation
+            defaultText={link.label}
+            description={`${link.label} admin navigation label.`}
+            translationKey={link.labelKey}
+          />
+        ) : (
+          link.label
+        )}
+      </span>
+    </>
   );
 }
 

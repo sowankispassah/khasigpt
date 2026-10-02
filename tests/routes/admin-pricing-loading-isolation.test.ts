@@ -175,8 +175,8 @@ test.describe("admin pricing loading isolation", () => {
       expect(source).toContain("defaultOpen={false}");
       expect(source).toContain("group-data-[state=open]:rotate-180");
     }
-    expect(planTableSource).toContain(
-      'translate(\n                "admin.pricing.toggle_pricing_plans"'
+    expect(planTableSource).toMatch(
+      /translate\(\s*"admin\.pricing\.toggle_pricing_plans"/
     );
     expect(modelTableSource).toContain(
       '"admin.pricing.toggle_model_section"'
