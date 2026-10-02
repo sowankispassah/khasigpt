@@ -7166,6 +7166,12 @@ export async function listModelConfigs({
   }
 }
 
+export async function listAdminSettingsModelConfigs(): Promise<ModelConfig[]> {
+  return withAdminDatabase("settings.models", (adminDb) =>
+    adminDb.select().from(modelConfig).orderBy(desc(modelConfig.createdAt)).limit(200)
+  );
+}
+
 export async function updateModelConfig({
   id,
   ...patch
@@ -14401,6 +14407,12 @@ export async function updateLanguageActiveState({
     .where(eq(language.id, id));
 }
 
+export async function listAdminLanguagesWithSettings() {
+  return withAdminDatabase("settings.languages", (adminDb) =>
+    adminDb.select().from(language).orderBy(asc(language.name))
+  );
+}
+
 export async function listLanguagesWithSettings() {
   return await db.select().from(language).orderBy(asc(language.name));
 }
@@ -14512,9 +14524,17 @@ export async function getTranslationFeatureLanguageByCodeRaw(
   }
 }
 
-export async function listTranslationFeatureLanguages() {
+export async function listAdminTranslationFeatureLanguages() {
+  return withAdminDatabase("settings.translation-languages", (adminDb) =>
+    listTranslationFeatureLanguages(adminDb)
+  );
+}
+
+export async function listTranslationFeatureLanguages(
+  database: PostgresJsDatabase<Record<string, unknown>> = db
+) {
   try {
-    return await db
+    return await database
       .select()
       .from(translationFeatureLanguage)
       .orderBy(
@@ -14526,7 +14546,7 @@ export async function listTranslationFeatureLanguages() {
       throw error;
     }
 
-    return (await db
+    return (await database
       .select({
         id: translationFeatureLanguage.id,
         code: translationFeatureLanguage.code,

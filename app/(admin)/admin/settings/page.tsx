@@ -77,10 +77,10 @@ import {
 import {
   getAdminAppSettingsByKeys,
   getLastKnownAppSettingsByKeys,
+  listAdminLanguagesWithSettings,
+  listAdminSettingsModelConfigs,
+  listAdminTranslationFeatureLanguages,
   listImageModelConfigs,
-  listLanguagesWithSettings,
-  listModelConfigs,
-  listTranslationFeatureLanguages,
 } from "@/lib/db/queries";
 import { normalizeFreeMessageSettings } from "@/lib/free-messages";
 import {
@@ -216,13 +216,8 @@ const NON_ESSENTIAL_SETTINGS_SNAPSHOT_KEYS = SETTINGS_SNAPSHOT_KEYS.filter(
   (key) => !ESSENTIAL_SETTING_KEY_SET.has(key)
 );
 const listAdminModelConfigsCached = unstable_cache(
-  () =>
-    listModelConfigs({
-      includeDisabled: true,
-      includeDeleted: true,
-      limit: 200,
-    }),
-  ["admin-settings:model-configs:v1"],
+  () => listAdminSettingsModelConfigs(),
+  ["admin-settings:model-configs:v2"],
   {
     revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
     tags: [ADMIN_SETTINGS_MODELS_CACHE_TAG, MODEL_REGISTRY_CACHE_TAG],
@@ -237,16 +232,16 @@ const listAdminImageModelConfigsCached = unstable_cache(
   }
 );
 const listAdminLanguagesCached = unstable_cache(
-  () => listLanguagesWithSettings(),
-  ["admin-settings:languages:v1"],
+  () => listAdminLanguagesWithSettings(),
+  ["admin-settings:languages:v2"],
   {
     revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
     tags: [ADMIN_SETTINGS_LANGUAGES_CACHE_TAG, "languages"],
   }
 );
 const listAdminTranslationFeatureLanguagesCached = unstable_cache(
-  () => listTranslationFeatureLanguages(),
-  ["admin-settings:translation-feature-languages:v1"],
+  () => listAdminTranslationFeatureLanguages(),
+  ["admin-settings:translation-feature-languages:v2"],
   {
     revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
     tags: [ADMIN_SETTINGS_TRANSLATION_FEATURE_LANGUAGES_CACHE_TAG],

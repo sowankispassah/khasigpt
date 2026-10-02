@@ -97,3 +97,63 @@ test("a failed admin read rejects without remembering fallback success", async (
   await expect(load(["essential"])).rejects.toThrow("Admin connection unavailable");
   expect(remembered).toEqual([]);
 });
+
+for (const [name, expectedLabel] of [
+  ["listAdminSettingsModelConfigs", "settings.models"],
+  ["listAdminLanguagesWithSettings", "settings.languages"],
+  ["listAdminTranslationFeatureLanguages", "settings.translation-languages"],
+] as const) {
+  test(`${name} remains independent of a blocked shared pool`, async () => {
+    const rows = [{ id: "confirmed" }];
+    const labels: string[] = [];
+    let limit: number | undefined;
+    const adminDb = {
+      select: () => ({ from: () => ({ orderBy: () => Object.assign(Promise.resolve(rows), {
+        limit: (value: number) => { limit = value; return Promise.resolve(rows); },
+      }) }) }),
+    };
+    const load = await loadFunction("lib/db/queries.ts", name, {
+      db: { select: () => { throw new Error("Shared queue expired"); } },
+      modelConfig: { createdAt: "createdAt" },
+      language: { name: "name" },
+      asc: (column: unknown) => column,
+      desc: (column: unknown) => column,
+      listTranslationFeatureLanguages: (database: unknown) => {
+        expect(database).toBe(adminDb);
+        return rows;
+      },
+      withAdminDatabase: (label: string, query: (database: unknown) => Promise<unknown>) => {
+        labels.push(label);
+        return query(adminDb);
+      },
+    });
+    expect(await load()).toEqual(rows);
+    expect(labels).toEqual([expectedLabel]);
+    if (name === "listAdminSettingsModelConfigs") expect(limit).toBe(200);
+  });
+}
+
+test("translation language compatibility fallback also uses the supplied admin database", async () => {
+  const rows = [{ id: "confirmed", speechModelConfigId: null }];
+  const missingColumn = new Error("Missing legacy column");
+  let selections = 0;
+  const database = {
+    select: (columns?: unknown) => {
+      selections += 1;
+      return { from: () => ({ orderBy: async () => {
+        if (!columns) throw missingColumn;
+        return rows;
+      } }) };
+    },
+  };
+  const load = await loadFunction("lib/db/queries.ts", "listTranslationFeatureLanguages", {
+    db: { select: () => { throw new Error("Shared queue expired"); } },
+    translationFeatureLanguage: {},
+    asc: (column: unknown) => column,
+    desc: (column: unknown) => column,
+    isMissingTranslationSpeechModelColumnError: (error: unknown) => error === missingColumn,
+    sql: () => ({ as: () => "null" }),
+  });
+  expect(await load(database)).toEqual(rows);
+  expect(selections).toBe(2);
+});
