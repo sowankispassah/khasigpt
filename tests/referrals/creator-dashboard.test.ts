@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { creatorReferralDashboard } from "../../lib/referrals/creator-dashboard";
-import { referralDate, referralExpiry, referralStatus } from "../../lib/referrals/presentation";
+import { referralCompactExpiry, referralCompactTerm, referralDate, referralExpiry, referralStatus } from "../../lib/referrals/presentation";
 import type { ReferralDashboard } from "../../lib/referrals/service";
 
 test("creator response excludes admin payout notes, identities and payment records", () => {
@@ -30,8 +30,16 @@ test("cutoffs display in IST and status respects inactive, expired and program g
   const row = { isActive: true, rechargeBefore: "2026-10-02T00:00:00Z" };
   assert.equal(referralStatus(row, true, Date.parse("2026-10-03T00:00:00Z")), "expired");
   assert.equal(referralStatus({ ...row, isActive: false }, true), "inactive");
-  assert.equal(referralStatus({ ...row, rechargeBefore: null }, false), "program_paused");
+  assert.equal(referralStatus({ ...row, rechargeBefore: null }, false), "inactive");
   assert.equal(referralStatus({ ...row, rechargeBefore: null }, true), "active");
   assert.match(referralDate(row.rechargeBefore, true), /5:30/);
   assert.equal(referralDate("bad date"), "—");
+});
+
+test("compact labels keep relative expiry separate from a fixed link cutoff", () => {
+  const row = { duration: "months", months: 3, windowDays: null, rechargeBefore: null };
+  assert.deepEqual(referralCompactTerm(row), { key: "short_months", values: { count: 3 } });
+  assert.equal(referralCompactExpiry(row).key, "per_user");
+  assert.equal(referralCompactExpiry({ ...row, duration: "indefinite" }).key, "no_expiry");
+  assert.equal(referralCompactExpiry({ ...row, rechargeBefore: "2026-12-01T00:00:00Z" }).values.value, "1 Dec 2026");
 });

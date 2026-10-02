@@ -22,5 +22,16 @@ export function referralExpiry(row: ReferralTerm): TermLabel {
 export function referralStatus(row: { isActive: boolean; rechargeBefore: string | null }, earningEnabled: boolean, now = Date.now()) {
   if (!row.isActive) return "inactive";
   if (row.rechargeBefore && new Date(row.rechargeBefore).getTime() < now) return "expired";
-  return earningEnabled ? "active" : "program_paused";
+  return earningEnabled ? "active" : "inactive";
+}
+
+export function referralCompactTerm(row: ReferralTerm): TermLabel {
+  if (row.duration === "months") return { key: "short_months", values: { count: row.months ?? 0 } };
+  if (row.duration === "signup_window" && row.windowDays) return { key: "short_days", values: { count: row.windowDays } };
+  return { key: row.duration === "first_recharge" ? "short_first" : row.duration === "signup_window" ? "short_cutoff" : "short_indefinite", values: {} };
+}
+
+export function referralCompactExpiry(row: ReferralTerm): TermLabel {
+  if (row.rechargeBefore) return { key: "rule_values", values: { value: referralDate(row.rechargeBefore) } };
+  return { key: row.duration === "indefinite" ? "no_expiry" : "per_user", values: {} };
 }
