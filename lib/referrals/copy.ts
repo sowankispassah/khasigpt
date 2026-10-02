@@ -9,6 +9,7 @@ export const REFERRAL_COPY = {
   saved: "Saved successfully.",
   create: "Assign referral link",
   creator: "Creator",
+  select_creator: "Select creator",
   percentage: "Creator commission (%)",
   duration: "Commission duration",
   indefinite: "Every recharge indefinitely",

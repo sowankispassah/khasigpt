@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "@/components/language-provider";
-import { EditableTranslation } from "@/components/translation-edit-provider";
+import { EditableTranslation, useEditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 import type { FeatureAccessMode } from "@/lib/feature-access";
 import { REFERRAL_COPY } from "@/lib/referrals/copy";
@@ -16,12 +16,14 @@ type Data = ReferralDashboard & { settings: { referralAccessMode: FeatureAccessM
 
 export function AdminReferralsManager({ creators, creatorsConfirmed }: { creators: CreatorOption[]; creatorsConfirmed: boolean }) {
   const { translate } = useTranslation();
+  const creatorPlaceholder = useEditableTranslation("referrals.select_creator", REFERRAL_COPY.select_creator);
   const [data, setData] = useState<Data | null>(null);
   const [page, setPage] = useState(1);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [creatorId, setCreatorId] = useState("");
   const [duration, setDuration] = useState("indefinite");
   const load = useCallback(async () => {
     setLoading(true);
@@ -40,6 +42,7 @@ export function AdminReferralsManager({ creators, creatorsConfirmed }: { creator
     try {
       const response = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
       if (!response.ok) throw new Error();
+      if (id === "create") setCreatorId("");
       setSaved(true); await load();
     } catch { setError(true); }
     finally { setPending(null); }
@@ -63,6 +66,7 @@ export function AdminReferralsManager({ creators, creatorsConfirmed }: { creator
     </div> : null}
     <form className="grid gap-4 sm:grid-cols-2" onSubmit={event => {
       event.preventDefault();
+      if (!creatorId || pending) return;
       const form = new FormData(event.currentTarget);
       const cutoff = String(form.get("cutoff") ?? "");
       void mutate("create", "/api/admin/referrals", {
@@ -72,12 +76,12 @@ export function AdminReferralsManager({ creators, creatorsConfirmed }: { creator
         rechargeBefore: duration === "signup_window" && cutoff ? new Date(cutoff).toISOString() : null,
       }, "POST");
     }}>
-      <label className={labelClass}><T name="creator" /><select name="creator" className={selectClass} required disabled={!creatorsConfirmed || pending !== null}>{creators.map(creator => <option key={creator.id} value={creator.id}>{creator.name}</option>)}</select></label>
+      <label className={labelClass}><span><T name="creator" />{creatorPlaceholder.editButton}</span><select name="creator" className={selectClass} value={creatorId} onChange={event => setCreatorId(event.target.value)} required disabled={!creatorsConfirmed || pending !== null}><option value="" disabled>{creatorPlaceholder.text}</option>{creators.map(creator => <option key={creator.id} value={creator.id}>{creator.name}</option>)}</select></label>
       <label className={labelClass} htmlFor="referral-percentage" aria-label={translate("referrals.percentage", REFERRAL_COPY.percentage)}><T name="percentage" /><input className="h-10 rounded-md border bg-background px-3" id="referral-percentage" name="percentage" type="number" min={1} max={100} step={1} required /></label>
       <label className={labelClass}><T name="duration" /><select name="duration" className={selectClass} value={duration} onChange={event => setDuration(event.target.value)}>{(["indefinite", "months", "first_recharge", "signup_window"] as const).map(mode => <option value={mode} key={mode}>{translate(`referrals.${mode}`, REFERRAL_COPY[mode])}</option>)}</select></label>
       {duration === "months" ? <label className={labelClass} htmlFor="referral-months" aria-label={translate("referrals.month_count", REFERRAL_COPY.month_count)}><T name="month_count" /><input className="h-10 rounded-md border bg-background px-3" id="referral-months" name="months" type="number" min={1} max={1200} step={1} required /></label> : null}
       {duration === "signup_window" ? <><label className={labelClass} htmlFor="referral-days" aria-label={translate("referrals.window_days", REFERRAL_COPY.window_days)}><T name="window_days" /><input className="h-10 rounded-md border bg-background px-3" id="referral-days" name="days" type="number" min={1} max={36500} step={1} /></label><label className={labelClass} htmlFor="referral-cutoff" aria-label={translate("referrals.cutoff", REFERRAL_COPY.cutoff)}><T name="cutoff" /><input className="h-10 rounded-md border bg-background px-3" id="referral-cutoff" name="cutoff" type="datetime-local" /></label></> : null}
-      <div className="sm:col-span-2"><p className="mb-3 text-xs text-muted-foreground"><T name="rule_note" /></p><Button type="submit" disabled={!data || !creatorsConfirmed || !creators.length || pending !== null}>{pending === "create" ? <T name="saving" /> : <T name="create" />}</Button></div>
+      <div className="sm:col-span-2"><p className="mb-3 text-xs text-muted-foreground"><T name="rule_note" /></p><Button type="submit" disabled={!data || !creatorsConfirmed || !creatorId || !creators.length || pending !== null}>{pending === "create" ? <T name="saving" /> : <T name="create" />}</Button></div>
     </form>
     {data?.referrals.map(referral => <div className="space-y-3 rounded-lg border p-4" key={referral.id}>
       <p className="font-medium">{referral.creatorName} · {referral.percentage}% · <T name={referral.duration as "indefinite"} /> {referral.months ?? referral.windowDays ?? ""} {referral.rechargeBefore ? new Date(referral.rechargeBefore).toLocaleString() : ""}</p>
