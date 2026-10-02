@@ -55,8 +55,15 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Never cache API responses or Next.js internals (RSC/chunks). Let the browser handle caching.
-  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/_next/")) {
+  // Admin documents must stream directly. Navigation preload through the worker
+  // can hold their first response until deferred server work has finished.
+  // Keep protected admin pages out of the offline fallback as well.
+  if (
+    url.pathname === "/admin" ||
+    url.pathname.startsWith("/admin/") ||
+    url.pathname.startsWith("/api/") ||
+    url.pathname.startsWith("/_next/")
+  ) {
     return;
   }
 

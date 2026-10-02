@@ -126,3 +126,17 @@ test("Settings renders its confirmed sections without browser errors", async ({ 
   await expect(page.getByRole("button", { name: "Toggle admin sidebar", exact: true })).toBeEnabled();
   expect(errors).toEqual([]);
 });
+
+test("an active service worker lets admin documents stream directly", async ({ page }) => {
+  await page.goto("/admin/pricing");
+  await expect(page.getByRole("heading", { name: "Pricing", exact: true })).toBeVisible({ timeout: 60_000 });
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.ready;
+  });
+  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+  const response = await page.reload();
+  expect(response?.fromServiceWorker()).toBe(false);
+  await expect(page.getByRole("heading", { name: "Pricing", exact: true })).toBeVisible({ timeout: 60_000 });
+  expect(await page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+});
