@@ -26,12 +26,11 @@ test("expiry describes signup-relative terms without inventing a single link dea
   assert.equal(referralExpiry({ ...rule, duration: "indefinite" }).key, "no_expiry");
 });
 
-test("cutoffs display in IST and status respects inactive, expired and program gating", () => {
+test("cutoffs display in IST and link status respects inactive and expired records", () => {
   const row = { isActive: true, rechargeBefore: "2026-10-02T00:00:00Z" };
-  assert.equal(referralStatus(row, true, Date.parse("2026-10-03T00:00:00Z")), "expired");
-  assert.equal(referralStatus({ ...row, isActive: false }, true), "inactive");
-  assert.equal(referralStatus({ ...row, rechargeBefore: null }, false), "inactive");
-  assert.equal(referralStatus({ ...row, rechargeBefore: null }, true), "active");
+  assert.equal(referralStatus(row, Date.parse("2026-10-03T00:00:00Z")), "expired");
+  assert.equal(referralStatus({ ...row, isActive: false }), "inactive");
+  assert.equal(referralStatus({ ...row, rechargeBefore: null }), "active");
   assert.match(referralDate(row.rechargeBefore, true), /5:30/);
   assert.equal(referralDate("bad date"), "—");
 });

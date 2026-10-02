@@ -19,10 +19,11 @@ export function referralExpiry(row: ReferralTerm): TermLabel {
   return { key: row.duration === "first_recharge" ? "users_first_recharge" : "no_expiry", values: {} };
 }
 
-export function referralStatus(row: { isActive: boolean; rechargeBefore: string | null }, earningEnabled: boolean, now = Date.now()) {
+// Link status describes the assigned record. Program access is reported separately.
+export function referralStatus(row: { isActive: boolean; rechargeBefore: string | null }, now = Date.now()) {
   if (!row.isActive) return "inactive";
   if (row.rechargeBefore && new Date(row.rechargeBefore).getTime() < now) return "expired";
-  return earningEnabled ? "active" : "inactive";
+  return "active";
 }
 
 export function referralCompactTerm(row: ReferralTerm): TermLabel {

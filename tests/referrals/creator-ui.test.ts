@@ -65,7 +65,8 @@ test("creator table shows terms and supports sharing, copy and responsive scroll
   expect(clientErrors).toEqual([]);
   await expect(referralTable.getByText("3 months", { exact: true })).toBeVisible();
   await expect(referralTable.getByText("Per user", { exact: true })).toBeVisible();
-  await expect(referralTable.getByText("Inactive", { exact: true })).toBeVisible();
+  await expect(referralTable.getByText("Active", { exact: true })).toBeVisible();
+  await expect(page.getByText("Your assigned links are shown here. New referral signups and commissions are currently not enabled by the admin.", { exact: true })).toBeVisible();
   await expect(referralTable.getByText("Program not enabled", { exact: true })).toHaveCount(0);
   await expect(page.getByText("User savings", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Delete", exact: true })).toHaveCount(0);
@@ -77,6 +78,7 @@ test("creator table shows terms and supports sharing, copy and responsive scroll
   await page.getByRole("button", { name: "Referral options", exact: true }).click();
   await page.getByRole("menuitem", { name: "View details", exact: true }).click();
   const details = page.getByRole("dialog");
+  await expect(details.getByText("Active", { exact: true })).toBeVisible();
   await expect(details.getByText("3 months after each user's signup", { exact: true })).toHaveCount(2);
   await expect(details.getByText("Commission %", { exact: true })).toBeVisible();
   await expect(details.getByText("Earnings and payouts", { exact: false })).toBeVisible();

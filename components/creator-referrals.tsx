@@ -83,7 +83,7 @@ export function CreatorReferrals() {
                 <td className="px-4 py-3"><Term label={referralCompactExpiry(row)} /></td>
                 <td className="px-4 py-3"><Term label={referralCompactTerm(row)} /></td>
                 <td className="whitespace-nowrap px-4 py-3">{referralDate(row.createdAt)}</td>
-                <td className="px-4 py-3"><T name={referralStatus(row, data.earningEnabled)} /></td>
+                <td className="px-4 py-3"><T name={referralStatus(row)} /></td>
                 <td className="px-2 py-3"><DropdownMenu><DropdownMenuTrigger asChild><Button className="cursor-pointer" variant="ghost" size="icon" disabled={pending !== null} aria-label={translate("referrals.link_options", REFERRAL_COPY.link_options)}>{pending?.id === row.id ? <Loader2 className="size-4 animate-spin" /> : <MoreVertical className="size-4" />}</Button></DropdownMenuTrigger><DropdownMenuContent align="end">
                   {(["share", "copy"] as const).map(action => <DropdownMenuItem key={action} disabled={pending !== null} onSelect={() => void act(row.id, row.code, action)}><T name={action} /></DropdownMenuItem>)}
                   <DropdownMenuItem onSelect={() => setSelected({ row, mode: "details" })}><T name="details" /></DropdownMenuItem>
@@ -103,7 +103,7 @@ export function CreatorReferrals() {
           <dl className="grid grid-cols-2 gap-4 text-sm">{([
             ["commission_percentage", `${selected.row.percentage}%`], ["short_duration", <Term key="duration" label={referralTerm(selected.row)} />],
             ["short_expiry", <Term key="expiry" label={referralExpiry(selected.row)} />], ["assigned", referralDate(selected.row.createdAt)],
-            ["status", <T key="status" name={referralStatus(selected.row, data?.earningEnabled ?? false)} />], ["signups", selected.row.signups],
+            ["status", <T key="status" name={referralStatus(selected.row)} />], ["signups", selected.row.signups],
           ] as const).map(([key, value]) => <div key={key}><dt className="text-muted-foreground"><T name={key} /></dt><dd className="mt-1 font-medium">{value}</dd></div>)}</dl>
           {!selected.row.balances.length ? <p className="text-muted-foreground text-sm"><T name="no_activity" /></p> : selected.row.balances.map(balance => <div className="space-y-3 rounded-lg border p-4" key={balance.currency}>
             <h3 className="font-medium"><T name="balance_chart" /> · {balance.currency}</h3>
