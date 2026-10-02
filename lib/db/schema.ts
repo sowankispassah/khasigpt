@@ -75,6 +75,13 @@ export const user = pgTable(
 
 export type User = InferSelectModel<typeof user>;
 
+export const adminUsersViewState = pgTable("AdminUsersViewState", {
+  adminId: uuid("adminId")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  viewedThrough: timestamp("viewedThrough").notNull().defaultNow(),
+});
+
 export const userFeatureAccessOverride = pgTable(
   "UserFeatureAccessOverride",
   {

@@ -52,6 +52,7 @@ import { startGlobalProgress } from "@/lib/ui/global-progress";
 import { cn } from "@/lib/utils";
 
 type AdminBadgeKey =
+  | "users"
   | "accountDeletionRequests"
   | "contacts"
   | "reports"
@@ -79,7 +80,7 @@ const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     label: "User Management",
     items: [
-      { href: "/admin/users", icon: Users, label: "Users" },
+      { badgeKey: "users", href: "/admin/users", icon: Users, label: "Users" },
       { href: "/admin/account", icon: UserCog, label: "Account" },
       {
         badgeKey: "contacts",
@@ -144,6 +145,54 @@ export function AdminNav({
   const { setOpenMobile } = useSidebar();
   const [badgeCounts, setBadgeCounts] =
     useState<AdminBadgeCounts>(initialBadgeCounts);
+
+  useEffect(() => {
+    let cancelled = false;
+    let controller: AbortController | undefined;
+    async function refreshUsersCount() {
+      controller?.abort();
+      const requestController = new AbortController();
+      controller = requestController;
+      const timeout = window.setTimeout(() => requestController.abort(), 15_000);
+      try {
+        const response = await fetch("/api/admin/users/unviewed-count", {
+          cache: "no-store",
+          credentials: "same-origin",
+          signal: requestController.signal,
+        });
+        if (!response.ok) return;
+        const body = (await response.json()) as { count?: unknown };
+        if (
+          !cancelled && !requestController.signal.aborted &&
+          typeof body.count === "number" &&
+          Number.isSafeInteger(body.count) && body.count >= 0
+        ) {
+          const count = body.count;
+          setBadgeCounts((current) => ({ ...current, users: count }));
+        }
+      } catch {
+        // This optional read must retain the last confirmed count on failure.
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    }
+    const refresh = () => {
+      if (document.visibilityState === "visible") void refreshUsersCount();
+    };
+    window.addEventListener("admin:users-unviewed-count", refresh);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    refresh();
+    const interval = window.setInterval(refresh, 120_000);
+    return () => {
+      cancelled = true;
+      controller?.abort();
+      window.clearInterval(interval);
+      window.removeEventListener("admin:users-unviewed-count", refresh);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

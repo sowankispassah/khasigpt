@@ -30,6 +30,7 @@ import {
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
 import { AdminUsersTable } from "./admin-users-table";
+import { MarkUsersViewed } from "./mark-users-viewed";
 
 export const dynamic = "force-dynamic";
 
@@ -111,6 +112,7 @@ export default async function AdminUsersPage({
     []
   );
 
+  const checkedThrough = new Date().toISOString();
   let usersSnapshotState = await withQueryState<AdminUsersSnapshot>(
     "users.snapshot",
     getAdminUsersSnapshot({
@@ -178,6 +180,9 @@ export default async function AdminUsersPage({
       scopeKey={userListScope}
     >
       <div className="flex flex-col gap-6">
+        {usersSnapshotState.ok && currentUserId ? (
+          <MarkUsersViewed checkedThrough={checkedThrough} />
+        ) : null}
         <header className="flex items-center justify-between gap-3">
           <div>
             <h2 className="font-semibold text-xl">User management</h2>
