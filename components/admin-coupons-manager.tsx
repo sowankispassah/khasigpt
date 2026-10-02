@@ -1,18 +1,24 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useMemo, useState } from "react";
-
+import { toast } from "sonner";
 import {
   recordCouponPayoutAction,
   setCouponRewardStatusAction,
   setCouponStatusAction,
   upsertCouponAction,
 } from "@/app/(admin)/actions";
+import { AdminPromotionSection, PromotionActions, PromotionDeleteDialog, PromotionText as T } from "@/components/admin-promotion-controls";
 import { FormSubmitButton } from "@/components/form-submit-button";
+import { useTranslation } from "@/components/language-provider";
+import { useEditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { REFERRAL_COPY } from "@/lib/referrals/copy";
 import { cn } from "@/lib/utils";
 
 export type AdminCoupon = {
@@ -73,6 +79,13 @@ export function AdminCouponsManager({
   payoutsConfirmed: boolean;
   redemptionsConfirmed: boolean;
 }) {
+  const router = useRouter();
+  const { translate } = useTranslation();
+  const creatorPlaceholder = useEditableTranslation("referrals.select_creator", REFERRAL_COPY.select_creator);
+  const descriptionPlaceholder = useEditableTranslation("referrals.coupon_description_placeholder", REFERRAL_COPY.coupon_description_placeholder);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedCoupons, setExpandedCoupons] = useState<
     Record<string, boolean>
@@ -155,6 +168,20 @@ export function AdminCouponsManager({
 
   const hasCreators = creatorsConfirmed && creators.length > 0;
 
+  const editCoupon = (id: string | null) => { setSelectedId(id); setEditorOpen(true); };
+  async function changeStatus(coupon: AdminCoupon) {
+    const form = new FormData();
+    form.set("couponId", coupon.id); form.set("isActive", String(!coupon.isActive));
+    await setCouponStatusAction(form); router.refresh();
+  }
+  async function deleteCoupon() {
+    try {
+      const response = await fetch("/api/admin/coupons", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: deleteId }), signal: AbortSignal.timeout(25000) });
+      if (!response.ok) { toast.error(translate(`referrals.${response.status === 409 ? "delete_in_use" : "unavailable"}`, response.status === 409 ? REFERRAL_COPY.delete_in_use : REFERRAL_COPY.unavailable)); return false; }
+      router.refresh(); toast.success(translate("referrals.saved", REFERRAL_COPY.saved)); return true;
+    } catch { toast.error(translate("referrals.unavailable", REFERRAL_COPY.unavailable)); return false; }
+  }
+
   const toggleCouponDetails = useCallback((couponId: string) => {
     setExpandedCoupons((previous) => ({
       ...previous,
@@ -185,7 +212,7 @@ export function AdminCouponsManager({
             {message} Refresh this admin section to retry.
           </div>
         ))}
-      <section className="grid gap-4 md:grid-cols-4">
+      <AdminPromotionSection title={<T name="coupon_summary" />}><div className="grid gap-4 md:grid-cols-4">
         <SummaryCard
           label="Active coupons"
           value={couponsConfirmed ? coupons.length.toString() : "Unavailable"}
@@ -214,20 +241,9 @@ export function AdminCouponsManager({
               : "Unavailable"
           }
         />
-      </section>
+      </div></AdminPromotionSection>
 
-      <section className="rounded-2xl border bg-card/60 p-4 shadow-sm">
-        <header className="mb-4 flex flex-col gap-1 border-b pb-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="font-semibold text-lg">Coupon inventory</h2>
-            <p className="text-muted-foreground text-sm">
-              Track usage, toggle availability, and inspect recent redeemers.
-            </p>
-          </div>
-          <p className="text-muted-foreground text-xs">
-            Click a code to edit or expand usage.
-          </p>
-        </header>
+      <AdminPromotionSection title={<T name="coupon_inventory" />} description={<T name="coupon_inventory_description" />} actions={<Button className="cursor-pointer" disabled={!hasCreators} onClick={() => editCoupon(null)}><T name="add_coupon" /></Button>}>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
@@ -262,7 +278,7 @@ export function AdminCouponsManager({
                 <tr>
                   <td
                     className="px-3 py-6 text-center text-muted-foreground"
-                    colSpan={11}
+                    colSpan={12}
                   >
                     No coupons created yet.
                   </td>
@@ -275,8 +291,8 @@ export function AdminCouponsManager({
                       <tr className="bg-card/60">
                         <td className="px-3 py-3 font-semibold uppercase tracking-wide">
                           <button
-                            className="underline-offset-2 hover:underline"
-                            onClick={() => setSelectedId(coupon.id)}
+                            className="cursor-pointer underline-offset-2 hover:underline"
+                            onClick={() => editCoupon(coupon.id)}
                             type="button"
                           >
                             {coupon.code}
@@ -372,41 +388,13 @@ export function AdminCouponsManager({
                           </span>
                         </td>
                         <td className="px-3 py-3">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Button
-                              className="cursor-pointer"
-                              onClick={() => setSelectedId(coupon.id)}
-                              size="sm"
-                              type="button"
-                              variant="secondary"
-                            >
-                              Edit
-                            </Button>
-                            <form
-                              action={setCouponStatusAction}
-                              className="inline-flex"
-                            >
-                              <input
-                                name="couponId"
-                                type="hidden"
-                                value={coupon.id}
-                              />
-                              <input
-                                name="isActive"
-                                type="hidden"
-                                value={(!coupon.isActive).toString()}
-                              />
-                              <FormSubmitButton
-                                className="min-w-[100px]"
-                                size="sm"
-                                variant={
-                                  coupon.isActive ? "outline" : "default"
-                                }
-                              >
-                                {coupon.isActive ? "Deactivate" : "Activate"}
-                              </FormSubmitButton>
-                            </form>
-                          </div>
+                          <PromotionActions label={translate("referrals.operations", REFERRAL_COPY.operations).replace("{code}", coupon.code)} items={[
+                            { name: "copy_code", action: async () => { await navigator.clipboard.writeText(coupon.code); toast.success(translate("referrals.copied", REFERRAL_COPY.copied)); } },
+                            { name: "edit_coupon", action: () => editCoupon(coupon.id) },
+                            { name: "details", action: () => toggleCouponDetails(coupon.id) },
+                            { name: coupon.isActive ? "make_inactive" : "make_active", action: () => changeStatus(coupon) },
+                            { name: "delete", destructive: true, disabled: coupon.usageCount > 0 || coupon.totalPaidInPaise > 0, action: () => setDeleteId(coupon.id) },
+                          ]} />
                         </td>
                         <td className="px-3 py-3">
                           <Button
@@ -422,7 +410,7 @@ export function AdminCouponsManager({
                       </tr>
                       {isExpanded ? (
                         <tr>
-                          <td className="bg-muted/30 px-3 py-4" colSpan={11}>
+                          <td className="bg-muted/30 px-3 py-4" colSpan={12}>
                             <div className="rounded-xl border border-border/70 bg-background/70 p-4">
                               <div className="grid gap-6 md:grid-cols-2">
                                 <div>
@@ -579,19 +567,9 @@ export function AdminCouponsManager({
             </tbody>
           </table>
         </div>
-      </section>
+      </AdminPromotionSection>
 
-      <section className="rounded-2xl border bg-card/60 p-4 shadow-sm">
-        <header className="mb-4">
-          <h2 className="font-semibold text-lg">
-            {selectedCoupon ? "Edit coupon" : "Create coupon"}
-          </h2>
-          <p className="text-muted-foreground text-sm">
-            {selectedCoupon
-              ? "Update details or validity for the selected code."
-              : "Issue a new code and assign it to a creator."}
-          </p>
-        </header>
+      <Dialog open={editorOpen} onOpenChange={value => { if (!saving) setEditorOpen(value); }}><DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-xl"><DialogHeader><DialogTitle><T name={selectedCoupon ? "edit_coupon" : "add_coupon"} /></DialogTitle><DialogDescription><T name="coupon_inventory_description" /></DialogDescription></DialogHeader>
         {hasCreators ? null : (
           <div className="rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-amber-800 text-sm">
             {creatorsConfirmed
@@ -599,14 +577,14 @@ export function AdminCouponsManager({
               : "Creator options could not be loaded. Coupon saves are disabled until this section is refreshed."}
           </div>
         )}
-        <form action={upsertCouponAction} className="mt-4 space-y-4">
+        <form key={selectedId ?? "new"} action={async form => { setSaving(true); try { await upsertCouponAction(form); setEditorOpen(false); router.refresh(); } catch { toast.error(translate("referrals.unavailable", REFERRAL_COPY.unavailable)); } finally { setSaving(false); } }} className="mt-4 space-y-4">
           <input
             name="couponId"
             type="hidden"
             value={selectedCoupon?.id ?? ""}
           />
           <div>
-            <Label className="font-medium text-sm">Coupon code</Label>
+            <Label className="font-medium text-sm"><T name="coupon_code_label" /></Label>
             <Input
               className="mt-1 font-mono uppercase"
               defaultValue={selectedCoupon?.code ?? ""}
@@ -618,7 +596,7 @@ export function AdminCouponsManager({
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <Label className="font-medium text-sm">Discount %</Label>
+              <Label className="font-medium text-sm"><T name="discount" /></Label>
               <Input
                 className="mt-1"
                 defaultValue={selectedCoupon?.discountPercentage ?? 10}
@@ -630,15 +608,16 @@ export function AdminCouponsManager({
               />
             </div>
             <div>
-              <Label className="font-medium text-sm">Creator</Label>
+              <Label className="font-medium text-sm"><T name="creator" />{creatorPlaceholder.editButton}</Label>
               <select
-                className="mt-1 h-10 w-full rounded-md border border-input bg-background px-2 text-sm"
+                className="mt-1 h-10 w-full cursor-pointer rounded-md border border-input bg-background px-2 text-sm"
                 defaultValue={
-                  selectedCoupon?.creatorId ?? creators[0]?.id ?? ""
+                  selectedCoupon?.creatorId ?? ""
                 }
                 name="creatorId"
                 required
               >
+                <option value="" disabled>{creatorPlaceholder.text}</option>
                 {creators.map((creator) => (
                   <option key={creator.id} value={creator.id}>
                     {creator.name || creator.email}
@@ -649,7 +628,7 @@ export function AdminCouponsManager({
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <Label className="font-medium text-sm">Valid from</Label>
+              <Label className="font-medium text-sm"><T name="valid_from" /></Label>
               <Input
                 className="mt-1"
                 defaultValue={selectedCoupon?.validFrom?.slice(0, 10)}
@@ -659,7 +638,7 @@ export function AdminCouponsManager({
               />
             </div>
             <div>
-              <Label className="font-medium text-sm">Valid until</Label>
+              <Label className="font-medium text-sm"><T name="valid_until" /></Label>
               <Input
                 className="mt-1"
                 defaultValue={selectedCoupon?.validTo?.slice(0, 10) ?? ""}
@@ -668,7 +647,7 @@ export function AdminCouponsManager({
               />
             </div>
             <div>
-              <Label className="font-medium text-sm">Creator reward %</Label>
+              <Label className="font-medium text-sm"><T name="creator_reward" /></Label>
               <Input
                 className="mt-1"
                 defaultValue={selectedCoupon?.creatorRewardPercentage ?? 0}
@@ -681,82 +660,50 @@ export function AdminCouponsManager({
             </div>
           </div>
           <div>
-            <Label className="font-medium text-sm">Description</Label>
+            <Label className="font-medium text-sm"><T name="coupon_description" />{descriptionPlaceholder.editButton}</Label>
             <Textarea
               className="mt-1"
               defaultValue={selectedCoupon?.description ?? ""}
               name="description"
-              placeholder="Optional details shown in dashboards"
+              placeholder={descriptionPlaceholder.text}
               rows={3}
             />
           </div>
           <div>
-            <Label className="font-medium text-sm">Status</Label>
+            <Label className="font-medium text-sm"><T name="status" /></Label>
             <select
               className="mt-1 h-10 w-full rounded-md border border-input bg-background px-2 text-sm"
               defaultValue={selectedCoupon?.isActive ? "true" : "false"}
               name="isActive"
             >
-              <option value="true">Active</option>
-              <option value="false">Inactive</option>
+              <option value="true">{translate("referrals.active", REFERRAL_COPY.active)}</option>
+              <option value="false">{translate("referrals.inactive", REFERRAL_COPY.inactive)}</option>
             </select>
           </div>
           <div className="flex items-center justify-between gap-2 pt-2">
             <Button
               className="cursor-pointer"
-              onClick={() => setSelectedId(null)}
+              disabled={saving}
+              onClick={() => setEditorOpen(false)}
               type="button"
               variant="ghost"
             >
-              Reset
+              <T name="cancel" />
             </Button>
             <FormSubmitButton
               disabled={!hasCreators}
-              pendingLabel={selectedCoupon ? "Saving..." : "Creating..."}
+              pendingLabel={translate(selectedCoupon ? "referrals.saving" : "referrals.creating", selectedCoupon ? REFERRAL_COPY.saving : REFERRAL_COPY.creating)}
             >
-              {selectedCoupon ? "Save changes" : "Create coupon"}
+              <T name={selectedCoupon ? "save_changes" : "create_coupon"} />
             </FormSubmitButton>
           </div>
         </form>
-      </section>
+      </DialogContent></Dialog>
+      <PromotionDeleteDialog open={Boolean(deleteId)} onOpenChange={value => { if (!value) setDeleteId(null); }} onDelete={deleteCoupon} />
 
-      <section className="rounded-2xl border bg-card/60 p-4 shadow-sm">
-        <header className="mb-3">
-          <h2 className="font-semibold text-lg">Creator performance</h2>
-          <p className="text-muted-foreground text-sm">
-            Compare redemptions and revenue driven by each creator.
-          </p>
-        </header>
-        {creatorSummary.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            No creator activity recorded yet.
-          </p>
-        ) : (
-          <ul className="space-y-3">
-            {creatorSummary.map((creator) => (
-              <li
-                className="flex items-center justify-between rounded-md border border-border/70 bg-background/40 px-3 py-2 text-sm"
-                key={creator.id}
-              >
-                <div>
-                  <p className="font-semibold">{creator.name}</p>
-                  <p className="text-muted-foreground text-xs">
-                    {creator.usage.toLocaleString("en-IN")} redemptions
-                  </p>
-                </div>
-                <div className="text-right text-sm">
-                  <div className="font-semibold">
-                    ₹{formatCurrency(creator.revenue)}
-                  </div>
-                  <div className="text-muted-foreground text-xs">
-                    Reward ₹{formatCurrency(creator.reward)}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <AdminPromotionSection title={<T name="creator_performance" />} description={<T name="creator_performance_description" />}>
+        <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide"><tr>{(["creator", "redemptions", "coupon_revenue", "reward"] as const).map(name => <th className="px-3 py-3 text-left font-medium" key={name}><T name={name} /></th>)}</tr></thead><tbody className="divide-y divide-border/50">{creatorSummary.map(creator => <tr key={creator.id}><td className="px-3 py-3">{creator.name}</td><td className="px-3 py-3">{creator.usage.toLocaleString("en-IN")}</td><td className="px-3 py-3">₹{formatCurrency(creator.revenue)}</td><td className="px-3 py-3">₹{formatCurrency(creator.reward)}</td></tr>)}{!creatorSummary.length ? <tr><td colSpan={4} className="px-3 py-6 text-center text-muted-foreground"><T name="no_creator_activity" /></td></tr> : null}</tbody></table></div>
+      </AdminPromotionSection>
     </div>
   );
 }

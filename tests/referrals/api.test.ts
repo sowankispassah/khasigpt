@@ -7,6 +7,10 @@ test("anonymous callers cannot read or mutate creator commissions", async ({ req
   expect(create.status()).toBe(403);
   const payout = await request.patch("/api/admin/referrals", { data: { action: "payout", amount: 10000 } });
   expect(payout.status()).toBe(403);
+  for (const path of ["/api/admin/referrals", "/api/admin/coupons"]) {
+    const deletion = await request.delete(path, { data: { id: "11111111-1111-4111-8111-111111111111" } });
+    expect(deletion.status()).toBe(403);
+  }
   const creator = await request.get("/api/creator/referrals");
   expect(creator.status()).toBe(403);
 });

@@ -369,7 +369,7 @@ export async function ensureAuthOAuthUser(
         email: normalizedEmail,
         isActive: true,
         authProvider: "google",
-        signupReferralCode: profile?.signupReferralCode ? sql`(select ${creatorReferral.code} from ${creatorReferral} where ${creatorReferral.code} = ${profile.signupReferralCode} and ${creatorReferral.isActive} = true limit 1)` : null,
+        signupReferralCode: profile?.signupReferralCode ? sql`(select ${creatorReferral.code} from ${creatorReferral} where ${creatorReferral.code} = ${profile.signupReferralCode} and ${creatorReferral.isActive} = true limit 1 for key share)` : null,
         image: profile?.image?.trim() || null,
         firstName: profile?.firstName?.trim() || null,
         lastName: profile?.lastName?.trim() || null,

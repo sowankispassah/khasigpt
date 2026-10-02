@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { deletePromotion, PromotionInUseError } from "@/lib/admin/delete-unused-promotion";
 import { db } from "@/lib/db/queries";
 import { creatorReferral, referralCommission } from "@/lib/db/schema";
 import { createReferral, listReferralDashboard, recordReferralPayout } from "@/lib/referrals/service";
@@ -16,9 +17,18 @@ const mutationSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("reverse"), orderId: z.string().min(1).max(64) }),
 ]);
 function failure(error: unknown) {
+  if (error instanceof PromotionInUseError) return NextResponse.json({ error: "promotion_in_use" }, { status: 409, headers: { "Cache-Control": "no-store" } });
   if (error instanceof z.ZodError) return NextResponse.json({ error: "Invalid referral values." }, { status: 400 });
   console.error("[admin/referrals] Operation failed.", { message: error instanceof Error ? error.message : "unknown" });
   return NextResponse.json({ error: "The referral operation could not be confirmed. Retry or refresh this section." }, { status: 503 });
+}
+export async function DELETE(request: NextRequest) {
+  if (!await requireAdminApiUser(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  try {
+    const { id } = z.object({ id: z.string().uuid() }).parse(await request.json());
+    const deleted = await deletePromotion("referral", id);
+    return NextResponse.json({ ok: deleted }, { status: deleted ? 200 : 404, headers: { "Cache-Control": "no-store" } });
+  } catch (error) { return failure(error); }
 }
 export async function GET(request: NextRequest) {
   if (!await requireAdminApiUser(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });

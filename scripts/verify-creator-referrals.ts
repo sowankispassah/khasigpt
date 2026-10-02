@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { config } from "dotenv";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
@@ -14,8 +14,9 @@ async function main() {
   if (!databaseUrl) throw new Error("POSTGRES_URL is required.");
   const sqlClient = postgres(databaseUrl, { max: 1, prepare: false, connect_timeout: 10, connection: { statement_timeout: 5000, application_name: "referral-rollback-verification" } });
   const db = drizzle(sqlClient);
-  const { appSetting, creatorReferral, paymentTransaction, pricingPlan, referralCommission, user } = await import("../lib/db/schema");
+  const { appSetting, coupon, couponRedemption, couponRewardPayout, creatorReferral, paymentTransaction, pricingPlan, referralCommission, referralPayout, user } = await import("../lib/db/schema");
   const { recordReferralCommission } = await import("../lib/referrals/accounting");
+  const { deleteUnusedPromotion, PromotionInUseError } = await import("../lib/admin/delete-unused-promotion");
   const rollback = new Error("verification_rollback");
   let checks = 0;
   try {
@@ -28,11 +29,32 @@ async function main() {
       const [referral] = await tx.insert(creatorReferral).values({ creatorId, code: randomUUID(), percentage: 10, duration: "first_recharge", createdAt: new Date("2026-01-01T00:00:00Z") }).returning();
       const userId = randomUUID();
       await tx.insert(user).values({ id: userId, email: `referral-${userId.slice(0, 8)}@example.invalid`, signupReferralCode: referral.code, createdAt: new Date("2026-02-01T00:00:00Z") });
+      await assert.rejects(deleteUnusedPromotion(tx, "referral", referral.id), PromotionInUseError); checks++;
+      const [unused] = await tx.insert(creatorReferral).values({ creatorId, code: randomUUID(), percentage: 5, duration: "indefinite" }).returning();
+      assert.equal(await deleteUnusedPromotion(tx, "referral", unused.id), true); checks++;
+      assert.equal(await deleteUnusedPromotion(tx, "referral", unused.id), false); checks++;
+      const [lockedSignup] = await tx.insert(user).values({ email: `referral-lock-${randomUUID().slice(0, 8)}@example.invalid`, signupReferralCode: sql`(select ${creatorReferral.code} from ${creatorReferral} where ${creatorReferral.code} = ${referral.code} and ${creatorReferral.isActive} = true limit 1 for key share)` }).returning();
+      assert.equal(lockedSignup.signupReferralCode, referral.code); checks++;
+      const [missingSignup] = await tx.insert(user).values({ email: `referral-missing-${randomUUID().slice(0, 8)}@example.invalid`, signupReferralCode: sql`(select ${creatorReferral.code} from ${creatorReferral} where ${creatorReferral.code} = ${unused.code} and ${creatorReferral.isActive} = true limit 1 for key share)` }).returning();
+      assert.equal(missingSignup.signupReferralCode, null); checks++;
+      const [payoutOnly] = await tx.insert(creatorReferral).values({ creatorId, code: randomUUID(), percentage: 5, duration: "indefinite" }).returning();
+      await tx.insert(referralPayout).values({ referralId: payoutOnly.id, amount: 100, currency: "INR", recordedBy: creatorId });
+      await assert.rejects(deleteUnusedPromotion(tx, "referral", payoutOnly.id), PromotionInUseError); checks++;
+      const [unusedCoupon] = await tx.insert(coupon).values({ code: randomUUID(), creatorId, discountPercentage: 5 }).returning();
+      assert.equal(await deleteUnusedPromotion(tx, "coupon", unusedCoupon.id), true); checks++;
+      const [payoutCoupon] = await tx.insert(coupon).values({ code: randomUUID(), creatorId, discountPercentage: 5 }).returning();
+      await tx.insert(couponRewardPayout).values({ couponId: payoutCoupon.id, amount: 100 });
+      await assert.rejects(deleteUnusedPromotion(tx, "coupon", payoutCoupon.id), PromotionInUseError); checks++;
       const makePayment = async (amount = 50000) => {
         const [payment] = await tx.insert(paymentTransaction).values({ orderId: randomUUID(), userId, planId: plan.id, amount, currency: "INR", status: "processing" }).returning();
         return payment;
       };
       const first = await makePayment();
+      const [paymentCoupon] = await tx.insert(coupon).values({ code: randomUUID(), creatorId, discountPercentage: 5 }).returning();
+      const [couponPayment] = await tx.insert(paymentTransaction).values({ orderId: randomUUID(), userId, planId: plan.id, amount: 10000, currency: "INR", status: "failed", couponId: paymentCoupon.id }).returning();
+      await assert.rejects(deleteUnusedPromotion(tx, "coupon", paymentCoupon.id), PromotionInUseError); checks++;
+      await tx.insert(couponRedemption).values({ couponId: paymentCoupon.id, userId, creatorId, planId: plan.id, orderId: couponPayment.orderId, paymentAmount: 10000 });
+      await assert.rejects(deleteUnusedPromotion(tx, "coupon", paymentCoupon.id), PromotionInUseError); checks++;
       await recordReferralCommission(tx, first, new Date("2026-02-02T00:00:00Z"));
       await recordReferralCommission(tx, first, new Date("2026-02-02T00:00:00Z"));
       let commissions = await tx.select().from(referralCommission).where(eq(referralCommission.referralId, referral.id));
@@ -55,8 +77,10 @@ async function main() {
       const gated = await makePayment(); await recordReferralCommission(tx, gated, new Date("2026-02-28T00:00:00Z"));
       assert.equal((await tx.select().from(referralCommission).where(eq(referralCommission.orderId, gated.orderId))).length, 0); checks++;
       await tx.delete(user).where(eq(user.id, userId));
+      await tx.delete(user).where(eq(user.id, lockedSignup.id));
       const history = await tx.select().from(referralCommission).where(and(eq(referralCommission.orderId, first.orderId), eq(referralCommission.amount, 5000)));
       assert.equal(history.length, 1); assert.equal(history[0].userId, null); checks++;
+      await assert.rejects(deleteUnusedPromotion(tx, "referral", referral.id), PromotionInUseError); checks++;
       throw rollback;
     });
   } catch (error) { if (error !== rollback) throw error; }

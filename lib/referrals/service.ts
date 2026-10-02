@@ -30,7 +30,7 @@ export async function listReferralDashboard(creatorId?: string, page = 1) {
   const codes = rows.map(row => row.referral.code);
   const [signups, earnings, payouts, recent, recentPayouts] = await Promise.all([
     db.select({ code: user.signupReferralCode, count: count() }).from(user).where(inArray(user.signupReferralCode, codes)).groupBy(user.signupReferralCode),
-    db.select({ id: referralCommission.referralId, currency: referralCommission.currency, earned: sql<number>`coalesce(sum(case when ${referralCommission.reversed} then 0 else ${referralCommission.amount} end),0)`, recharges: count() }).from(referralCommission).where(inArray(referralCommission.referralId, ids)).groupBy(referralCommission.referralId, referralCommission.currency),
+    db.select({ id: referralCommission.referralId, currency: referralCommission.currency, earned: sql<number>`coalesce(sum(case when ${referralCommission.reversed} then 0 else ${referralCommission.amount} end),0)`, revenue: sql<number>`coalesce(sum(${referralCommission.paymentAmount}),0)`, recharges: count() }).from(referralCommission).where(inArray(referralCommission.referralId, ids)).groupBy(referralCommission.referralId, referralCommission.currency),
     db.select({ id: referralPayout.referralId, currency: referralPayout.currency, paid: sql<number>`coalesce(sum(${referralPayout.amount}),0)` }).from(referralPayout).where(inArray(referralPayout.referralId, ids)).groupBy(referralPayout.referralId, referralPayout.currency),
     db.select().from(referralCommission).where(inArray(referralCommission.referralId, ids)).orderBy(desc(referralCommission.createdAt)).limit(20),
     db.select().from(referralPayout).where(inArray(referralPayout.referralId, ids)).orderBy(desc(referralPayout.createdAt)).limit(20),
@@ -40,7 +40,8 @@ export async function listReferralDashboard(creatorId?: string, page = 1) {
       balances: Array.from(new Set([...earnings.filter(row => row.id === referral.id).map(row => row.currency), ...payouts.filter(row => row.id === referral.id).map(row => row.currency)])).map(currency => {
         const earned = Number(earnings.find(row => row.id === referral.id && row.currency === currency)?.earned ?? 0);
         const paid = Number(payouts.find(row => row.id === referral.id && row.currency === currency)?.paid ?? 0);
-        return { currency, earned, paid, remaining: earned - paid };
+        const activity = earnings.find(row => row.id === referral.id && row.currency === currency);
+        return { currency, earned, paid, remaining: earned - paid, recharges: Number(activity?.recharges ?? 0), revenue: Number(activity?.revenue ?? 0) };
       }),
     })), recentCommissions: recent.map(({ userId: _userId, ...entry }) => entry), recentPayouts, page, totalCount: total[0].count,
   };

@@ -962,7 +962,7 @@ export async function createUser(
       .values({
         email: normalizedEmail,
         password: hashedPassword,
-        signupReferralCode: signupReferralCode ? sql`(select ${creatorReferral.code} from ${creatorReferral} where ${creatorReferral.code} = ${signupReferralCode} and ${creatorReferral.isActive} = true limit 1)` : null,
+        signupReferralCode: signupReferralCode ? sql`(select ${creatorReferral.code} from ${creatorReferral} where ${creatorReferral.code} = ${signupReferralCode} and ${creatorReferral.isActive} = true limit 1 for key share)` : null,
         isActive: false,
         emailVerificationPending: true,
         authProvider: "credentials",
