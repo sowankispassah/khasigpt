@@ -7,6 +7,8 @@ description: Push this project's native Android/Expo app from `D:\Coding\ai-chat
 
 Use this workflow for `D:\Coding\ai-chatbot-main\ai-chatbot-main` when the user asks to push the native folder/app to git.
 
+Also apply it at completion whenever a task changes native source/configuration, following [git-main-manual-playstore-release](../git-main-manual-playstore-release/SKILL.md). Push only the task's verified changes to native `main`; an Android release ends with local signed AABs for the user to upload manually.
+
 ## Canonical Paths And Remote
 
 - Root repo: `D:\Coding\ai-chatbot-main\ai-chatbot-main`

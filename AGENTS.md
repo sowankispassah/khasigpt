@@ -51,3 +51,9 @@ These instructions are specific to this repository. Follow the existing App Rout
 - Prefer resilient fallbacks over hard failures for non-critical reads in layouts and middleware, but do not silently hide data integrity issues.
 - Add or update targeted tests when changing auth, billing, admin, job ingestion, middleware, or shared shell behavior.
 - Before shipping meaningful changes, run the relevant checks from `package.json`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, and a production build when the change affects rendering, config, or routing.
+
+## 8. Git Main Delivery and Manual Play Store Uploads
+- Whenever a task changes code, configuration, migrations, or engineering instructions, use [.codex/skills/git-main-manual-playstore-release/SKILL.md](.codex/skills/git-main-manual-playstore-release/SKILL.md).
+- Check and commit the requested changes, then push them to the correct repository's `main`. Web/backend and `native/` have separate repositories. Preserve unrelated work and newer remote commits; never force-push.
+- When an Android Play Store release is required, build and verify a new signed AAB and place it in `native/builds/` (or the folder the user explicitly assigns). Push the source/version changes to native `main`.
+- The user uploads and manages Play Store releases manually. Do not upload to Play Console, publish any testing track, submit for review, or roll out production. General requests to build, release, ship, or deploy do not authorize those actions.

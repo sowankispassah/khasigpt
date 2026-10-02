@@ -1,0 +1,4 @@
+interface:
+  display_name: "Push Main and Manual Play Release"
+  short_description: "Push task changes to main; hand off signed AABs"
+  default_prompt: "Use $git-main-manual-playstore-release to deliver these changes to main and prepare any required Android bundle for my manual upload."

@@ -11,12 +11,12 @@ Finish production-targeted fixes end to end. A configuration-only redeploy does 
 
 1. Identify the exact files belonging to the requested fix. Preserve unrelated dirty-worktree changes and stage explicit paths only.
 2. Run the closest targeted tests, typecheck, lint/format checks, and a production build when rendering, routing, server, database, or configuration behavior changed.
-3. Create a `codex/` branch when currently on the default branch. Use the existing task branch otherwise.
+3. Follow [git-main-manual-playstore-release](../git-main-manual-playstore-release/SKILL.md). Use a suitable task checkout or isolated checkout of current `origin/main` while preserving unrelated work.
 4. Commit the complete verified fix, including targeted tests and directly relevant operational safeguards.
-5. Push the branch with upstream tracking and open a draft pull request unless the user requested a different review flow.
+5. Integrate the verified task changes into current `main` and push `origin main` without force. A task branch or draft pull request alone does not complete delivery unless the user explicitly requested that flow for this task.
 6. Deploy the exact verified source state to Vercel production when the original request explicitly targets production or live behavior. Do not substitute a redeploy of older code for deploying the completed fix.
 7. Verify the deployment reaches `READY`, exercise a safe representative production path, and inspect fresh runtime errors and logs for the deployed ID.
-8. Report the branch, commit, pull request, production URL, checks, measured post-deploy behavior, and unrelated files deliberately excluded.
+8. Report the main commit, push result, production URL, checks, measured post-deploy behavior, and unrelated files deliberately excluded.
 
 ## Safety boundaries
 
@@ -27,6 +27,7 @@ Finish production-targeted fixes end to end. A configuration-only redeploy does 
 - Do not expose secrets while pulling, validating, or updating environment variables.
 - Prefer deploying a tested commit. If a direct Vercel deploy is required, verify that its packaged files match the intended commit and exclude unrelated worktree changes.
 - Keep rollback information available and scan post-deploy logs before declaring success.
+- Android Play Store releases are local signed AAB handoffs only. Do not upload bundles, publish testing tracks, submit reviews, or roll out production; the user manages Play Console manually.
 
 ## Completion rule
 

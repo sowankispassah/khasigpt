@@ -54,6 +54,10 @@ native/
 !.codex/skills/run-db-migrations/**
 !.codex/skills/web-native-user-parity/
 !.codex/skills/web-native-user-parity/**
+!.codex/skills/git-main-manual-playstore-release/
+!.codex/skills/git-main-manual-playstore-release/**
+!.codex/skills/native-playstore-release-versioning/
+!.codex/skills/native-playstore-release-versioning/**
 native/.expo/
 *.tsbuildinfo
 
