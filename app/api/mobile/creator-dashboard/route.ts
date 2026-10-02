@@ -3,6 +3,9 @@ import { z } from "zod";
 import { getCreatorCouponRedemptions, getCreatorCouponSummary } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { getMobileSession } from "@/lib/mobile-auth-session";
+import { combineCreatorRewards } from "@/lib/referrals/creator-summary";
+import { getCreatorReferralTotals } from "@/lib/referrals/service";
+import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -20,6 +23,10 @@ export async function GET(request: Request) {
   }
   const parsed = parsedResult.data;
   const sort = sortMap[parsed.sort];
-  const [summary, redemptions] = await Promise.all([getCreatorCouponSummary(session.user.id), getCreatorCouponRedemptions({ creatorId: session.user.id, page: parsed.page, pageSize: 10, sortBy: sort.sortBy, sortDirection: sort.sortDirection })]);
-  return NextResponse.json({ summary, redemptions, sort: parsed.sort }, { headers: { "Cache-Control": "no-store" } });
+  const [summary, redemptions, referralTotals] = await Promise.all([getCreatorCouponSummary(session.user.id), getCreatorCouponRedemptions({ creatorId: session.user.id, page: parsed.page, pageSize: 10, sortBy: sort.sortBy, sortDirection: sort.sortDirection }), withTimeout(getCreatorReferralTotals(session.user.id), 7000).catch(() => {
+    console.warn("[creator-dashboard] Mobile referral earnings totals unavailable.");
+    return null;
+  })]);
+  const rewardBalances = combineCreatorRewards(referralTotals, summary?.totals ?? null);
+  return NextResponse.json({ summary, redemptions, rewardBalances, sort: parsed.sort }, { headers: { "Cache-Control": "no-store" } });
 }

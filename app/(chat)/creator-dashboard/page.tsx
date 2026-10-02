@@ -9,6 +9,8 @@ import {
   getCreatorCouponSummary,
 } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import { combineCreatorRewards, formatCreatorRewards } from "@/lib/referrals/creator-summary";
+import { getCreatorReferralTotals } from "@/lib/referrals/service";
 import { withTimeout } from "@/lib/utils/async";
 import { getChatRouteSession } from "../chat-route-session";
 
@@ -94,7 +96,7 @@ export default async function CreatorDashboardPage({
 
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
-  const [bundle, couponReads] = await Promise.all([
+  const [bundle, couponReads, referralTotals] = await Promise.all([
     getTranslationBundle(preferredLanguage),
     Promise.allSettled([
     withTimeout(getCreatorCouponSummary(session.user.id), 7000),
@@ -106,6 +108,10 @@ export default async function CreatorDashboardPage({
       sortDirection: sortConfig.sortDirection,
     }), 7000),
     ]),
+    withTimeout(getCreatorReferralTotals(session.user.id), 7000).catch(() => {
+      console.warn("[creator-dashboard] Referral earnings totals unavailable.");
+      return null;
+    }),
   ]);
   const summaryFailed = couponReads[0].status === "rejected";
   const redemptionsFailed = couponReads[1].status === "rejected";
@@ -133,9 +139,7 @@ export default async function CreatorDashboardPage({
     },
   };
 
-  const totalReward = couponSummary.totals.totalRewardInPaise / 100;
-  const totalPaid = couponSummary.totals.totalPaidInPaise / 100;
-  const totalPending = couponSummary.totals.remainingRewardInPaise / 100;
+  const rewardBalances = combineCreatorRewards(referralTotals, summaryFailed ? null : couponSummary.totals);
   const hasRedemptions = redemptionResult.redemptions.length > 0;
   const totalPages =
     redemptionResult.pageSize > 0
@@ -199,7 +203,6 @@ export default async function CreatorDashboardPage({
         </div>
       </div>
 
-      <CreatorReferrals />
       {!summaryFailed ? <><section className="grid gap-4 sm:grid-cols-2">
         <MetricCard
           label={t(
@@ -210,23 +213,25 @@ export default async function CreatorDashboardPage({
         />
         <MetricCard
           label={t("creator_dashboard.metrics.rewards", "Your rewards")}
-          value={currencyFormatter.format(totalReward)}
+          value={formatCreatorRewards(rewardBalances, "earned")}
         />
       </section>
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <MetricCard
           label={t("creator_dashboard.metrics.paid", "Payouts completed")}
-          value={currencyFormatter.format(totalPaid)}
+          value={formatCreatorRewards(rewardBalances, "paid")}
         />
         <MetricCard
           label={t(
             "creator_dashboard.metrics.pending_payout",
             "Pending payout"
           )}
-          value={currencyFormatter.format(totalPending)}
+          value={formatCreatorRewards(rewardBalances, "remaining")}
         />
       </section>
       </> : null}
+      {!rewardBalances ? <p className="text-muted-foreground text-sm" role="alert"><EditableTranslation translationKey="referrals.earnings_unavailable" defaultText="Earnings totals could not be confirmed. Reload this page to retry." /></p> : null}
+      <CreatorReferrals />
       <section className="rounded-2xl border bg-card/70 shadow-sm">
         <header className="flex flex-col gap-2 border-b px-4 py-4 sm:px-6">
           <h2 className="font-semibold text-lg">

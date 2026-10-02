@@ -5,6 +5,20 @@ import { db } from "@/lib/db/queries";
 import { creatorReferral, referralCommission, referralPayout, user } from "@/lib/db/schema";
 import { referralInputSchema } from "./rules";
 
+// Creator totals cover all assigned links, independently of inventory pagination.
+// Both joins use the creator and referral indexes, and expose currency totals only.
+export async function getCreatorReferralTotals(creatorId: string, reader: Pick<typeof db, "select"> = db) {
+  const [earnings, payouts] = await Promise.all([
+    reader.select({ currency: referralCommission.currency, earned: sql<number>`coalesce(sum(case when ${referralCommission.reversed} then 0 else ${referralCommission.amount} end),0)` }).from(referralCommission).innerJoin(creatorReferral, eq(creatorReferral.id, referralCommission.referralId)).where(eq(creatorReferral.creatorId, creatorId)).groupBy(referralCommission.currency),
+    reader.select({ currency: referralPayout.currency, paid: sql<number>`coalesce(sum(${referralPayout.amount}),0)` }).from(referralPayout).innerJoin(creatorReferral, eq(creatorReferral.id, referralPayout.referralId)).where(eq(creatorReferral.creatorId, creatorId)).groupBy(referralPayout.currency),
+  ]);
+  return [...new Set([...earnings.map(row => row.currency), ...payouts.map(row => row.currency)])].map(currency => {
+    const earned = Number(earnings.find(row => row.currency === currency)?.earned ?? 0);
+    const paid = Number(payouts.find(row => row.currency === currency)?.paid ?? 0);
+    return { currency, earned, paid, remaining: earned - paid };
+  });
+}
+
 export async function createReferral(input: unknown) {
   const value = referralInputSchema.parse(input);
   if (value.rechargeBefore && new Date(value.rechargeBefore) <= new Date()) throw new Error("The recharge cutoff must be in the future.");

@@ -83,6 +83,8 @@ export const REFERRAL_COPY = {
   coupon_revenue: "Revenue",
   operations: "Options for {code}",
   percentage: "Creator commission (%)",
+  commission_percentage: "Commission %",
+  earnings_unavailable: "Earnings totals could not be confirmed. Reload this page to retry.",
   duration: "Commission duration",
   indefinite: "Every recharge indefinitely",
   months: "Every recharge for a number of months after signup",

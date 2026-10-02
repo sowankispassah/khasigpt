@@ -55,6 +55,13 @@ test("creator table shows terms and supports sharing, copy and responsive scroll
   await page.goto("/creator-dashboard");
   await expect(page.getByRole("heading", { name: "Share links and track your earnings" })).toBeVisible({ timeout: 60000 });
   await expect(page.getByRole("columnheader", { name: "Commission expiry", exact: true })).toBeVisible({ timeout: 60000 });
+  const referralTable = page.getByRole("table").first();
+  await expect(referralTable.getByRole("columnheader", { name: "Commission %", exact: true })).toBeVisible();
+  await expect(referralTable.getByRole("columnheader")).toHaveCount(7);
+  for (const name of ["Eligible recharges", "Eligible recharge volume", "Earned", "Paid", "Unpaid balance"]) {
+    await expect(referralTable.getByRole("columnheader", { name, exact: true })).toHaveCount(0);
+  }
+  expect(await page.getByText("Your rewards", { exact: true }).evaluate(element => Boolean(element.compareDocumentPosition(document.querySelector("table") as Node) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
   expect(clientErrors).toEqual([]);
   await expect(page.getByText("3 months after each user's signup", { exact: true })).toHaveCount(2);
   await expect(page.getByText("User savings", { exact: true })).toHaveCount(0);
