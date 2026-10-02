@@ -22,6 +22,14 @@ async function main() {
 	);
 	const rollback = new Error("verification_rollback");
 	try {
+    const [access] = await database.execute<{ secured: boolean }>(sql`
+      SELECT c.relrowsecurity AND NOT EXISTS (
+        SELECT 1 FROM pg_roles r WHERE r.rolname IN ('anon', 'authenticated')
+        AND has_table_privilege(r.oid, c.oid, 'SELECT, INSERT, UPDATE, DELETE')
+      ) AS secured FROM pg_class c
+      WHERE c.oid = 'public."AdminUsersViewState"'::regclass
+    `);
+    assert.equal(access.secured, true);
 		await database.transaction(async (db) => {
 			const admins = [randomUUID(), randomUUID(), randomUUID()];
 			const now = Date.now();
