@@ -6,6 +6,7 @@ import {
   type ReactNode,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -22,6 +23,7 @@ import {
   evaluateExpression,
   roundCalculatorResult,
 } from "@/lib/calculator/evaluator";
+import { type CalculatorEdit, type CalculatorSelection, calculatorExpressionState, editCalculatorExpression } from "@/lib/calculator/expression-editor";
 import {
   convertNumberToWords,
   formatNumericResult,
@@ -76,11 +78,11 @@ function CalculatorKey({
 }
 
 export function CalculatorWorkbench() {
-  const [expression, setExpression] = useState("");
+  const [editor, setEditor] = useState(() => calculatorExpressionState(""));
+  const { expression } = editor;
+  const setExpression = (value: string) => setEditor(calculatorExpressionState(value));
   const [result, setResult] = useState<number | null>(null);
   const expressionInputRef = useRef<HTMLInputElement>(null);
-  const [, setCaretRange] = useState({ start: 0, end: 0 });
-  const caretRangeRef = useRef({ start: 0, end: 0 });
   const [hasEnteredData, setHasEnteredData] = useState(false);
   const [language, setLanguage] = useState<
     NumberWordLanguage | typeof LANGUAGE_SELECT_PLACEHOLDER_VALUE
@@ -196,40 +198,28 @@ export function CalculatorWorkbench() {
     window.localStorage.setItem(CALCULATOR_LANGUAGE_STORAGE_KEY, language);
   }, [language]);
 
-  const updateCaretRange = (nextRange: { start: number; end: number }) => {
-    caretRangeRef.current = nextRange;
-    setCaretRange(nextRange);
+  const updateCaretRange = (selection: CalculatorSelection) => {
+    setEditor((current) => current.selection.start === selection.start && current.selection.end === selection.end
+      ? current : { ...current, selection });
   };
 
-  const getCaretRange = (length: number) => {
+  const getInputSelection = (): CalculatorSelection | null => {
     const input = expressionInputRef.current;
     if (input && document.activeElement === input) {
       return {
-        start: Math.max(0, Math.min(input.selectionStart ?? length, length)),
-        end: Math.max(0, Math.min(input.selectionEnd ?? length, length)),
+        start: input.selectionStart ?? input.value.length,
+        end: input.selectionEnd ?? input.value.length,
       };
     }
-    return {
-      start: Math.max(0, Math.min(caretRangeRef.current.start, length)),
-      end: Math.max(0, Math.min(caretRangeRef.current.end, length)),
-    };
+    return null;
   };
 
-  const setInputCaret = (position: number) => {
-    const safePosition = Math.max(0, position);
-    updateCaretRange({ start: safePosition, end: safePosition });
-    requestAnimationFrame(() => {
-      const input = expressionInputRef.current;
-      if (!input) {
-        return;
-      }
-      if (document.activeElement !== input) {
-        return;
-      }
-      const boundedPosition = Math.max(0, Math.min(safePosition, input.value.length));
-      input.setSelectionRange(boundedPosition, boundedPosition);
-    });
-  };
+  useLayoutEffect(() => {
+    const input = expressionInputRef.current;
+    if (input && document.activeElement === input) {
+      input.setSelectionRange(editor.selection.start, editor.selection.end);
+    }
+  }, [editor]);
 
   const syncCaretFromInput = () => {
     const input = expressionInputRef.current;
@@ -263,56 +253,21 @@ export function CalculatorWorkbench() {
       .replaceAll("π", "pi")
       .replaceAll("X", "x");
     const sanitized = normalized.replaceAll(/[^0-9+\-*/%^().!a-z]/gi, "");
-    setExpression(sanitized);
-
     const position = event.target.selectionStart ?? sanitized.length;
     const safePosition = Math.max(0, Math.min(position, sanitized.length));
-    updateCaretRange({ start: safePosition, end: safePosition });
+    setEditor({ expression: sanitized, selection: { start: safePosition, end: safePosition } });
   };
 
-  const appendToExpression = (value: string) => {
+  const applyKeypadEdit = (edit: CalculatorEdit) => {
+    const selection = getInputSelection();
     expressionInputRef.current?.blur();
     if (isGstPanelOpen) {
       closeGstModeForInput();
     }
     setError(null);
-    let nextCaretPosition: number | null = null;
-    setExpression((current) => {
-      const { start, end } = getCaretRange(current.length);
-      let working = current;
-      let localStart = start;
-      let localEnd = end;
-      const startsWithOperator = /^[+*/%^]/.test(value);
-      if (!working && startsWithOperator) {
-        if (result === null) {
-          return working;
-        }
-        working = toExpressionValue(result);
-        localStart = working.length;
-        localEnd = working.length;
-      }
-
-      let before = working.slice(0, localStart);
-      const after = working.slice(localEnd);
-
-      if (value === "." && /\.\d*$/.test(before)) {
-        nextCaretPosition = localStart;
-        return working;
-      }
-
-      if (/^[+\-*/%^]$/.test(value) && localStart === localEnd && /[+\-*/%^]$/.test(before)) {
-        before = before.slice(0, -1);
-        localStart -= 1;
-      }
-
-      const nextValue = `${before}${value}${after}`;
-      nextCaretPosition = localStart + value.length;
-      return nextValue;
-    });
-    if (nextCaretPosition !== null) {
-      setInputCaret(nextCaretPosition);
-    }
+    setEditor((current) => editCalculatorExpression(selection ? { ...current, selection } : current, edit));
   };
+  const appendToExpression = (value: string) => applyKeypadEdit({ type: "insert", value, result });
 
   const evaluateAndStore = (input: string) => {
     const evaluated = evaluateExpression(input);
@@ -430,67 +385,14 @@ export function CalculatorWorkbench() {
     setGstBaseValue(null);
     setGstPreview(null);
     setGstSnapshot(null);
-    updateCaretRange({ start: 0, end: 0 });
-    setInputCaret(0);
   };
 
   const handleBackspace = () => {
-    expressionInputRef.current?.blur();
-    if (isGstPanelOpen) {
-      closeGstModeForInput();
-    }
-    setError(null);
-    let nextCaretPosition: number | null = null;
-    setExpression((current) => {
-      const { start, end } = getCaretRange(current.length);
-      if (start !== end) {
-        nextCaretPosition = start;
-        return `${current.slice(0, start)}${current.slice(end)}`;
-      }
-      if (start === 0) {
-        nextCaretPosition = 0;
-        return current;
-      }
-      const beforeCursor = current.slice(0, start);
-      let removeLength = 1;
-      if (beforeCursor.endsWith("sqrt(")) {
-        removeLength = 5;
-      } else if (beforeCursor.endsWith("sqrt")) {
-        removeLength = 4;
-      } else if (beforeCursor.endsWith("pi")) {
-        removeLength = 2;
-      }
-      const nextStart = Math.max(0, start - removeLength);
-      nextCaretPosition = nextStart;
-      return `${current.slice(0, nextStart)}${current.slice(start)}`;
-    });
-    if (nextCaretPosition !== null) {
-      setInputCaret(nextCaretPosition);
-    }
+    applyKeypadEdit({ type: "backspace" });
   };
 
   const handleParentheses = () => {
-    expressionInputRef.current?.blur();
-    if (isGstPanelOpen) {
-      closeGstModeForInput();
-    }
-    setError(null);
-    let nextCaretPosition: number | null = null;
-    setExpression((current) => {
-      const { start, end } = getCaretRange(current.length);
-      const before = current.slice(0, start);
-      const after = current.slice(end);
-      const openCount = (before.match(/\(/g) ?? []).length;
-      const closeCount = (before.match(/\)/g) ?? []).length;
-      const shouldClose =
-        openCount > closeCount && /(?:[0-9)!]|pi)$/.test(before.trim());
-      const insertion = shouldClose ? ")" : "(";
-      nextCaretPosition = start + 1;
-      return `${before}${insertion}${after}`;
-    });
-    if (nextCaretPosition !== null) {
-      setInputCaret(nextCaretPosition);
-    }
+    applyKeypadEdit({ type: "parentheses" });
   };
 
   const handleWindowKeyDown = useEffectEvent((event: KeyboardEvent) => {
