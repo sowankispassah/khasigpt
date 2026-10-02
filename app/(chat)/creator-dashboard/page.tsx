@@ -232,6 +232,7 @@ export default async function CreatorDashboardPage({
       </> : null}
       {!rewardBalances ? <p className="text-muted-foreground text-sm" role="alert"><EditableTranslation translationKey="referrals.earnings_unavailable" defaultText="Earnings totals could not be confirmed. Reload this page to retry." /></p> : null}
       <CreatorReferrals />
+      {summaryFailed || couponSummary.coupons.length > 0 ? (
       <section className="rounded-2xl border bg-card/70 shadow-sm">
         <header className="flex flex-col gap-2 border-b px-4 py-4 sm:px-6">
           <h2 className="font-semibold text-lg">
@@ -244,14 +245,7 @@ export default async function CreatorDashboardPage({
             )}
           </p>
         </header>
-        {summaryFailed ? <div className="p-6" role="alert"><EditableTranslation translationKey="referrals.coupons_unavailable" defaultText="Coupon information could not be confirmed. Reload this page to retry." /></div> : couponSummary.coupons.length === 0 ? (
-          <div className="px-6 py-10 text-center text-muted-foreground text-sm">
-            {t(
-              "creator_dashboard.coupons.empty",
-              "No coupons are assigned to you yet. Once an admin shares a code, it will appear here."
-            )}
-          </div>
-        ) : (
+        {summaryFailed ? <div className="p-6" role="alert"><EditableTranslation translationKey="referrals.coupons_unavailable" defaultText="Coupon information could not be confirmed. Reload this page to retry." /></div> : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
@@ -398,6 +392,7 @@ export default async function CreatorDashboardPage({
           </div>
         )}
       </section>
+      ) : null}
 
       <section className="rounded-2xl border bg-card/70 shadow-sm">
         <header className="flex flex-col gap-2 border-b px-4 py-4 sm:px-6">
