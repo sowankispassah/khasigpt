@@ -982,7 +982,7 @@ export default async function AdminJobsPage({
   );
   const managedSourcesPromise = withTimeoutState(
     "jobs.managed-sources",
-    listManagedJobSources(),
+    listManagedJobSources({ uncached: true }),
     [],
     JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS
   );
