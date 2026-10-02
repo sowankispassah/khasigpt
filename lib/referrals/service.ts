@@ -19,7 +19,7 @@ export async function getReferralByCode(code: string) {
   return row ?? null;
 }
 
-export async function listReferralDashboard(creatorId?: string, page = 1) {
+export async function listReferralDashboard(creatorId?: string, page = 1, includeAdminHistory = true) {
   const filter = creatorId ? eq(creatorReferral.creatorId, creatorId) : undefined;
   const [rows, total] = await Promise.all([
     db.select({ referral: creatorReferral, creatorName: user.firstName }).from(creatorReferral).leftJoin(user, eq(user.id, creatorReferral.creatorId)).where(filter).orderBy(desc(creatorReferral.createdAt)).limit(20).offset((page - 1) * 20),
@@ -32,8 +32,8 @@ export async function listReferralDashboard(creatorId?: string, page = 1) {
     db.select({ code: user.signupReferralCode, count: count() }).from(user).where(inArray(user.signupReferralCode, codes)).groupBy(user.signupReferralCode),
     db.select({ id: referralCommission.referralId, currency: referralCommission.currency, earned: sql<number>`coalesce(sum(case when ${referralCommission.reversed} then 0 else ${referralCommission.amount} end),0)`, revenue: sql<number>`coalesce(sum(${referralCommission.paymentAmount}),0)`, recharges: count() }).from(referralCommission).where(inArray(referralCommission.referralId, ids)).groupBy(referralCommission.referralId, referralCommission.currency),
     db.select({ id: referralPayout.referralId, currency: referralPayout.currency, paid: sql<number>`coalesce(sum(${referralPayout.amount}),0)` }).from(referralPayout).where(inArray(referralPayout.referralId, ids)).groupBy(referralPayout.referralId, referralPayout.currency),
-    db.select().from(referralCommission).where(inArray(referralCommission.referralId, ids)).orderBy(desc(referralCommission.createdAt)).limit(20),
-    db.select().from(referralPayout).where(inArray(referralPayout.referralId, ids)).orderBy(desc(referralPayout.createdAt)).limit(20),
+    includeAdminHistory ? db.select().from(referralCommission).where(inArray(referralCommission.referralId, ids)).orderBy(desc(referralCommission.createdAt)).limit(20) : Promise.resolve([]),
+    includeAdminHistory ? db.select().from(referralPayout).where(inArray(referralPayout.referralId, ids)).orderBy(desc(referralPayout.createdAt)).limit(20) : Promise.resolve([]),
   ]);
   return {
     referrals: rows.map(({ referral, creatorName }) => ({ ...referral, creatorName, signups: signups.find(row => row.code === referral.code)?.count ?? 0,

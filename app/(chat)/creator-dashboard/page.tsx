@@ -3,11 +3,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
 import { CreatorReferrals } from "@/components/creator-referrals";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
   getCreatorCouponRedemptions,
   getCreatorCouponSummary,
 } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import { withTimeout } from "@/lib/utils/async";
 import { getChatRouteSession } from "../chat-route-session";
 
 export const dynamic = "force-dynamic";
@@ -92,17 +94,24 @@ export default async function CreatorDashboardPage({
 
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
-  const [bundle, summary, redemptionResult] = await Promise.all([
+  const [bundle, couponReads] = await Promise.all([
     getTranslationBundle(preferredLanguage),
-    getCreatorCouponSummary(session.user.id),
-    getCreatorCouponRedemptions({
+    Promise.allSettled([
+    withTimeout(getCreatorCouponSummary(session.user.id), 7000),
+    withTimeout(getCreatorCouponRedemptions({
       creatorId: session.user.id,
       page: currentPage,
       pageSize: PAGE_SIZE,
       sortBy: sortConfig.sortBy,
       sortDirection: sortConfig.sortDirection,
-    }),
+    }), 7000),
+    ]),
   ]);
+  const summaryFailed = couponReads[0].status === "rejected";
+  const redemptionsFailed = couponReads[1].status === "rejected";
+  const summary = couponReads[0].status === "fulfilled" ? couponReads[0].value : null;
+  const redemptionResult = couponReads[1].status === "fulfilled" ? couponReads[1].value : { redemptions: [], page: currentPage, pageSize: PAGE_SIZE, totalCount: 0 };
+  if (summaryFailed || redemptionsFailed) console.warn("[creator-dashboard] Optional coupon section unavailable.", { summaryFailed, redemptionsFailed });
   const dictionary = bundle.dictionary;
   const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
 
@@ -124,7 +133,6 @@ export default async function CreatorDashboardPage({
     },
   };
 
-  const totalDiscount = couponSummary.totals.totalDiscountInPaise / 100;
   const totalReward = couponSummary.totals.totalRewardInPaise / 100;
   const totalPaid = couponSummary.totals.totalPaidInPaise / 100;
   const totalPending = couponSummary.totals.remainingRewardInPaise / 100;
@@ -174,7 +182,6 @@ export default async function CreatorDashboardPage({
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-10">
-      <CreatorReferrals />
       <div className="flex flex-col gap-4">
         <BackToHomeButton
           label={t("navigation.back_to_home", "Back to home")}
@@ -184,31 +191,22 @@ export default async function CreatorDashboardPage({
             {t("creator_dashboard.tagline", "Creator dashboard")}
           </p>
           <h1 className="font-semibold text-3xl">
-            {t(
-              "creator_dashboard.title",
-              "Share coupons and track performance"
-            )}
+            <EditableTranslation translationKey="referrals.dashboard_title" defaultText="Share links and track your earnings" />
           </h1>
           <p className="text-muted-foreground text-sm">
-            {t(
-              "creator_dashboard.subtitle",
-              "Monitor how your community redeems coupons, how much revenue you helped generate, and when each code expires."
-            )}
+            <EditableTranslation translationKey="referrals.dashboard_description" defaultText="View your assigned referral links, commission terms, coupon activity, and payouts." />
           </p>
         </div>
       </div>
 
-      <section className="grid gap-4 sm:grid-cols-3">
+      <CreatorReferrals />
+      {!summaryFailed ? <><section className="grid gap-4 sm:grid-cols-2">
         <MetricCard
           label={t(
             "creator_dashboard.metrics.redemptions",
             "Total redemptions"
           )}
           value={couponSummary.totals.usageCount.toLocaleString("en-IN")}
-        />
-        <MetricCard
-          label={t("creator_dashboard.metrics.savings", "User savings")}
-          value={currencyFormatter.format(totalDiscount)}
         />
         <MetricCard
           label={t("creator_dashboard.metrics.rewards", "Your rewards")}
@@ -228,7 +226,7 @@ export default async function CreatorDashboardPage({
           value={currencyFormatter.format(totalPending)}
         />
       </section>
-
+      </> : null}
       <section className="rounded-2xl border bg-card/70 shadow-sm">
         <header className="flex flex-col gap-2 border-b px-4 py-4 sm:px-6">
           <h2 className="font-semibold text-lg">
@@ -241,7 +239,7 @@ export default async function CreatorDashboardPage({
             )}
           </p>
         </header>
-        {couponSummary.coupons.length === 0 ? (
+        {summaryFailed ? <div className="p-6" role="alert"><EditableTranslation translationKey="referrals.coupons_unavailable" defaultText="Coupon information could not be confirmed. Reload this page to retry." /></div> : couponSummary.coupons.length === 0 ? (
           <div className="px-6 py-10 text-center text-muted-foreground text-sm">
             {t(
               "creator_dashboard.coupons.empty",
@@ -408,7 +406,7 @@ export default async function CreatorDashboardPage({
             )}
           </p>
         </header>
-        {hasRedemptions ? (
+        {redemptionsFailed ? <div className="p-6" role="alert"><EditableTranslation translationKey="referrals.coupons_unavailable" defaultText="Coupon information could not be confirmed. Reload this page to retry." /></div> : hasRedemptions ? (
           <>
             <div className="flex flex-col gap-2 border-b px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between sm:px-6">
               <div className="flex flex-wrap items-center gap-2">
