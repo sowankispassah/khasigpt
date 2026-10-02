@@ -128,7 +128,7 @@ export function CalculatorWorkbench() {
         fallback = fallback.slice(0, -5).trim();
       } else if (fallback.endsWith("sqrt")) {
         fallback = fallback.slice(0, -4).trim();
-      } else if (/[+\-*/%^.(]$/.test(fallback)) {
+      } else if (/[+\-*/^.(]$/.test(fallback)) {
         fallback = fallback.slice(0, -1).trim();
       } else {
         break;

@@ -46,7 +46,7 @@ function endsWithValueToken(token: RawToken | undefined) {
   if (token.kind === "number" || token.kind === "rightParen") {
     return true;
   }
-  return token.kind === "operator" && token.value === "!";
+  return token.kind === "operator" && (token.value === "!" || token.value === "%");
 }
 
 function startsValueToken(token: RawToken) {
@@ -156,13 +156,13 @@ function precedence(operator: ParsedOperator): number {
   if (operator === "u-") {
     return 4;
   }
-  if (operator === "!") {
+  if (operator === "!" || operator === "%") {
     return 5;
   }
   if (operator === "^") {
     return 3;
   }
-  if (operator === "*" || operator === "/" || operator === "%") {
+  if (operator === "*" || operator === "/") {
     return 2;
   }
   return 1;
@@ -250,6 +250,10 @@ function toRpn(tokens: RawToken[]): RpnToken[] {
 
       if (operator === "-" && unaryContext) {
         operator = "u-";
+      } else if (operator === "%") {
+        if (!(previous === "number" || previous === "rightParen")) {
+          throw new Error("Operator is missing a value.");
+        }
       } else if (operator === "!") {
         if (!(previous === "number" || previous === "rightParen")) {
           throw new Error("Factorial can only be used after a value.");
@@ -285,7 +289,7 @@ function toRpn(tokens: RawToken[]): RpnToken[] {
       }
 
       stack.push({ kind: "operator", value: operator });
-      previous = operator === "!" ? "number" : "operator";
+      previous = operator === "!" || operator === "%" ? "number" : "operator";
     }
   }
 
@@ -322,11 +326,13 @@ function computeFactorial(value: number): number {
 }
 
 function evaluateRpn(tokens: RpnToken[]): number {
-  const values: number[] = [];
+  // Keep a percentage marked until its consuming operation: + and - use
+  // the left operand as the base, while * and / consume its decimal ratio.
+  const values: Array<{ value: number; percentage: boolean }> = [];
 
   for (const token of tokens) {
     if (token.kind === "number") {
-      values.push(token.value);
+      values.push({ value: token.value, percentage: false });
       continue;
     }
 
@@ -336,10 +342,10 @@ function evaluateRpn(tokens: RpnToken[]): number {
         throw new Error("Missing function operand.");
       }
       if (token.value === "sqrt") {
-        if (operand < 0) {
+        if (operand.value < 0) {
           throw new Error("Cannot take square root of a negative number.");
         }
-        values.push(Math.sqrt(operand));
+        values.push({ value: Math.sqrt(operand.value), percentage: false });
       }
       continue;
     }
@@ -349,7 +355,16 @@ function evaluateRpn(tokens: RpnToken[]): number {
       if (operand === undefined) {
         throw new Error("Missing value for unary minus.");
       }
-      values.push(-operand);
+      values.push({ ...operand, value: -operand.value });
+      continue;
+    }
+
+    if (token.value === "%") {
+      const operand = values.pop();
+      if (operand === undefined) {
+        throw new Error("Operator is missing a value.");
+      }
+      values.push({ value: operand.value / 100, percentage: true });
       continue;
     }
 
@@ -358,7 +373,7 @@ function evaluateRpn(tokens: RpnToken[]): number {
       if (operand === undefined) {
         throw new Error("Missing value for factorial.");
       }
-      values.push(computeFactorial(operand));
+      values.push({ value: computeFactorial(operand.value), percentage: false });
       continue;
     }
 
@@ -368,41 +383,39 @@ function evaluateRpn(tokens: RpnToken[]): number {
       throw new Error("Expression is invalid.");
     }
 
-    if (token.value === "/" && right === 0) {
+    if (token.value === "/" && right.value === 0) {
       throw new Error("Division by zero is not allowed.");
     }
 
-    if (token.value === "%" && right === 0) {
-      throw new Error("Modulo by zero is not allowed.");
-    }
-
+    const isAdditive = token.value === "+" || token.value === "-";
+    const rightValue = isAdditive && right.percentage && !left.percentage
+      ? left.value * right.value
+      : right.value;
     let calculated = 0;
     if (token.value === "+") {
-      calculated = left + right;
+      calculated = left.value + rightValue;
     } else if (token.value === "-") {
-      calculated = left - right;
+      calculated = left.value - rightValue;
     } else if (token.value === "*") {
-      calculated = left * right;
+      calculated = left.value * rightValue;
     } else if (token.value === "/") {
-      calculated = left / right;
-    } else if (token.value === "%") {
-      calculated = left % right;
+      calculated = left.value / rightValue;
     } else if (token.value === "^") {
-      calculated = left ** right;
+      calculated = left.value ** rightValue;
     }
 
     if (!Number.isFinite(calculated)) {
       throw new Error("Result is outside supported numeric range.");
     }
 
-    values.push(calculated);
+    values.push({ value: calculated, percentage: isAdditive && left.percentage && right.percentage });
   }
 
   if (values.length !== 1) {
     throw new Error("Expression is invalid.");
   }
 
-  return values[0];
+  return values[0].value;
 }
 
 export function roundCalculatorResult(

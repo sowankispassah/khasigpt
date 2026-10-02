@@ -30,7 +30,7 @@ export function editCalculatorExpression(state: CalculatorEditorState, edit: Cal
     const before = expression.slice(0, start);
     const opens = (before.match(/\(/g) ?? []).length;
     const closes = (before.match(/\)/g) ?? []).length;
-    value = opens > closes && /(?:[0-9)!]|pi)$/.test(before.trim()) ? ")" : "(";
+    value = opens > closes && /(?:[0-9)!%]|pi)$/.test(before.trim()) ? ")" : "(";
   } else {
     value = edit.value.replaceAll("×", "*").replaceAll("÷", "/").replaceAll("−", "-");
     if (!expression && /^[+*/%^]/.test(value)) {
@@ -42,7 +42,8 @@ export function editCalculatorExpression(state: CalculatorEditorState, edit: Cal
   }
   let before = expression.slice(0, start);
   if (value === "." && /\.\d*$/.test(before)) return state;
-  if (/^[+\-*/%^]$/.test(value) && start === end && /[+\-*/%^]$/.test(before)) {
+  if (value === "%" && !/(?:[0-9)!%]|pi)$/.test(before)) return state;
+  if (/^[+\-*/^]$/.test(value) && start === end && /[+\-*/^]$/.test(before)) {
     before = before.slice(0, -1);
     start -= 1;
   }
