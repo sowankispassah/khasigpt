@@ -1,8 +1,59 @@
 import { expect, test } from "@playwright/test";
+import { NextRequest } from "next/server";
+import { encode } from "next-auth/jwt";
 import {
+  hasVerifiedAdminSession,
+  proxy,
   shouldAllowAdminEntryPassThrough,
   shouldBypassSiteStatusGate,
 } from "@/proxy";
+
+test("verified admin navigation does not wait for site availability", async () => {
+  const previousSecret = process.env.AUTH_SECRET;
+  const secret = "local-admin-navigation-verification";
+  process.env.AUTH_SECRET = secret;
+  try {
+    for (const secure of [false, true]) {
+      const name = secure ? "__Secure-authjs.session-token" : "authjs.session-token";
+      const token = await encode({ secret, salt: name, token: { role: "admin" }, maxAge: 600 });
+      const request = new NextRequest(`${secure ? "https" : "http"}://localhost/admin/settings`, {
+        headers: { cookie: `${name}=${token}`, accept: "text/html" },
+      });
+      expect(await hasVerifiedAdminSession(request)).toBe(true);
+      const started = Date.now();
+      expect((await proxy(request)).headers.get("x-middleware-next")).toBe("1");
+      expect(Date.now() - started).toBeLessThan(200);
+    }
+  } finally {
+    if (previousSecret === undefined) delete process.env.AUTH_SECRET;
+    else process.env.AUTH_SECRET = previousSecret;
+  }
+});
+
+test("regular, expired, forged and missing sessions cannot skip the admin site gate", async () => {
+  const previousSecret = process.env.AUTH_SECRET;
+  const secret = "local-admin-navigation-verification";
+  process.env.AUTH_SECRET = secret;
+  try {
+    const name = "authjs.session-token";
+    const tokens = [
+      await encode({ secret, salt: name, token: { role: "regular" }, maxAge: 600 }),
+      await encode({ secret, salt: name, token: { role: "admin" }, maxAge: -60 }),
+      await encode({ secret: "untrusted-key", salt: name, token: { role: "admin" }, maxAge: 600 }),
+      "invalid-session",
+      "",
+    ];
+    for (const token of tokens) {
+      const request = new NextRequest("http://localhost/admin/settings", {
+        headers: token ? { cookie: `${name}=${token}` } : {},
+      });
+      expect(await hasVerifiedAdminSession(request)).toBe(false);
+    }
+  } finally {
+    if (previousSecret === undefined) delete process.env.AUTH_SECRET;
+    else process.env.AUTH_SECRET = previousSecret;
+  }
+});
 
 test.describe("site status gate public routes", () => {
   test("keeps compliance pages outside coming-soon and maintenance redirects", () => {

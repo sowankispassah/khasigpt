@@ -442,17 +442,24 @@ async function fetchSiteStatus(): Promise<{
   }
 }
 
-async function resolveIsAdmin(request: NextRequest) {
+export async function hasVerifiedAdminSession(request: NextRequest) {
   const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+  if (!authSecret || !hasSessionCookie(request)) {
+    return false;
+  }
+  const token = await getToken({
+    req: request,
+    secret: authSecret,
+    secureCookie: request.nextUrl.protocol === "https:",
+  }).catch(
+    () => null
+  );
+  return token?.role === "admin";
+}
 
-  if (authSecret) {
-    const token = await getToken({ req: request, secret: authSecret }).catch(
-      () => null
-    );
-
-    if (token?.role === "admin") {
-      return true;
-    }
+async function resolveIsAdmin(request: NextRequest) {
+  if (await hasVerifiedAdminSession(request)) {
+    return true;
   }
 
   if (!hasSessionCookie(request)) {
@@ -620,7 +627,12 @@ export async function proxy(request: NextRequest) {
 
   if (
     isPageNavigationRequest(request) &&
-    !shouldBypassSiteStatusGate(request.nextUrl.pathname)
+    !shouldBypassSiteStatusGate(request.nextUrl.pathname) &&
+    // Admins already retain console access during maintenance/prelaunch.
+    // Verify the signed session before skipping this unrelated DB-backed gate;
+    // the admin layout and actions still enforce current account authorization.
+    !(isPathOrDescendant(request.nextUrl.pathname, "/admin") &&
+      await hasVerifiedAdminSession(request))
   ) {
     const pathname = request.nextUrl.pathname;
     const siteStatus = await resolveSiteStatus(request);

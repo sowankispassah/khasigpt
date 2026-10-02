@@ -89,3 +89,29 @@ test("an unready route gets immediate feedback and can be superseded", async ({ 
   await page.getByRole("link", { name: "Contacts", exact: true }).click();
   await expect(page.locator("[data-pending=true]")).toHaveCount(0);
 });
+
+test("admin pages still deny signed-out and regular sessions", async ({ page, context }) => {
+  await context.clearCookies();
+  const anonymous = await page.request.get("/admin/characters", { maxRedirects: 0 });
+  expect(anonymous.status()).toBe(307);
+  expect(anonymous.headers().location).toBe("/");
+
+  const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+  const databaseUrl = process.env.POSTGRES_URL;
+  if (!secret || !databaseUrl) throw new Error("Local verification credentials required.");
+  const sql = postgres(databaseUrl, { max: 1 });
+  try {
+    const [account] = await sql`SELECT id, "firstName", "lastName", "dateOfBirth" FROM "User" WHERE role = 'regular' AND "isActive" = true LIMIT 1`;
+    if (!account) throw new Error("Regular account required for authorization verification.");
+    const token = { ...account, role: "regular" as const, roleRefreshedAt: Date.now(), dbRefreshedAt: Date.now(), imageVersion: null };
+    for (const name of ["authjs.session-token", "__Secure-authjs.session-token"]) {
+      const value = await encode({ secret, salt: name, maxAge: 600, token });
+      await context.addCookies([{ name, value, domain: "localhost", path: "/", httpOnly: true, secure: name.startsWith("__Secure"), sameSite: "Lax" }]);
+    }
+  } finally {
+    await sql.end();
+  }
+  const regular = await page.request.get("/admin/characters", { maxRedirects: 0 });
+  expect(regular.status()).toBe(307);
+  expect(regular.headers().location).toBe("/");
+});
