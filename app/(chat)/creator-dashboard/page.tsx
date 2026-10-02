@@ -1,3 +1,4 @@
+import { ArrowDownLeft, ChevronDown, ChevronLeft, ChevronRight, Receipt, Wallet } from "lucide-react";
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -9,6 +10,7 @@ import {
   getCreatorCouponSummary,
 } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import { REFERRAL_COPY } from "@/lib/referrals/copy";
 import { combineCreatorRewards, formatCreatorRewards } from "@/lib/referrals/creator-summary";
 import { getCreatorReferralTotals } from "@/lib/referrals/service";
 import { withTimeout } from "@/lib/utils/async";
@@ -165,398 +167,75 @@ export default async function CreatorDashboardPage({
     return `/creator-dashboard${query ? `?${query}` : ""}`;
   };
 
-  const sortOptions: Array<{ key: SortKey; label: string }> = [
-    {
-      key: "date_desc",
-      label: t("creator_dashboard.redemptions.sort.newest", "Newest"),
-    },
-    {
-      key: "date_asc",
-      label: t("creator_dashboard.redemptions.sort.oldest", "Oldest"),
-    },
-    {
-      key: "amount_desc",
-      label: t("creator_dashboard.redemptions.sort.highest", "Highest payment"),
-    },
-    {
-      key: "amount_asc",
-      label: t("creator_dashboard.redemptions.sort.lowest", "Lowest payment"),
-    },
-  ];
+  const sortOptions = [
+    ["date_desc", "newest", "Newest"],
+    ["date_asc", "oldest", "Oldest"],
+    ["amount_desc", "highest", "Highest payment"],
+    ["amount_asc", "lowest", "Lowest payment"],
+  ] as const;
+  const activeSort = sortOptions.find(option => option[0] === sortKey) ?? sortOptions[0];
+  const hasCoupons = couponSummary.coupons.length > 0;
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-10">
-      <div className="flex flex-col gap-4">
-        <BackToHomeButton
-          label={t("navigation.back_to_home", "Back to home")}
-        />
-        <div>
-          <p className="text-muted-foreground text-xs uppercase tracking-wide">
-            {t("creator_dashboard.tagline", "Creator dashboard")}
-          </p>
-          <h1 className="font-semibold text-3xl">
-            <EditableTranslation translationKey="referrals.dashboard_title" defaultText="Share links and track your earnings" />
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            <EditableTranslation translationKey="referrals.dashboard_description" defaultText="View your assigned referral links, commission terms, coupon activity, and payouts." />
-          </p>
-        </div>
-      </div>
-
-      {!summaryFailed ? <><section className="grid gap-4 sm:grid-cols-2">
-        <MetricCard
-          label={t(
-            "creator_dashboard.metrics.redemptions",
-            "Total redemptions"
-          )}
-          value={couponSummary.totals.usageCount.toLocaleString("en-IN")}
-        />
-        <MetricCard
-          label={t("creator_dashboard.metrics.rewards", "Your rewards")}
-          value={formatCreatorRewards(rewardBalances, "earned")}
-        />
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-5 py-6 sm:px-8 sm:py-10">
+      <BackToHomeButton label={t("navigation.back_to_home", "Back to home")} />
+      <header className="space-y-1.5">
+        <p className="text-muted-foreground text-xs"><Copy name="dashboard_label" /></p>
+        <h1 className="font-bold text-3xl tracking-tight"><Copy name="dashboard_heading" /></h1>
+        <p className="text-muted-foreground text-sm"><Copy name="mobile_dashboard_description" /></p>
+      </header>
+      <section aria-labelledby="earnings-overview" className="space-y-4 rounded-3xl bg-muted p-6 text-foreground sm:p-8">
+        <div className="flex items-center justify-between gap-3"><h2 id="earnings-overview" className="text-muted-foreground text-sm"><Text translationKey="creator_dashboard.metrics.rewards" defaultText="Your rewards" /></h2><Wallet className="size-5" /></div>
+        <p className="break-words font-bold text-4xl tracking-tight sm:text-5xl">{formatCreatorRewards(rewardBalances, "earned")}</p>
+        <dl className="grid grid-cols-2 gap-4 border-t pt-5"><div><dt className="text-muted-foreground text-xs"><Text translationKey="creator_dashboard.metrics.paid" defaultText="Payouts completed" /></dt><dd className="mt-2 break-words font-semibold text-lg">{formatCreatorRewards(rewardBalances, "paid")}</dd></div><div><dt className="text-muted-foreground text-xs"><Text translationKey="creator_dashboard.metrics.pending_payout" defaultText="Pending payout" /></dt><dd className="mt-2 break-words font-semibold text-lg">{formatCreatorRewards(rewardBalances, "remaining")}</dd></div></dl>
+        <div className="flex items-center gap-2 rounded-xl bg-card p-3 text-xs"><ArrowDownLeft className="size-4" /><span className="flex-1"><Text translationKey="creator_dashboard.metrics.redemptions" defaultText="Total redemptions" /></span><span className="font-semibold">{summaryFailed ? "—" : couponSummary.totals.usageCount.toLocaleString("en-IN")}</span></div>
+        {!rewardBalances ? <p className="text-muted-foreground text-sm" role="alert"><Copy name="earnings_unavailable" /></p> : null}
       </section>
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <MetricCard
-          label={t("creator_dashboard.metrics.paid", "Payouts completed")}
-          value={formatCreatorRewards(rewardBalances, "paid")}
-        />
-        <MetricCard
-          label={t(
-            "creator_dashboard.metrics.pending_payout",
-            "Pending payout"
-          )}
-          value={formatCreatorRewards(rewardBalances, "remaining")}
-        />
-      </section>
-      </> : null}
-      {!rewardBalances ? <p className="text-muted-foreground text-sm" role="alert"><EditableTranslation translationKey="referrals.earnings_unavailable" defaultText="Earnings totals could not be confirmed. Reload this page to retry." /></p> : null}
       <CreatorReferrals />
-      {summaryFailed || couponSummary.coupons.length > 0 ? (
-      <section className="rounded-2xl border bg-card/70 shadow-sm">
-        <header className="flex flex-col gap-2 border-b px-4 py-4 sm:px-6">
-          <h2 className="font-semibold text-lg">
-            {t("creator_dashboard.coupons.title", "Your coupon codes")}
-          </h2>
-          <p className="text-muted-foreground text-sm">
-            {t(
-              "creator_dashboard.coupons.subtitle",
-              "Review status, validity, and performance for every code assigned to you."
-            )}
-          </p>
-        </header>
-        {summaryFailed ? <div className="p-6" role="alert"><EditableTranslation translationKey="referrals.coupons_unavailable" defaultText="Coupon information could not be confirmed. Reload this page to retry." /></div> : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
-                <tr>
-                  <th className="px-4 py-3 text-left font-medium">
-                    {t("creator_dashboard.table.code", "Code")}
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium">
-                    {t("creator_dashboard.table.discount", "Discount")}
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium">
-                    {t("creator_dashboard.table.validity", "Validity")}
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium">
-                    {t("creator_dashboard.table.status", "Status")}
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium">
-                    {t("creator_dashboard.table.usage", "Usage")}
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium">
-                    {t("creator_dashboard.table.reward", "Reward")}
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium">
-                    {t("creator_dashboard.table.payouts", "Payouts")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/70">
-                {couponSummary.coupons.map((coupon) => {
-                  const validFromLabel =
-                    formatDateSafe(coupon.validFrom) ?? "—";
-                  const validToLabel =
-                    formatDateSafe(coupon.validTo) ??
-                    t("creator_dashboard.table.no_end", "No end date");
-                  const now = Date.now();
-                  const isExpired = Boolean(
-                    coupon.validTo && coupon.validTo.getTime() < now
-                  );
-                  const statusLabel = isExpired
-                    ? t("creator_dashboard.status.expired", "Expired")
-                    : coupon.isActive
-                      ? t("creator_dashboard.status.active", "Active")
-                      : t("creator_dashboard.status.inactive", "Inactive");
-
-                  return (
-                    <tr className="bg-card/60" key={coupon.id}>
-                      <td className="px-4 py-3 font-semibold uppercase tracking-wide">
-                        {coupon.code}
-                      </td>
-                      <td className="px-4 py-3">
-                        {coupon.discountPercentage}%
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground text-xs">
-                        <div>{validFromLabel}</div>
-                        <div>{validToLabel}</div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-1 font-semibold text-xs ${
-                            isExpired
-                              ? "bg-rose-100 text-rose-700"
-                              : coupon.isActive
-                                ? "bg-emerald-100 text-emerald-700"
-                                : "bg-amber-100 text-amber-700"
-                          }`}
-                        >
-                          {statusLabel}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        {coupon.usageCount.toLocaleString("en-IN")}
-                        {coupon.lastRedemptionAt ? (
-                          <p className="text-muted-foreground text-xs">
-                            {t(
-                              "creator_dashboard.table.last_used",
-                              "Last: {date}"
-                            ).replace(
-                              "{date}",
-                              formatDateSafe(coupon.lastRedemptionAt) ?? "—"
-                            )}
-                          </p>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-3">
-                        {coupon.usageCount > 0 ? (
-                          <div className="flex flex-col gap-1">
-                            <span>
-                              {coupon.creatorRewardPercentage}% •{" "}
-                              <span className="font-semibold">
-                                {currencyFormatter.format(
-                                  coupon.estimatedRewardInPaise / 100
-                                )}
-                              </span>
-                            </span>
-                            <span
-                              className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 font-semibold text-[11px] ${
-                                coupon.creatorRewardStatus === "paid"
-                                  ? "bg-emerald-100 text-emerald-700"
-                                  : "bg-amber-100 text-amber-800"
-                              }`}
-                            >
-                              {coupon.creatorRewardStatus === "paid"
-                                ? t("coupon.reward_status.paid", "Paid")
-                                : t(
-                                    "coupon.reward_status.pending",
-                                    "Payment pending"
-                                  )}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground text-xs">
-                            {t(
-                              "coupon.reward_status.none",
-                              "No redemptions yet"
-                            )}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col gap-0.5">
-                          <span className="font-semibold text-emerald-700">
-                            {currencyFormatter.format(
-                              coupon.paidRewardInPaise / 100
-                            )}
-                          </span>
-                          <span className="text-muted-foreground text-xs">
-                            {t(
-                              "creator_dashboard.payouts.pending",
-                              "Pending {amount}"
-                            ).replace(
-                              "{amount}",
-                              currencyFormatter.format(
-                                coupon.remainingRewardInPaise / 100
-                              )
-                            )}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-      ) : null}
-
-      <section className="rounded-2xl border bg-card/70 shadow-sm">
-        <header className="flex flex-col gap-2 border-b px-4 py-4 sm:px-6">
-          <h2 className="font-semibold text-lg">
-            {t("creator_dashboard.redemptions.title", "Recent redemptions")}
-          </h2>
-          <p className="text-muted-foreground text-sm">
-            {t(
-              "creator_dashboard.redemptions.subtitle",
-              "Track every subscription that used your coupon code."
-            )}
-          </p>
-        </header>
-        {redemptionsFailed ? <div className="p-6" role="alert"><EditableTranslation translationKey="referrals.coupons_unavailable" defaultText="Coupon information could not be confirmed. Reload this page to retry." /></div> : hasRedemptions ? (
-          <>
-            <div className="flex flex-col gap-2 border-b px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between sm:px-6">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-muted-foreground">
-                  {t("creator_dashboard.redemptions.sort.label", "Sort by")}
-                </span>
-                <div className="flex flex-wrap gap-1">
-                  {sortOptions.map((option) => {
-                    const isActive = option.key === sortKey;
-                    return (
-                      <Link
-                        aria-current={isActive ? "true" : "false"}
-                        className={`rounded-full px-3 py-1 font-semibold text-xs ${
-                          isActive
-                            ? "bg-primary/10 text-primary"
-                            : "bg-muted text-muted-foreground hover:bg-muted/80"
-                        }`}
-                        href={makeHref({ sortKey: option.key, page: 1 })}
-                        key={option.key}
-                      >
-                        {option.label}
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
-                <span>
-                  {t(
-                    "creator_dashboard.redemptions.pagination",
-                    "Page {current} of {total}"
-                  )
-                    .replace("{current}", redemptionResult.page.toString())
-                    .replace("{total}", totalPages.toString())}
-                </span>
-                <div className="flex items-center gap-1">
-                  <Link
-                    aria-disabled={!hasPrev}
-                    className={`rounded-full border px-3 py-1 font-semibold text-xs ${
-                      hasPrev
-                        ? "hover:bg-muted"
-                        : "cursor-not-allowed opacity-40"
-                    }`}
-                    href={
-                      hasPrev
-                        ? makeHref({ page: redemptionResult.page - 1 })
-                        : "#"
-                    }
-                  >
-                    {t("common.previous", "Previous")}
-                  </Link>
-                  <Link
-                    aria-disabled={!hasNext}
-                    className={`rounded-full border px-3 py-1 font-semibold text-xs ${
-                      hasNext
-                        ? "hover:bg-muted"
-                        : "cursor-not-allowed opacity-40"
-                    }`}
-                    href={
-                      hasNext
-                        ? makeHref({ page: redemptionResult.page + 1 })
-                        : "#"
-                    }
-                  >
-                    {t("common.next", "Next")}
-                  </Link>
-                </div>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-medium">
-                      {t("creator_dashboard.redemptions.user", "User")}
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium">
-                      {t("creator_dashboard.redemptions.coupon", "Coupon")}
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium">
-                      {t("creator_dashboard.redemptions.payment", "Payment")}
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium">
-                      {t("creator_dashboard.redemptions.discount", "Discount")}
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium">
-                      {t("creator_dashboard.redemptions.reward", "Your reward")}
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium">
-                      {t("creator_dashboard.redemptions.date", "Redeemed at")}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/70">
-                  {redemptionResult.redemptions.map((redemption) => (
-                    <tr className="bg-card/60" key={redemption.id}>
-                      <td className="px-4 py-3 font-semibold tracking-wide">
-                        {redemption.userLabel}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground text-xs">
-                        {redemption.couponCode}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="font-semibold">
-                          {currencyFormatter.format(
-                            redemption.paymentAmountInPaise / 100
-                          )}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground text-xs">
-                        {currencyFormatter.format(
-                          redemption.discountAmountInPaise / 100
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="font-semibold">
-                          {currencyFormatter.format(
-                            redemption.rewardInPaise / 100
-                          )}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground text-xs">
-                        {formatDateSafe(redemption.createdAt) ?? "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        ) : (
-          <div className="px-6 py-10 text-center text-muted-foreground text-sm">
-            {t(
-              "creator_dashboard.redemptions.empty",
-              "No redemptions are recorded yet. Share your code to see activity here."
-            )}
-          </div>
-        )}
-      </section>
+      {summaryFailed || hasCoupons ? <section className="space-y-4 rounded-3xl border bg-card p-5 sm:p-6">
+        <h2 className="font-semibold text-xl tracking-tight"><Text translationKey="creator_dashboard.coupons.title" defaultText="Your coupon codes" /></h2>
+        {summaryFailed ? <p className="text-muted-foreground text-sm" role="alert"><Copy name="coupons_unavailable" /></p> : <div className="grid gap-4 sm:grid-cols-2">{couponSummary.coupons.map(coupon => {
+          const validTo = formatDateSafe(coupon.validTo);
+          const status = coupon.validTo && new Date(coupon.validTo).getTime() < Date.now() ? "expired" : coupon.isActive ? "active" : "inactive";
+          return <article key={coupon.id} className="space-y-4 rounded-2xl bg-muted p-4">
+            <div className="flex items-center justify-between gap-3"><h3 className="break-all font-semibold tracking-wide">{coupon.code}</h3><span className={`text-xs ${status === "active" ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"}`}><Copy name={status} /></span></div>
+            <dl className="space-y-2 text-sm">
+              <Row label={<Text translationKey="creator_dashboard.table.discount" defaultText="Discount" />} value={`${coupon.discountPercentage}%`} />
+              <Row label={<Text translationKey="creator_dashboard.table.usage" defaultText="Usage" />} value={coupon.usageCount.toLocaleString("en-IN")} />
+              <Row label={<Text translationKey="creator_dashboard.table.validity" defaultText="Validity" />} value={<>{formatDateSafe(coupon.validFrom) ?? "—"} · {validTo ?? <Text translationKey="creator_dashboard.table.no_end" defaultText="No end date" />}</>} />
+              <Row label={<Text translationKey="creator_dashboard.table.reward" defaultText="Reward" />} value={`${coupon.creatorRewardPercentage}% · ${currencyFormatter.format(coupon.estimatedRewardInPaise / 100)}`} />
+              <Row label={<Text translationKey="creator_dashboard.metrics.paid" defaultText="Payouts completed" />} value={currencyFormatter.format(coupon.paidRewardInPaise / 100)} />
+              <Row label={<Text translationKey="creator_dashboard.metrics.pending_payout" defaultText="Pending payout" />} value={currencyFormatter.format(coupon.remainingRewardInPaise / 100)} />
+            </dl>
+          </article>;
+        })}</div>}
+      </section> : null}
+      {redemptionsFailed || hasCoupons || hasRedemptions ? <section className="space-y-4 rounded-3xl border bg-card p-5 sm:p-6">
+        <h2 className="font-semibold text-xl tracking-tight"><Text translationKey="creator_dashboard.redemptions.title" defaultText="Recent redemptions" /></h2>
+        {redemptionsFailed ? <p className="text-muted-foreground text-sm" role="alert"><Copy name="coupons_unavailable" /></p> : hasRedemptions ? <>
+          <details className="group relative w-fit"><summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl bg-muted px-3 text-xs"><Text translationKey={`creator_dashboard.redemptions.sort.${activeSort[1]}`} defaultText={activeSort[2]} /><ChevronDown className="size-4" /></summary><div className="absolute top-full z-10 mt-2 min-w-44 rounded-2xl border bg-popover p-2 shadow-md">{sortOptions.map(([key, label, fallback]) => <Link key={key} aria-current={key === sortKey ? "true" : undefined} className={`flex min-h-11 cursor-pointer items-center rounded-xl px-3 text-sm hover:bg-muted ${key === sortKey ? "bg-muted font-semibold" : ""}`} href={makeHref({ sortKey: key, page: 1 })} data-nav><Text translationKey={`creator_dashboard.redemptions.sort.${label}`} defaultText={fallback} /></Link>)}</div></details>
+          <div className="divide-y">{redemptionResult.redemptions.map(entry => <article key={entry.id} className="space-y-2 py-4 first:pt-0">
+            <div className="flex items-start justify-between gap-3 font-semibold text-sm"><p className="min-w-0 break-words">{entry.userLabel}</p><p className="shrink-0">{currencyFormatter.format(entry.paymentAmountInPaise / 100)}</p></div>
+            <div className="flex justify-between gap-3 text-muted-foreground text-xs"><span>{entry.couponCode}</span><span><Text translationKey="creator_dashboard.table.reward" defaultText="Reward" /> · {currencyFormatter.format(entry.rewardInPaise / 100)}</span></div>
+            <p className="text-muted-foreground text-xs">{formatDateSafe(entry.createdAt) ?? "—"}</p>
+          </article>)}</div>
+          {totalPages > 1 ? <nav className="flex items-center justify-center gap-3 text-sm">
+            {hasPrev ? <Link className="flex min-h-11 cursor-pointer items-center gap-1 rounded-xl px-3 hover:bg-muted" href={makeHref({ page: redemptionResult.page - 1 })} data-nav><ChevronLeft className="size-4" /><Copy name="previous" /></Link> : <span aria-disabled="true" className="flex min-h-11 items-center gap-1 px-3 opacity-40"><ChevronLeft className="size-4" /><Copy name="previous" /></span>}
+            <span className="text-muted-foreground">{redemptionResult.page} / {totalPages}</span>
+            {hasNext ? <Link className="flex min-h-11 cursor-pointer items-center gap-1 rounded-xl px-3 hover:bg-muted" href={makeHref({ page: redemptionResult.page + 1 })} data-nav><Copy name="next" /><ChevronRight className="size-4" /></Link> : <span aria-disabled="true" className="flex min-h-11 items-center gap-1 px-3 opacity-40"><Copy name="next" /><ChevronRight className="size-4" /></span>}
+          </nav> : null}
+        </> : <div className="flex flex-col items-center gap-3 py-5 text-center text-muted-foreground text-sm"><Receipt className="size-6" /><Text translationKey="creator_dashboard.redemptions.empty" defaultText="No redemptions are recorded yet." /></div>}
+      </section> : null}
     </div>
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border bg-card/70 p-4 shadow-sm">
-      <p className="text-muted-foreground text-xs uppercase tracking-wide">
-        {label}
-      </p>
-      <p className="mt-2 font-semibold text-2xl">{value}</p>
-    </div>
-  );
+function Copy({ name }: { name: keyof typeof REFERRAL_COPY }) {
+  return <Text translationKey={`referrals.${name}`} defaultText={REFERRAL_COPY[name]} />;
+}
+function Text({ translationKey, defaultText }: { translationKey: string; defaultText: string }) {
+  return <EditableTranslation translationKey={translationKey} defaultText={defaultText} />;
+}
+function Row({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
+  return <div className="flex items-start justify-between gap-3"><dt className="text-muted-foreground">{label}</dt><dd className="text-right font-medium">{value}</dd></div>;
 }

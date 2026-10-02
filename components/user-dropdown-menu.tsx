@@ -637,8 +637,8 @@ export function UserDropdownMenu({
                   <Link href="/creator-dashboard">
                     <span className="flex w-full items-center justify-between gap-2">
                       <EditableTranslation
-                        defaultText="Creator dashboard"
-                        translationKey="user_menu.creator_dashboard"
+                        defaultText="Earnings dashboard"
+                        translationKey="referrals.dashboard_label"
                       />
                     </span>
                   </Link>

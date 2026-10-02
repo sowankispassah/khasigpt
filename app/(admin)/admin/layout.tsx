@@ -56,7 +56,7 @@ const ADMIN_SHELL_TRANSLATIONS = [
   { key: "user_menu.open_admin_console", defaultText: "Open admin console" },
   { key: "user_menu.profile", defaultText: "Profile" },
   { key: "user_menu.open_menu", defaultText: "Open menu" },
-  { key: "user_menu.creator_dashboard", defaultText: "Creator dashboard" },
+  { key: "referrals.dashboard_label", defaultText: "Earnings dashboard" },
   { key: "user_menu.community_forum", defaultText: "Community Forum" },
   { key: "user_menu.resources.about", defaultText: "About Us" },
   { key: "user_menu.resources.contact", defaultText: "Contact Us" },

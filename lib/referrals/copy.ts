@@ -1,5 +1,7 @@
 export const REFERRAL_COPY = {
-  mobile_dashboard_title: "Your creator space",
+  dashboard_label: "Earnings dashboard",
+  dashboard_heading: "Your earnings",
+  mobile_dashboard_title: "Your earnings",
   mobile_dashboard_description: "Share your links. Track your earnings.",
   mobile_links: "Referral links",
   mobile_program_note: "New referral signups and commissions are paused by the admin.",

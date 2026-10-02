@@ -39,7 +39,7 @@ test("creator endpoint returns assigned links while keeping admin fields private
   expect(data).not.toHaveProperty("recentCommissions");
 });
 
-test("creator table shows terms and supports sharing, copy and responsive scrolling", async ({ page }) => {
+test("earnings cards show terms and support sharing, copy and responsive details", async ({ page }) => {
   test.setTimeout(90000);
   const clientErrors: string[] = [];
   page.on("pageerror", error => clientErrors.push(error.message));
@@ -53,25 +53,27 @@ test("creator table shows terms and supports sharing, copy and responsive scroll
     referrals: [{ id: "testlink", code: "creator123", percentage: 5, duration: "months", months: 3, windowDays: null, rechargeBefore: null, createdAt: "2026-10-01T00:00:00Z", isActive: true, signups: 4, balances: [{ currency: "INR", earned: 500, paid: 100, remaining: 400, recharges: 2, revenue: 10000 }] }],
   } }));
   await page.goto("/creator-dashboard");
-  await expect(page.getByRole("heading", { name: "Share links and track your earnings" })).toBeVisible({ timeout: 60000 });
-  await expect(page.getByRole("columnheader", { name: "Expiry", exact: true })).toBeVisible({ timeout: 60000 });
-  const referralTable = page.getByRole("table").first();
-  await expect(referralTable.getByRole("columnheader", { name: "Duration", exact: true })).toBeVisible();
-  await expect(referralTable.getByRole("columnheader")).toHaveCount(6);
-  for (const name of ["Commission %", "Commission duration", "Commission expiry", "Referred signups", "Eligible recharges", "Eligible recharge volume", "Earned", "Paid", "Unpaid balance"]) {
-    await expect(referralTable.getByRole("columnheader", { name, exact: true })).toHaveCount(0);
-  }
-  expect(await page.getByText("Your rewards", { exact: true }).evaluate(element => Boolean(element.compareDocumentPosition(document.querySelector("table") as Node) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
+  await expect(page.getByRole("heading", { name: "Your earnings" })).toBeVisible({ timeout: 60000 });
+  const referralCards = page.getByRole("region", { name: "Referral links" });
+  const referralCard = referralCards.getByRole("article").first();
+  await expect(referralCard).toBeVisible();
+  await expect(referralCards.getByRole("table")).toHaveCount(0);
+  await expect(referralCard.getByText("Duration", { exact: true })).toBeVisible();
+  await expect(referralCard.getByText("Expiry", { exact: true })).toBeVisible();
+  await expect(page.getByText("Creator dashboard", { exact: true })).toHaveCount(0);
+  expect(await page.getByText("Your rewards", { exact: true }).evaluate(element => Boolean(element.compareDocumentPosition(document.getElementById("earnings-referral-links") as Node) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
+  await expect(referralCards.getByRole("button", { name: "Next", exact: true })).toHaveCount(0);
+  await expect(referralCards.getByRole("button", { name: "Previous", exact: true })).toHaveCount(0);
   expect(clientErrors).toEqual([]);
-  await expect(referralTable.getByText("3 months", { exact: true })).toBeVisible();
-  await expect(referralTable.getByText("Per user", { exact: true })).toBeVisible();
-  await expect(referralTable.getByText("Active", { exact: true })).toBeVisible();
-  await expect(page.getByText("Your assigned links are shown here. New referral signups and commissions are currently not enabled by the admin.", { exact: true })).toBeVisible();
-  await expect(referralTable.getByText("Program not enabled", { exact: true })).toHaveCount(0);
+  await expect(referralCard.getByText("3 months after each user's signup", { exact: true })).toBeVisible();
+  await expect(referralCard.getByText("Per user", { exact: true })).toBeVisible();
+  await expect(referralCard.getByText("Active", { exact: true })).toBeVisible();
+  await expect(page.getByText("New referral signups and commissions are paused by the admin.", { exact: true })).toBeVisible();
+  await expect(referralCard.getByText("Program not enabled", { exact: true })).toHaveCount(0);
   await expect(page.getByText("User savings", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Delete", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Share link", exact: true })).toHaveCount(0);
-  await expect(referralTable.getByText("http://localhost:3471/r/creator123", { exact: true })).toHaveCount(0);
+  await expect(referralCard.getByText("http://localhost:3471/r/creator123", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "View link", exact: true }).click();
   await expect(page.getByRole("dialog").getByRole("link")).toHaveAttribute("href", "https://play.google.com/store/apps/details?id=khasigpt.com&referrer=creator_referral%3Dcreator123");
   await page.getByRole("button", { name: "Close", exact: true }).click();
@@ -108,4 +110,45 @@ test("creator table shows terms and supports sharing, copy and responsive scroll
   await details.evaluate(async element => { await Promise.all(element.getAnimations().map(animation => animation.finished)); });
   await page.screenshot({ path: "tmp/creator-referral-details-mobile.png" });
   await page.getByRole("button", { name: "Close", exact: true }).click();
+});
+
+
+test("real assigned-link dashboard renders behind the signed-in shell in both themes", async ({ page }) => {
+  test.setTimeout(90000);
+  // Use the authenticated local session from beforeEach and real read-only APIs.
+  // No route overrides or forced navigation bypasses in this check.
+  await page.goto("/creator-dashboard");
+  await expect(page.getByRole("heading", { name: "Your earnings", exact: true })).toBeVisible({ timeout: 60000 });
+  await expect(page.getByText("Earnings dashboard", { exact: true })).toBeVisible();
+  const referrals = page.getByRole("region", { name: "Referral links" });
+  await expect(referrals.getByRole("article").first()).toBeVisible({ timeout: 30000 });
+  await expect(page.getByText("Creator dashboard", { exact: true })).toHaveCount(0);
+  const hero = page.getByRole("region", { name: "Your rewards" });
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate(mode => {
+      document.documentElement.classList.toggle("dark", mode === "dark");
+      document.documentElement.classList.toggle("light", mode === "light");
+      document.documentElement.style.colorScheme = mode;
+    }, theme);
+    const colors = await hero.evaluate(element => {
+      const style = getComputedStyle(element);
+      return { background: style.backgroundColor, foreground: style.color };
+    });
+    expect(colors.background).not.toBe(colors.foreground);
+    await page.screenshot({ path: `tmp/earnings-real-${theme}-desktop.png`, fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `tmp/earnings-real-${theme}-mobile.png`, fullPage: true });
+    await referrals.getByRole("button", { name: "Referral options", exact: true }).first().click();
+    await page.getByRole("menuitem", { name: "View details", exact: true }).click();
+    const details = page.getByRole("dialog");
+    await expect(details).toBeVisible();
+    await expect(details.getByRole("button", { name: "Share link", exact: true })).toBeVisible();
+    await expect(details.getByRole("button", { name: "Copy referral link", exact: true })).toBeVisible();
+    expect(await details.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await details.evaluate(async element => { await Promise.all(element.getAnimations().map(animation => animation.finished)); });
+    await page.screenshot({ path: `tmp/earnings-real-${theme}-details-mobile.png` });
+    await details.getByRole("button", { name: "Close", exact: true }).click();
+    await page.setViewportSize({ width: 1280, height: 900 });
+  }
 });
