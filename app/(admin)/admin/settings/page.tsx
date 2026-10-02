@@ -75,7 +75,7 @@ import {
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import {
-  getAppSettingsByKeys,
+  getAdminAppSettingsByKeys,
   getLastKnownAppSettingsByKeys,
   listImageModelConfigs,
   listLanguagesWithSettings,
@@ -282,7 +282,7 @@ async function settingsQueryState<T>(
 
 async function loadEssentialFallbackSettingMap() {
   const settings = await withTimeout(
-    getAppSettingsByKeys([...ESSENTIAL_FALLBACK_SETTING_KEYS]),
+    getAdminAppSettingsByKeys([...ESSENTIAL_FALLBACK_SETTING_KEYS]),
     ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
     () => {
       console.error("[admin/settings] Essential setting fallback timed out.", {
@@ -308,25 +308,9 @@ async function loadAppSettingValuesByKey(): Promise<{
   source: AppSettingReadSource;
   values: Map<string, unknown>;
 }> {
-  const essentialSettingsPromise = withTimeout(
-    getAppSettingsByKeys([...ESSENTIAL_FALLBACK_SETTING_KEYS]),
-    ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
-    () => {
-      console.error("[admin/settings] Essential app settings timed out.", {
-        timeoutMs: ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
-      });
-    }
-  ).catch((error) => {
-    console.error(
-      "[admin/settings] Essential app settings query failed. Retrying with last known values.",
-      error
-    );
-    return null;
-  });
-
   try {
     const settings = await withTimeout(
-      getAppSettingsByKeys([...SETTINGS_SNAPSHOT_KEYS]),
+      getAdminAppSettingsByKeys([...SETTINGS_SNAPSHOT_KEYS]),
       ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
       () => {
         console.error("[admin/settings] App settings snapshot timed out.", {
@@ -345,7 +329,18 @@ async function loadAppSettingValuesByKey(): Promise<{
     );
   }
 
-  const essentialSettings = await essentialSettingsPromise;
+  // The normal snapshot already includes the essential keys. Only issue the
+  // smaller recovery read after a failure, rather than queuing it on every load.
+  const essentialSettings = await withTimeout(
+    getAdminAppSettingsByKeys([...ESSENTIAL_FALLBACK_SETTING_KEYS]),
+    ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS
+  ).catch((error) => {
+    console.error(
+      "[admin/settings] Essential app settings query failed. Retrying with last known values.",
+      error
+    );
+    return null;
+  });
   if (essentialSettings) {
     const values = new Map(
       essentialSettings.map((setting) => [setting.key, setting.value])
@@ -382,7 +377,7 @@ async function loadAdminFeatureAccessState() {
 
   try {
     const rows = await withTimeout(
-      getAppSettingsByKeys([...ADMIN_FEATURE_ACCESS_SETTING_KEYS]),
+      getAdminAppSettingsByKeys([...ADMIN_FEATURE_ACCESS_SETTING_KEYS]),
       ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
       () => {
         console.error(

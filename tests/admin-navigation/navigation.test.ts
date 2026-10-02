@@ -115,3 +115,14 @@ test("admin pages still deny signed-out and regular sessions", async ({ page, co
   expect(regular.status()).toBe(307);
   expect(regular.headers().location).toBe("/");
 });
+
+test("Settings renders its confirmed sections without browser errors", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto("/admin/settings");
+  await expect(page.getByRole("heading", { name: "Maintenance", exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("heading", { name: "Feature settings", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Language settings", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Toggle admin sidebar", exact: true })).toBeEnabled();
+  expect(errors).toEqual([]);
+});

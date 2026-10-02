@@ -5366,6 +5366,34 @@ export async function getAppSettingsByKeys(keys: string[]): Promise<AppSetting[]
   return settings;
 }
 
+export async function getAdminAppSettingsByKeys(
+  keys: string[]
+): Promise<AppSetting[]> {
+  const uniqueKeys = Array.from(new Set(keys.map((key) => key.trim()).filter(Boolean))).toSorted();
+  if (uniqueKeys.length === 0 || isProductionBuildPhase()) return [];
+
+  const read = async () => {
+    const settings = await withAdminDatabase("settings.snapshot", (adminDb) =>
+      adminDb.select().from(appSetting).where(inArray(appSetting.key, uniqueKeys))
+    );
+    rememberAppSettings(settings);
+    const foundKeys = new Set(settings.map((setting) => setting.key));
+    for (const key of uniqueKeys) {
+      if (!foundKeys.has(key)) clearRememberedAppSetting(key);
+    }
+    return settings;
+  };
+  if (!shouldUseAppSettingCache("__keys__")) return read();
+
+  const cached = unstable_cache(read, ["admin-settings:keys:v1", uniqueKeys.join("|")], {
+    revalidate: 300,
+    tags: uniqueKeys.map((key) => appSettingCacheTagForKey(key)),
+  });
+  const settings = await cached();
+  rememberAppSettings(settings);
+  return settings;
+}
+
 export async function getAppSetting<T>(key: string): Promise<T | null> {
   if (!shouldUseAppSettingCache(key)) {
     return getAppSettingRaw(key);
