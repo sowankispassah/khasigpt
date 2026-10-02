@@ -1,8 +1,8 @@
 import nextDynamic from "next/dynamic";
 import { redirect } from "next/navigation";
-
 import { auth } from "@/app/(auth)/auth";
 import { AdminPageLoading } from "@/components/admin/admin-page-loading";
+import { AdminReferralsManager } from "@/components/admin-referrals-manager";
 import { adminQueryResult } from "@/lib/admin/safe-query";
 import {
   getCouponPayoutsForAdmin,
@@ -141,6 +141,7 @@ export default async function AdminCouponsPage() {
         </p>
       </header>
 
+      <AdminReferralsManager creators={creatorOptions} creatorsConfirmed={creatorsState.ok} />
       <AdminCouponsManager
         coupons={serializedCoupons}
         couponsConfirmed={couponsState.ok}

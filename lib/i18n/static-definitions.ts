@@ -1,4 +1,5 @@
 import { USER_FEATURE_DEFINITIONS } from "@/lib/feature-access-catalog";
+import { REFERRAL_COPY } from "@/lib/referrals/copy";
 import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
@@ -221,6 +222,7 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   { key: "admin.contacts.dialog.close", defaultText: "Close", description: "Close contact request details dialog." },
   { key: "admin.contacts.dialog.fullscreen", defaultText: "Full screen", description: "Expand the contact conversation to fill the screen." },
   { key: "admin.contacts.dialog.restore", defaultText: "Restore window", description: "Return the contact conversation to its window size." },
+  ...Object.entries(REFERRAL_COPY).map(([name, defaultText]) => ({ key: `referrals.${name}`, defaultText, description: "Creator referral programme." })),
   ...USER_FEATURE_DEFINITIONS.flatMap((feature) => [
     {
       key: feature.labelKey,

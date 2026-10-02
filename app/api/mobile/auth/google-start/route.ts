@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     return redirectToApp({ attempt: attemptId, error: "google_not_configured" });
   }
 
-  const { state } = createMobileGoogleOAuthState(attemptId);
+  const { state } = createMobileGoogleOAuthState(attemptId, requestUrl.searchParams.get("referral"));
   const redirectUri = `${requestUrl.origin}/api/mobile/auth/google-callback`;
   const googleUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   googleUrl.searchParams.set("client_id", clientId);

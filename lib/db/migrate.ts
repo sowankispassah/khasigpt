@@ -116,8 +116,8 @@ function syncMigrationJournal(
     baseWhenFromDbState !== null
       ? baseWhenFromDbState + tags.length
       : existingWhenValues.length > 0
-        ? Math.max(...existingWhenValues) + 1
-        : Date.now();
+        ? Math.max(...existingWhenValues, lastRecordedCreatedAt ?? 0) + 1
+        : Math.max(Date.now(), (lastRecordedCreatedAt ?? 0) + 1);
 
   const nextEntries: MigrationJournalEntry[] = tags.map((tag, idx) => {
     if (baseWhenFromDbState !== null) {

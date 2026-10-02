@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-
 import { auth } from "@/app/(auth)/auth";
 import { getCouponByCode, getPricingPlanById } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import { couponsAllowed } from "@/lib/referrals/settings";
 
 function calculateDiscountAmount(
   planPriceInPaise: number,
@@ -32,6 +32,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json().catch(() => null);
+    if (!await couponsAllowed(session.user.role)) return new ChatSDKError("bad_request:coupon", "Coupons are disabled.").toResponse();
     const planId = body?.planId as string | undefined;
     const rawCouponCode =
       typeof body?.couponCode === "string" ? body.couponCode : null;

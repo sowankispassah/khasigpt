@@ -2,7 +2,6 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
 import { RechargePlans } from "@/components/recharge-plans";
 import { EditableTranslation } from "@/components/translation-edit-provider";
@@ -11,6 +10,7 @@ import { getUserBalanceSummary } from "@/lib/db/queries";
 import {
   getTranslationValuesForKeys,
 } from "@/lib/i18n/dictionary";
+import { couponsAllowed } from "@/lib/referrals/settings";
 import { withTimeout } from "@/lib/utils/async";
 import { getChatRouteSession } from "../chat-route-session";
 
@@ -25,6 +25,7 @@ export default async function RechargePage() {
     redirect("/login?callbackUrl=/recharge");
   }
 
+  const couponsEnabled = await couponsAllowed(session.user.role).catch(() => false);
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
 
@@ -188,6 +189,7 @@ export default async function RechargePage() {
       ) : null}
 
       <RechargePlans
+        couponsEnabled={couponsEnabled}
         activePlanId={activePlanId}
         imageGenerationEnabledForAll={imageGenerationEnabledForAll}
         plans={localizedPlans.map((plan) => ({

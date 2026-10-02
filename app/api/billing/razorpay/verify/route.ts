@@ -2,11 +2,10 @@ import { NextResponse } from "next/server";
 
 import { auth } from "@/app/(auth)/auth";
 import {
-  createUserSubscription,
+  completePaymentTransactionWithSubscription,
   getPaymentTransactionByOrderId,
   getUserBalanceSummary,
   markPaymentTransactionFailed,
-  markPaymentTransactionPaid,
   markPaymentTransactionProcessing,
   recordCouponRedemptionFromTransaction,
 } from "@/lib/db/queries";
@@ -98,15 +97,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    await createUserSubscription({
-      userId: session.user.id,
-      planId: transaction.planId,
-    });
-
-    await markPaymentTransactionPaid({
+    await completePaymentTransactionWithSubscription({
       orderId,
       paymentId,
       signature,
+      userId: session.user.id,
+      planId: transaction.planId,
     });
     await recordCouponRedemptionFromTransaction(transaction);
 

@@ -55,6 +55,7 @@ import { getLiteAppSettingUncached } from "@/lib/db/app-settings-lite";
 import { createManagedPool } from "@/lib/db/managed-client";
 import { claimPaidGeneration, releasePaidGeneration } from "@/lib/db/paid-generation-admission";
 import { lockUserWallet } from "@/lib/db/wallet-lock";
+import { recordReferralCommission } from "@/lib/referrals/accounting";
 import {
   assertFeatureSettingWriteAllowed,
   type FeatureSettingWriteContext,
@@ -96,6 +97,7 @@ import {
   coupon,
   couponRedemption,
   couponRewardPayout,
+  creatorReferral,
   creditCharge,
   type DBMessage,
   document,
@@ -948,7 +950,8 @@ export async function getUserRoleById(
 
 export async function createUser(
   email: string,
-  password: string
+  password: string,
+  signupReferralCode: string | null = null
 ): Promise<User> {
   const hashedPassword = generateHashedPassword(password);
   const normalizedEmail = normalizeEmailValue(email);
@@ -959,6 +962,7 @@ export async function createUser(
       .values({
         email: normalizedEmail,
         password: hashedPassword,
+        signupReferralCode: signupReferralCode ? sql`(select ${creatorReferral.code} from ${creatorReferral} where ${creatorReferral.code} = ${signupReferralCode} and ${creatorReferral.isActive} = true limit 1)` : null,
         isActive: false,
         emailVerificationPending: true,
         authProvider: "credentials",
@@ -10654,6 +10658,8 @@ export async function completePaymentTransactionWithSubscription({
         planId,
         userId,
       });
+
+      await recordReferralCommission(tx, transaction, now);
 
       const [paid] = await tx
         .update(paymentTransaction)

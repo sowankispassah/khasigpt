@@ -4,7 +4,7 @@ import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
-import { type User, user } from "@/lib/db/schema";
+import { creatorReferral, type User, user } from "@/lib/db/schema";
 import { generateHashedPassword } from "@/lib/db/utils";
 import { ChatSDKError } from "@/lib/errors";
 import { generateUUID } from "@/lib/utils";
@@ -314,6 +314,7 @@ export async function createAuthGuestUser(): Promise<AuthDbUser> {
 export async function ensureAuthOAuthUser(
   email: string,
   profile?: {
+    signupReferralCode?: string | null;
     image?: string | null;
     firstName?: string | null;
     lastName?: string | null;
@@ -368,6 +369,7 @@ export async function ensureAuthOAuthUser(
         email: normalizedEmail,
         isActive: true,
         authProvider: "google",
+        signupReferralCode: profile?.signupReferralCode ? sql`(select ${creatorReferral.code} from ${creatorReferral} where ${creatorReferral.code} = ${profile.signupReferralCode} and ${creatorReferral.isActive} = true limit 1)` : null,
         image: profile?.image?.trim() || null,
         firstName: profile?.firstName?.trim() || null,
         lastName: profile?.lastName?.trim() || null,

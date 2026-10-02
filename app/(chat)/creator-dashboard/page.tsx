@@ -1,8 +1,8 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
+import { CreatorReferrals } from "@/components/creator-referrals";
 import {
   getCreatorCouponRedemptions,
   getCreatorCouponSummary,
@@ -174,6 +174,7 @@ export default async function CreatorDashboardPage({
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-10">
+      <CreatorReferrals />
       <div className="flex flex-col gap-4">
         <BackToHomeButton
           label={t("navigation.back_to_home", "Back to home")}

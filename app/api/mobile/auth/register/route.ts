@@ -8,6 +8,7 @@ const registerSchema = z.object({
   acceptTerms: z.boolean(),
   email: z.string().email(),
   password: z.string().min(6),
+  referralCode: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/).optional().nullable(),
 });
 
 const STATUS_CODE_BY_REGISTER_STATUS: Record<string, number> = {
@@ -25,6 +26,7 @@ export async function POST(request: Request) {
     const formData = new FormData();
     formData.set("email", payload.email);
     formData.set("password", payload.password);
+    if (payload.referralCode) formData.set("referralCode", payload.referralCode);
     if (payload.acceptTerms) {
       formData.set("acceptTerms", "on");
     }

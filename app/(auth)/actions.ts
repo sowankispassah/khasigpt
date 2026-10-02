@@ -157,7 +157,7 @@ export const register = async (
     } else {
       userRecord = await runAuthActionDb(
         "register.create_user",
-        createUser(validatedData.email, validatedData.password)
+        createUser(validatedData.email, validatedData.password, normalizeReferralCode(formData.get("referralCode")) ?? normalizeReferralCode((await cookies()).get(REFERRAL_COOKIE)?.value))
       );
     }
 
@@ -244,3 +244,6 @@ export const register = async (
     return { status: "failed" };
   }
 };
+
+import { cookies } from "next/headers";
+import { normalizeReferralCode, REFERRAL_COOKIE } from "@/lib/referrals/rules";

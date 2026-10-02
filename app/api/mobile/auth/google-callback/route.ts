@@ -30,6 +30,7 @@ const HANDOFF_COOKIE_MAX_AGE_SECONDS = 10 * 60;
 const CALLBACK_EXCHANGE_CACHE_TTL_MS = 10 * 60 * 1000;
 
 type MobileGoogleOAuthStatePayload = {
+  referralCode: string | null;
   attemptId: string;
   issuedAt: number | null;
 };
@@ -227,6 +228,7 @@ async function exchangeGoogleCodeForHandoff({
 
     const fallbackName = splitFullName(userInfo.name);
     const { user, isNewUser } = await ensureAuthOAuthUser(userInfo.email, {
+      signupReferralCode: statePayload.referralCode,
       image: userInfo.picture ?? null,
       firstName: userInfo.given_name?.trim() || fallbackName.firstName,
       lastName: userInfo.family_name?.trim() || fallbackName.lastName,

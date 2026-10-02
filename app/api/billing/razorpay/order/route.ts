@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-
 import { auth } from "@/app/(auth)/auth";
 import {
   createPaymentTransaction,
@@ -8,6 +7,7 @@ import {
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { getRazorpayClient, getRazorpayKeyId } from "@/lib/payments/razorpay";
+import { couponsAllowed } from "@/lib/referrals/settings";
 
 function calculateDiscountAmount(
   planPriceInPaise: number,
@@ -62,6 +62,7 @@ export async function POST(request: Request) {
       null;
     let discountAmount = 0;
     if (normalizedCouponCode) {
+      if (!await couponsAllowed(session.user.role)) throw new ChatSDKError("bad_request:coupon", "Coupons are disabled.");
       appliedCoupon = await getCouponByCode(normalizedCouponCode);
       const now = Date.now();
       if (

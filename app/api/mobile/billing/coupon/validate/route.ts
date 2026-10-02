@@ -9,6 +9,7 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   const session = await getMobileSession(request);
   if (!session?.user) return new ChatSDKError("unauthorized:api").toResponse();
+  if (!await couponsAllowed(session.user.role)) return NextResponse.json({ error: "Coupons are disabled." }, { status: 400 });
   const body = await request.json().catch(() => null);
   const code = typeof body?.couponCode === "string" ? body.couponCode.trim().toUpperCase() : "";
   if (!code) return NextResponse.json({ error: "Creator coupon is required." }, { status: 400 });
@@ -19,3 +20,5 @@ export async function POST(request: Request) {
   }
   return NextResponse.json({ ok: true, coupon: { code: coupon.code, creatorId: coupon.creatorId } });
 }
+
+import { couponsAllowed } from "@/lib/referrals/settings";

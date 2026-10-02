@@ -1,0 +1,18 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { auth } from "@/app/(auth)/auth";
+import { getMobileSession } from "@/lib/mobile-auth-session";
+import { listReferralDashboard } from "@/lib/referrals/service";
+import { getReferralSettings } from "@/lib/referrals/settings";
+import { withTimeout } from "@/lib/utils/async";
+
+export async function GET(request: Request) {
+  const session = request.headers.get("authorization") ? await getMobileSession(request) : await auth();
+  if (session?.user.role !== "creator") return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  try {
+    const page = z.coerce.number().int().min(1).max(100000).parse(new URL(request.url).searchParams.get("page") ?? 1);
+    const settings = await getReferralSettings();
+    if (settings.referralAccessMode !== "enabled") return NextResponse.json({ available: false, referrals: [], recentCommissions: [], page, totalCount: 0 }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ available: true, ...await withTimeout(listReferralDashboard(session.user.id, page), 7000) }, { headers: { "Cache-Control": "no-store" } });
+  } catch { return NextResponse.json({ error: "Referral information is unavailable. Please retry." }, { status: 503, headers: { "Cache-Control": "no-store" } }); }
+}

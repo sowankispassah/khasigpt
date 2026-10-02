@@ -799,6 +799,20 @@
       "when": 1788998400014,
       "tag": "0111_contact_account_history_index",
       "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1788998400015,
+      "tag": "0112_creator_referrals",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1788998400016,
+      "tag": "0113_referral_financial_history",
+      "breakpoints": true
     }
   ]
 }

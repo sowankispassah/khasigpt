@@ -1,5 +1,5 @@
 import { compare } from "bcrypt-ts";
-import { cookies } from "next/headers";
+
 import NextAuth, { type DefaultSession } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
@@ -378,6 +378,7 @@ export const {
           const { user: dbUser, isNewUser: isNewOAuthUser } = await runAuthDb(
             "google.ensure_user",
             ensureAuthOAuthUser(user.email, {
+              signupReferralCode: normalizeReferralCode((await cookies()).get(REFERRAL_COOKIE)?.value),
               image: profileImage,
               firstName: googleFirstName || null,
               lastName: googleLastName || null,
@@ -651,3 +652,6 @@ export const {
     },
   },
 });
+
+import { cookies } from "next/headers";
+import { normalizeReferralCode, REFERRAL_COOKIE } from "@/lib/referrals/rules";

@@ -36,6 +36,7 @@ type PlanForClient = {
 };
 
 type RechargePlansProps = {
+  couponsEnabled?: boolean;
   plans: PlanForClient[];
   activePlanId: string | null;
   imageGenerationEnabledForAll: boolean;
@@ -111,6 +112,7 @@ type RazorpaySuccessResponse = {
 };
 
 export function RechargePlans({
+  couponsEnabled = false,
   plans,
   activePlanId,
   imageGenerationEnabledForAll,
@@ -684,7 +686,7 @@ export function RechargePlans({
             <AlertDialogDescription>
               {translate(
                 "recharge.dialog.description",
-                "Confirm the plan details and apply a coupon before continuing to payment."
+                "Confirm the plan details before continuing to payment."
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -730,7 +732,7 @@ export function RechargePlans({
               </div>
             </div>
 
-            <div className="space-y-2">
+            {couponsEnabled ? <div className="space-y-2">
               <label
                 className="font-medium text-sm"
                 htmlFor="coupon-code-input"
@@ -801,7 +803,7 @@ export function RechargePlans({
                   )}
                 </p>
               )}
-            </div>
+            </div> : null}
           </div>
           <AlertDialogFooter>
             <Button

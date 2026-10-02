@@ -1,24 +1,27 @@
+import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import {
   completePaymentTransactionWithSubscription,
-  createPaymentTransaction,
+  createPaymentTransaction,db,
   getCouponByCode,
   getPaymentTransactionByOrderId,
   getPricingPlanById,
   getUserBalanceSummary,
   markPaymentTransactionFailed,
   markPaymentTransactionProcessing,
-  recordCouponRedemptionFromTransaction,
-} from "@/lib/db/queries";
+  recordCouponRedemptionFromTransaction,} from "@/lib/db/queries";
+import { user } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import {
   consumeGooglePlayProductPurchase,
+  getGooglePlayOrderTotal,
   getGooglePlayPackageName,
   getGooglePlayProductPurchase,
   hashGooglePlayPurchaseToken,
 } from "@/lib/payments/google-play";
 import { getAndroidProductIdForPlan } from "@/lib/payments/google-play-products";
+import { couponsAllowed } from "@/lib/referrals/settings";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -64,7 +67,7 @@ export async function POST(request: Request) {
       typeof body?.productId === "string" ? body.productId : null;
     const purchaseToken =
       typeof body?.purchaseToken === "string" ? body.purchaseToken : null;
-    const couponCode = typeof body?.couponCode === "string" ? body.couponCode.trim().toUpperCase() : null;
+    const rawCouponCode = typeof body?.couponCode === "string" ? body.couponCode.trim().toUpperCase() : null;
 
     if (!planId || !productId || !purchaseToken) {
       return new ChatSDKError(
@@ -80,6 +83,7 @@ export async function POST(request: Request) {
         "Pricing plan is not available."
       ).toResponse();
     }
+    const couponCode = rawCouponCode && await couponsAllowed(session.user.role) ? rawCouponCode : null;
     const appliedCoupon = couponCode ? await getCouponByCode(couponCode) : null;
     const now = Date.now();
     if (couponCode && (!appliedCoupon || !appliedCoupon.isActive || (appliedCoupon.validFrom && appliedCoupon.validFrom.getTime() > now) || (appliedCoupon.validTo && appliedCoupon.validTo.getTime() < now))) {
@@ -126,14 +130,20 @@ export async function POST(request: Request) {
       return googlePlayFailure("Google Play purchase is not completed.");
     }
 
+    const [referralAccount] = await db.select({ code: user.signupReferralCode }).from(user).where(eq(user.id, session.user.id));
+    const testPurchase = purchase.purchaseType === 0;
+    const receiptTotal = referralAccount?.code && !testPurchase && !existing
+      ? await getGooglePlayOrderTotal(purchase.orderId ?? "")
+      : { amount: plan.priceInPaise, currency: "INR" };
+
     const transaction =
       existing ??
       (await createPaymentTransaction({
         userId: session.user.id,
         planId: plan.id,
         orderId,
-        amount: plan.priceInPaise,
-        currency: "INR",
+        amount: receiptTotal.amount,
+        currency: receiptTotal.currency,
         couponId: appliedCoupon?.id ?? null,
         creatorId: appliedCoupon?.creatorId ?? null,
         discountAmount: 0,
@@ -141,6 +151,7 @@ export async function POST(request: Request) {
         providerProductId: productId,
         providerPurchaseTokenHash: tokenHash,
         notes: {
+          commissionEligible: !testPurchase,
           googleOrderId: purchase.orderId ?? null,
           packageName,
           productId,

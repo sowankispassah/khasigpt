@@ -39,6 +39,7 @@ export const user = pgTable(
   {
     id: uuid("id").primaryKey().notNull().defaultRandom(),
     email: varchar("email", { length: 64 }).notNull(),
+    signupReferralCode: varchar("signupReferralCode", { length: 64 }),
     password: varchar("password", { length: 64 }),
     role: userRoleEnum("role").notNull().default("regular"),
     authProvider: authProviderEnum("authProvider")
@@ -64,6 +65,7 @@ export const user = pgTable(
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   },
   (table) => ({
+    signupReferralIdx: index("User_signup_referral_idx").on(table.signupReferralCode, table.createdAt),
     createdAtIdx: index("User_createdAt_idx").on(table.createdAt),
     emailLowerIdx: uniqueIndex("User_email_lower_idx").on(
       sql`lower(${table.email})`
@@ -735,6 +737,51 @@ export const couponRewardPayout = pgTable(
 );
 
 export type CouponRewardPayout = InferSelectModel<typeof couponRewardPayout>;
+
+export const creatorReferral = pgTable("CreatorReferral", {
+  id: uuid("id").primaryKey().notNull().defaultRandom(),
+  code: varchar("code", { length: 64 }).notNull(),
+  creatorId: uuid("creatorId").references(() => user.id, { onDelete: "set null" }),
+  percentage: integer("percentage").notNull(),
+  duration: varchar("duration", { length: 20 }).notNull(),
+  months: integer("months"),
+  windowDays: integer("windowDays"),
+  rechargeBefore: timestamp("rechargeBefore"),
+  isActive: boolean("isActive").notNull().default(true),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+}, (table) => ({
+  codeIdx: uniqueIndex("CreatorReferral_code_idx").on(table.code),
+  creatorIdx: index("CreatorReferral_creator_idx").on(table.creatorId, table.createdAt),
+}));
+
+export const referralCommission = pgTable("ReferralCommission", {
+  orderId: varchar("orderId", { length: 64 }).primaryKey().notNull(),
+  referralId: uuid("referralId").notNull().references(() => creatorReferral.id, { onDelete: "restrict" }),
+  userId: uuid("userId").references(() => user.id, { onDelete: "set null" }),
+  creatorId: uuid("creatorId").references(() => user.id, { onDelete: "set null" }),
+  percentage: integer("percentage").notNull(),
+  paymentAmount: integer("paymentAmount").notNull(),
+  amount: integer("amount").notNull(),
+  currency: varchar("currency", { length: 16 }).notNull(),
+  reversed: boolean("reversed").notNull().default(false),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+}, (table) => ({
+  creatorIdx: index("ReferralCommission_creator_idx").on(table.creatorId, table.createdAt),
+  userIdx: index("ReferralCommission_user_idx").on(table.userId),
+  referralIdx: index("ReferralCommission_referral_idx").on(table.referralId),
+}));
+
+export const referralPayout = pgTable("ReferralPayout", {
+  id: uuid("id").primaryKey().notNull().defaultRandom(),
+  referralId: uuid("referralId").notNull().references(() => creatorReferral.id, { onDelete: "restrict" }),
+  amount: integer("amount").notNull(),
+  currency: varchar("currency", { length: 16 }).notNull(),
+  note: text("note"),
+  recordedBy: uuid("recordedBy").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+}, (table) => ({
+  referralIdx: index("ReferralPayout_referral_idx").on(table.referralId, table.createdAt),
+}));
 
 export const userSubscription = pgTable(
   "UserSubscription",

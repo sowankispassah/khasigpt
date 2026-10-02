@@ -1,5 +1,5 @@
-import {
-  CALCULATOR_FEATURE_FLAG_KEY,
+import { BILLING_COUPONS_ACCESS_KEY,
+  CALCULATOR_FEATURE_FLAG_KEY,CREATOR_REFERRALS_ACCESS_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
   ICON_PROMPTS_ENABLED_SETTING_KEY,
@@ -15,8 +15,7 @@ import {
   VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
   VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
-  WEB_SEARCH_ENABLED_SETTING_KEY,
-} from "@/lib/constants";
+  WEB_SEARCH_ENABLED_SETTING_KEY,} from "@/lib/constants";
 import {
   type FeatureAccessMode,
   parseFeatureAccessModeStrict,
@@ -29,6 +28,9 @@ export type FeatureSettingWriteContext = {
 };
 
 const ALLOWED_FEATURE_SETTING_SOURCES: Record<string, Set<string>> = {
+  [CREATOR_REFERRALS_ACCESS_KEY]: new Set(["feature.creator_referrals.toggle"]),
+  [BILLING_COUPONS_ACCESS_KEY]: new Set(["feature.billing_coupons.toggle"]),
+
   [CALCULATOR_FEATURE_FLAG_KEY]: new Set(["feature.calculator.toggle"]),
   [STUDY_MODE_FEATURE_FLAG_KEY]: new Set(["feature.study_mode.toggle"]),
   [TRANSLATE_FEATURE_FLAG_KEY]: new Set(["feature.translate.toggle"]),
