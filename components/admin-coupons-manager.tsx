@@ -584,37 +584,37 @@ export function AdminCouponsManager({
             value={selectedCoupon?.id ?? ""}
           />
           <div>
-            <Label className="font-medium text-sm"><T name="coupon_code_label" /></Label>
+            <Label htmlFor="coupon-code" className="font-medium text-sm"><T name="coupon_code_label" /></Label>
             <Input
               className="mt-1 font-mono uppercase"
               defaultValue={selectedCoupon?.code ?? ""}
               maxLength={32}
-              name="code"
+              id="coupon-code" name="code"
               placeholder="CREATOR10"
               required
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <Label className="font-medium text-sm"><T name="discount" /></Label>
+              <Label htmlFor="coupon-discountPercentage" className="font-medium text-sm"><T name="discount" /></Label>
               <Input
                 className="mt-1"
                 defaultValue={selectedCoupon?.discountPercentage ?? 10}
                 max={95}
                 min={1}
-                name="discountPercentage"
+                id="coupon-discountPercentage" name="discountPercentage"
                 required
                 type="number"
               />
             </div>
             <div>
-              <Label className="font-medium text-sm"><T name="creator" />{creatorPlaceholder.editButton}</Label>
+              <Label htmlFor="coupon-creatorId" className="font-medium text-sm"><T name="creator" />{creatorPlaceholder.editButton}</Label>
               <select
                 className="mt-1 h-10 w-full cursor-pointer rounded-md border border-input bg-background px-2 text-sm"
                 defaultValue={
                   selectedCoupon?.creatorId ?? ""
                 }
-                name="creatorId"
+                id="coupon-creatorId" name="creatorId"
                 required
               >
                 <option value="" disabled>{creatorPlaceholder.text}</option>
@@ -628,53 +628,53 @@ export function AdminCouponsManager({
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <Label className="font-medium text-sm"><T name="valid_from" /></Label>
+              <Label htmlFor="coupon-validFrom" className="font-medium text-sm"><T name="valid_from" /></Label>
               <Input
                 className="mt-1"
                 defaultValue={selectedCoupon?.validFrom?.slice(0, 10)}
-                name="validFrom"
+                id="coupon-validFrom" name="validFrom"
                 required
                 type="date"
               />
             </div>
             <div>
-              <Label className="font-medium text-sm"><T name="valid_until" /></Label>
+              <Label htmlFor="coupon-validTo" className="font-medium text-sm"><T name="valid_until" /></Label>
               <Input
                 className="mt-1"
                 defaultValue={selectedCoupon?.validTo?.slice(0, 10) ?? ""}
-                name="validTo"
+                id="coupon-validTo" name="validTo"
                 type="date"
               />
             </div>
             <div>
-              <Label className="font-medium text-sm"><T name="creator_reward" /></Label>
+              <Label htmlFor="coupon-creatorRewardPercentage" className="font-medium text-sm"><T name="creator_reward" /></Label>
               <Input
                 className="mt-1"
                 defaultValue={selectedCoupon?.creatorRewardPercentage ?? 0}
                 max={95}
                 min={0}
-                name="creatorRewardPercentage"
+                id="coupon-creatorRewardPercentage" name="creatorRewardPercentage"
                 required
                 type="number"
               />
             </div>
           </div>
           <div>
-            <Label className="font-medium text-sm"><T name="coupon_description" />{descriptionPlaceholder.editButton}</Label>
+            <Label htmlFor="coupon-description" className="font-medium text-sm"><T name="coupon_description" />{descriptionPlaceholder.editButton}</Label>
             <Textarea
               className="mt-1"
               defaultValue={selectedCoupon?.description ?? ""}
-              name="description"
+              id="coupon-description" name="description"
               placeholder={descriptionPlaceholder.text}
               rows={3}
             />
           </div>
           <div>
-            <Label className="font-medium text-sm"><T name="status" /></Label>
+            <Label htmlFor="coupon-isActive" className="font-medium text-sm"><T name="status" /></Label>
             <select
               className="mt-1 h-10 w-full rounded-md border border-input bg-background px-2 text-sm"
               defaultValue={selectedCoupon?.isActive ? "true" : "false"}
-              name="isActive"
+              id="coupon-isActive" name="isActive"
             >
               <option value="true">{translate("referrals.active", REFERRAL_COPY.active)}</option>
               <option value="false">{translate("referrals.inactive", REFERRAL_COPY.inactive)}</option>

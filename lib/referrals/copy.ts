@@ -35,6 +35,7 @@ export const REFERRAL_COPY = {
   delete_description: "This permanently deletes the unused link or coupon. Entries with signups, payments, or payouts must be made inactive instead to keep their history.",
   delete_in_use: "This entry has signup or payment history. Make it inactive instead.",
   cancel: "Cancel",
+  close: "Close",
   copied: "Copied successfully.",
   no_payouts: "No creator payouts recorded yet.",
   coupon_summary: "Coupon summary",
