@@ -1,4 +1,12 @@
 export const REFERRAL_COPY = {
+  mobile_dashboard_title: "Your creator space",
+  mobile_dashboard_description: "Share your links. Track your earnings.",
+  mobile_links: "Referral links",
+  mobile_program_note: "New referral signups and commissions are paused by the admin.",
+  mobile_link_hint: "Opens the app download page with your referral.",
+  play_destination: "Google Play",
+  mobile_sort: "Sort redemptions",
+  dashboard_unavailable: "Your dashboard could not be refreshed. Please try again.",
   title: "Creator referrals",
   view_link: "View link",
   link_details: "Referral details",
