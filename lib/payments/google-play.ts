@@ -23,6 +23,21 @@ export type GooglePlayProductPurchase = {
   regionCode?: string;
 };
 
+// The configured plan price is not the buyer's receipt amount (taxes, offers,
+// quantity and regional prices may differ). Read Google's verified order total.
+export async function getGooglePlayOrderTotal(orderId: string) {
+  const accessToken = await getAccessToken();
+  const response = await fetch(`https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(getGooglePlayPackageName())}/orders/${encodeURIComponent(orderId)}`, {
+    headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(10000), cache: "no-store",
+  });
+  const body = await response.json().catch(() => null) as { total?: { currencyCode?: string; units?: string; nanos?: number } } | null;
+  const money = body?.total;
+  if (!response.ok || !money?.currencyCode || !/^[A-Z]{3}$/.test(money.currencyCode) || !/^\d+$/.test(money.units ?? "0")) throw new Error("Google Play receipt total is unavailable.");
+  const amount = Number(BigInt(money.units ?? "0") * 100n + BigInt(Math.round((money.nanos ?? 0) / 10000000)));
+  if (!Number.isSafeInteger(amount) || amount <= 0 || amount > 2147483647) throw new Error("Invalid Google Play receipt amount.");
+  return { amount, currency: money.currencyCode };
+}
+
 function base64Url(input: Buffer | string) {
   const buffer = Buffer.isBuffer(input) ? input : Buffer.from(input);
   return buffer

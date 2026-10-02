@@ -736,6 +736,20 @@
       "when": 1788998400005,
       "tag": "0102_chat_user_history_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1788998400015,
+      "tag": "0103_creator_referrals",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1788998400016,
+      "tag": "0104_referral_financial_history",
+      "breakpoints": true
     }
   ]
 }

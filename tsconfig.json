@@ -44,7 +44,9 @@
     "next.config.ts",
     ".next/dev/types/**/*.ts",
     ".next-isolated-tests/types/**/*.ts",
-    ".next-isolated-tests/dev/types/**/*.ts"
+    ".next-isolated-tests/dev/types/**/*.ts",
+    "tmp/next-referral-check/types/**/*.ts",
+    "tmp/next-referral-check/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
@@ -54,6 +56,9 @@
     "build_output",
     "dist-next",
     "native",
-    "tmp"
+    "tmp",
+    "remotion",
+    "khasigpt-motion-white",
+    "khasigpt-cinematic-promo"
   ]
 }

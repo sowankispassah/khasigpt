@@ -1,7 +1,9 @@
 import { USER_FEATURE_DEFINITIONS } from "@/lib/feature-access-catalog";
+import { REFERRAL_COPY } from "@/lib/referrals/copy";
 import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
+  ...Object.entries(REFERRAL_COPY).map(([name, defaultText]) => ({ key: `referrals.${name}`, defaultText, description: "Creator referral programme." })),
   ...USER_FEATURE_DEFINITIONS.flatMap((feature) => [
     {
       key: feature.labelKey,

@@ -10,6 +10,7 @@ import {
 import { ChatSDKError } from "@/lib/errors";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import { getAndroidProductIdForPlan } from "@/lib/payments/google-play-products";
+import { couponsAllowed } from "@/lib/referrals/settings";
 import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
@@ -28,8 +29,9 @@ export async function GET(request: Request) {
   }
 
   const degradedSections: string[] = [];
-  const [plans, balance, recommendedPlanSetting, imageGenerationEnabledForAll] =
+  const [couponsEnabled, plans, balance, recommendedPlanSetting, imageGenerationEnabledForAll] =
     await Promise.all([
+      couponsAllowed(session.user.role).catch(() => { degradedSections.push("coupons"); return false; }),
       withTimeout(
         listPricingPlans({ includeInactive: false }),
         RECHARGE_CRITICAL_READ_TIMEOUT_MS,
@@ -144,6 +146,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json(
     {
+      couponsEnabled,
       activePlanId: balance?.plan?.id ?? null,
       imageGenerationEnabledForAll,
       recommendedPlanId,

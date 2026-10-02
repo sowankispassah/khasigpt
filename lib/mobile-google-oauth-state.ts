@@ -1,3 +1,4 @@
+import { normalizeReferralCode } from "@/lib/referrals/rules";
 import "server-only";
 
 import {
@@ -46,11 +47,12 @@ function normalizeAttemptId(attemptId: string | null | undefined) {
   return normalized || randomUUID();
 }
 
-export function createMobileGoogleOAuthState(attemptId?: string | null) {
+export function createMobileGoogleOAuthState(attemptId?: string | null, referralCode?: string | null) {
   const issuedAt = Date.now();
   const normalizedAttemptId = normalizeAttemptId(attemptId);
   const payload = base64UrlEncode(
     JSON.stringify({
+      referralCode: normalizeReferralCode(referralCode),
       attemptId: normalizedAttemptId,
       exp: issuedAt + STATE_TTL_MS,
       issuedAt,
@@ -86,6 +88,7 @@ export function verifyMobileGoogleOAuthState(state: string | null) {
 
   try {
     const parsed = JSON.parse(base64UrlDecode(payload)) as {
+      referralCode?: unknown;
       attemptId?: unknown;
       exp?: unknown;
       issuedAt?: unknown;
@@ -101,6 +104,7 @@ export function verifyMobileGoogleOAuthState(state: string | null) {
       return null;
     }
     return {
+      referralCode: normalizeReferralCode(parsed.referralCode),
       attemptId:
         typeof parsed.attemptId === "string" ? parsed.attemptId : "unknown",
       issuedAt:

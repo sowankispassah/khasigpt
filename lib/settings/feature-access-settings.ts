@@ -1,7 +1,6 @@
 import "server-only";
-
-import {
-  CALCULATOR_FEATURE_FLAG_KEY,
+import { BILLING_COUPONS_ACCESS_KEY,
+  CALCULATOR_FEATURE_FLAG_KEY,CREATOR_REFERRALS_ACCESS_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
   ICON_PROMPTS_ENABLED_SETTING_KEY,
@@ -17,8 +16,7 @@ import {
   VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
   VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
-  WEB_SEARCH_ENABLED_SETTING_KEY,
-} from "@/lib/constants";
+  WEB_SEARCH_ENABLED_SETTING_KEY,} from "@/lib/constants";
 import { getLiteAppSettingsByKeysUncached } from "@/lib/db/app-settings-lite";
 import {
   type FeatureAccessMode,
@@ -27,6 +25,9 @@ import {
 import { withTimeout } from "@/lib/utils/async";
 
 export const ADMIN_FEATURE_ACCESS_SETTINGS = [
+  { fieldName: "referralAccessMode", settingKey: CREATOR_REFERRALS_ACCESS_KEY },
+  { fieldName: "couponAccessMode", settingKey: BILLING_COUPONS_ACCESS_KEY },
+
   {
     fieldName: "calculatorAccessMode",
     settingKey: CALCULATOR_FEATURE_FLAG_KEY,

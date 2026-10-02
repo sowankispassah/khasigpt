@@ -181,3 +181,5 @@ For questions about these Terms, email support@khasigpt.com.
 export const DEFAULT_ABOUT_US = `
 KhasiGPT is crafted by the Khasi Digital Collective to bring reliable AI assistance to Khasi speakers. Use this space to highlight your story, partnerships, or mission. Update the content from the Admin Settings panel whenever your team has news to share.
 `.trim();
+export const CREATOR_REFERRALS_ACCESS_KEY = "creator.referrals.access";
+export const BILLING_COUPONS_ACCESS_KEY = "billing.coupons.access";

@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
-import {
-  CALCULATOR_FEATURE_FLAG_KEY,
+import { BILLING_COUPONS_ACCESS_KEY,
+  CALCULATOR_FEATURE_FLAG_KEY,CREATOR_REFERRALS_ACCESS_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
   ICON_PROMPTS_ENABLED_SETTING_KEY,
@@ -16,8 +16,7 @@ import {
   TRANSLATE_FEATURE_FLAG_KEY,
   VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
-  WEB_SEARCH_ENABLED_SETTING_KEY,
-} from "@/lib/constants";
+  WEB_SEARCH_ENABLED_SETTING_KEY,} from "@/lib/constants";
 import {
   appSettingCacheTagForKey,
   createLiteAuditLogEntry,
@@ -40,6 +39,9 @@ const FEATURE_ACCESS_TIMEOUT_MS = 20_000;
 const FEATURE_ACCESS_AUDIT_TIMEOUT_MS = 3_000;
 
 const FEATURE_ACCESS_FIELD_CONFIG: Record<string, FeatureAccessFieldConfig> = {
+  referralAccessMode: { settingKey: CREATOR_REFERRALS_ACCESS_KEY, auditAction: "feature.creator_referrals.toggle" },
+  couponAccessMode: { settingKey: BILLING_COUPONS_ACCESS_KEY, auditAction: "feature.billing_coupons.toggle" },
+
   calculatorAccessMode: {
     settingKey: CALCULATOR_FEATURE_FLAG_KEY,
     auditAction: "feature.calculator.toggle",

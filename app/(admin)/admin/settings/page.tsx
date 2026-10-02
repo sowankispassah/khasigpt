@@ -22,6 +22,7 @@ import {
   updateTranslationFeatureLanguageStatusAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
   ADMIN_SETTINGS_LANGUAGES_CACHE_TAG,
   ADMIN_SETTINGS_MODELS_CACHE_TAG,
@@ -1370,6 +1371,7 @@ export default async function AdminSettingsPage({
           title="Feature settings"
         >
           <div className="flex flex-col gap-6">
+            <a href="/admin/coupons" data-nav className="cursor-pointer underline"><EditableTranslation translationKey="referrals.title" defaultText="Creator referrals" /></a>
             <FeatureAccessModeControl
               currentMode={calculatorAccessMode}
               description="Show or hide the calculator tool in sidebar navigation. When disabled, direct route access returns a 404."
