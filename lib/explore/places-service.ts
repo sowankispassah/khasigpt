@@ -8,6 +8,7 @@ import {
   getRadiusBoundingBox,
 } from "@/lib/explore/geo";
 import { addExplorePlaceImages } from "@/lib/explore/place-images";
+import { searchSerperPlaces } from "@/lib/explore/serper-places";
 import type {
   ExploreAttribution,
   ExploreLocationInput,
@@ -559,9 +560,22 @@ export async function searchExplorePlaces(
     }
   } catch (error) {
     console.warn(
-      "[explore/places] Google Places unavailable; using OpenStreetMap.",
+      "[explore/places] Google Places unavailable; trying fallback place search.",
       error,
     );
+  }
+  try {
+    const mapResults = await searchSerperPlaces(input);
+    if (mapResults?.length) {
+      return {
+        results: await includePlaceImages(mapResults),
+        source: "google_maps" as const,
+      };
+    }
+  } catch (error) {
+    console.warn("[explore/places] Map fallback unavailable; using OpenStreetMap.", {
+      reason: error instanceof Error ? error.message : "provider_failed",
+    });
   }
   return {
     results: await includePlaceImages(await searchOverpass(input)),

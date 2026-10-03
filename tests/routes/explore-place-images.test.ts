@@ -341,6 +341,7 @@ test("caches valid place reads, retries incomplete reads, and only requests phot
 	let status = 200;
 	let now = 0;
 	const photoCalls: Array<{ deadline: number | undefined }> = [];
+	let mapResults: ExploreResult[] | null = null;
 	const service = loadModule(
 		"lib/explore/places-service.ts",
 		{
@@ -358,6 +359,9 @@ test("caches valid place reads, retries incomplete reads, and only requests phot
 					},
 			},
 			"@/lib/explore/geo": geo,
+			"@/lib/explore/serper-places": {
+				searchSerperPlaces: async () => mapResults,
+			},
 			"@/lib/explore/place-images": {
 				addExplorePlaceImages: async (
 					results: ExploreResult[],
@@ -439,6 +443,14 @@ test("caches valid place reads, retries incomplete reads, and only requests phot
 	status = 200;
 	await service.searchExplorePlaces(otherInput);
 	expect(reads).toBe(6);
+	mapResults = [{ ...place, sourceTitle: "Google Maps" }];
+	const mapped = await service.searchExplorePlaces(input, {
+		includeImages: true,
+	});
+	expect(mapped.source).toBe("google_maps");
+	expect(mapped.results[0].sourceTitle).toBe("Google Maps");
+	expect(reads).toBe(6);
+	expect(photoCalls).toHaveLength(2);
 	const route = readFileSync("app/api/explore/search/route.ts", "utf8");
 	expect(route).toContain(
 		"includeImages: true, deadlineMs: requestStartedAt + 45_000",
@@ -473,4 +485,141 @@ test("the provider adapter sends a server-only key, a ten-result request, and re
 	await expect(service.searchSerperImages("another place")).rejects.toThrow(
 		"HTTP 429",
 	);
+});
+
+test("map results require actual coordinates, stay inside the exact radius, and keep source details", async () => {
+	const module = loadModule("lib/explore/serper-places.ts", {
+		"server-only": {},
+		"node:crypto": { createHash },
+		"next/cache": { unstable_cache: (fn: unknown) => fn },
+		"./geo": geo,
+		"./image-matching": { safePlaceImageUrl },
+	});
+	const input = {
+		categoryQuery: null,
+		query: "attractions",
+		radiusKm: 5,
+		location: {
+			id: "location",
+			label: "Nartiang, Meghalaya",
+			source: "manual",
+			latitude: place.latitude,
+			longitude: place.longitude,
+		},
+	};
+	const valid = {
+		title: "Nartiang Monoliths",
+		latitude: place.latitude,
+		longitude: place.longitude,
+		placeId: "place-1",
+		cid: "12345",
+		address: place.address,
+		website: "https://tourism.example.com/nartiang",
+		rating: 4.7,
+		ratingCount: 123,
+	};
+	const results = module.parseSerperPlaces(
+		{
+			places: [
+				valid,
+				valid,
+				{ ...valid, placeId: "far", latitude: 26 },
+				{ ...valid, placeId: "missing", latitude: undefined },
+				{ ...valid, placeId: "invalid", latitude: Number.NaN },
+				{ ...valid, placeId: "out-of-range", longitude: 200 },
+			],
+		},
+		input,
+	);
+	expect(results).toHaveLength(1);
+	expect(results[0]).toMatchObject({
+		name: valid.title,
+		latitude: valid.latitude,
+		longitude: valid.longitude,
+		rating: 4.7,
+		reviewCount: 123,
+		sourceTitle: "Google Maps",
+		imageUrl: null,
+		distanceKm: 0,
+	});
+	expect(results[0].sourceUrl).toBe("https://www.google.com/maps?cid=12345");
+	expect(results[0].attributions[0].uri).toBe(results[0].sourceUrl);
+	expect(() => module.parseSerperPlaces({}, input)).toThrow("invalid response");
+});
+
+test("map searches use the chosen center, cache results, coalesce concurrent reads, and retry failures", async () => {
+	const requests: Array<{ url: string; init: RequestInit }> = [];
+	const entries = new Map<string, unknown>();
+	let status = 200;
+	const module = loadModule(
+		"lib/explore/serper-places.ts",
+		{
+			"server-only": {},
+			"node:crypto": { createHash },
+			"next/cache": {
+				unstable_cache:
+					(fn: (...args: unknown[]) => Promise<unknown>) =>
+					async (...args: unknown[]) => {
+						const key = JSON.stringify(args);
+						if (entries.has(key)) return entries.get(key);
+						const result = await fn(...args);
+						entries.set(key, result);
+						return result;
+					},
+			},
+			"./geo": geo,
+			"./image-matching": { safePlaceImageUrl },
+		},
+		{
+			fetch: async (url: string, init: RequestInit) => {
+				requests.push({ url, init });
+				return Response.json(
+					{
+						places: [
+							{
+								title: place.name,
+								latitude: place.latitude,
+								longitude: place.longitude,
+							},
+						],
+						credits: 3,
+					},
+					{ status },
+				);
+			},
+		},
+	);
+	const input = {
+		categoryQuery: null,
+		query: "attractions",
+		radiusKm: 5,
+		location: {
+			id: "location",
+			label: "Nartiang, Meghalaya",
+			source: "manual",
+			latitude: place.latitude,
+			longitude: place.longitude,
+		},
+	};
+	await Promise.all([
+		module.searchSerperPlaces(input),
+		module.searchSerperPlaces(input),
+	]);
+	await module.searchSerperPlaces(input);
+	expect(requests).toHaveLength(1);
+	expect(requests[0].url).toBe("https://google.serper.dev/maps");
+	expect(requests[0].init.headers).toMatchObject({ "X-API-KEY": "test-only" });
+	expect(JSON.parse(requests[0].init.body as string)).toEqual({
+		q: "attractions near Nartiang, Meghalaya",
+		hl: "en",
+		ll: `@${place.latitude},${place.longitude},13z`,
+		page: 1,
+	});
+	status = 429;
+	await expect(
+		module.searchSerperPlaces({ ...input, radiusKm: 10 }),
+	).rejects.toThrow("HTTP 429");
+	status = 200;
+	await module.searchSerperPlaces({ ...input, radiusKm: 10 });
+	expect(requests).toHaveLength(3);
 });
