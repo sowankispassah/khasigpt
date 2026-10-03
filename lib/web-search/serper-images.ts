@@ -1,6 +1,8 @@
 import "server-only";
 import { createHash } from "node:crypto";
 
+export const SERPER_IMAGE_TIMEOUT_MS = 6_000;
+
 export async function searchSerperImages(
 	query: string,
 	signal?: AbortSignal,
@@ -13,7 +15,7 @@ export async function searchSerperImages(
 		headers: { "Content-Type": "application/json", "X-API-KEY": key },
 		body: JSON.stringify({ q: query, gl: "in", hl: "en", num: 10 }),
 		cache: "no-store",
-		signal: signal ?? AbortSignal.timeout(6_000),
+		signal: signal ?? AbortSignal.timeout(SERPER_IMAGE_TIMEOUT_MS),
 	});
 	if (!response.ok)
 		throw new Error(`Image search returned HTTP ${response.status}.`);

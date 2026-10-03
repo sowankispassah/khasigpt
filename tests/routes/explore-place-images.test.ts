@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { expect, test } from "@playwright/test";
 import ts from "typescript";
+import * as geo from "@/lib/explore/geo";
 import {
 	buildPlaceImageQuery,
 	safePlaceImageUrl,
@@ -75,7 +76,11 @@ function loadModule(
 	return exports;
 }
 
-function harness(lookup: (query: string) => Promise<unknown>, withKey = true) {
+function harness(
+	lookup: (query: string) => Promise<unknown>,
+	withKey = true,
+	clock: { now: () => number } = performance,
+) {
 	let requests = 0;
 	const entries = new Map<string, unknown>();
 	const module = loadModule(
@@ -94,6 +99,7 @@ function harness(lookup: (query: string) => Promise<unknown>, withKey = true) {
 					},
 			},
 			"@/lib/web-search/serper-images": {
+				SERPER_IMAGE_TIMEOUT_MS: 6_000,
 				searchSerperImages: async (q: string) => {
 					requests++;
 					return lookup(q);
@@ -101,11 +107,15 @@ function harness(lookup: (query: string) => Promise<unknown>, withKey = true) {
 			},
 			"./image-matching": { buildPlaceImageQuery, selectPlaceImage },
 		},
-		{ process: { env: { SERPER_API_KEY: withKey ? "test-only" : "" } } },
+		{
+			process: { env: { SERPER_API_KEY: withKey ? "test-only" : "" } },
+			performance: clock,
+		},
 	);
 	return {
 		enrich: module.addExplorePlaceImages as (
 			results: ExploreResult[],
+			deadlineMs?: number,
 		) => Promise<ExploreResult[]>,
 		requests: () => requests,
 	};
@@ -297,6 +307,142 @@ test("isolates failed photos and bounds concurrent provider requests", async () 
 	expect(results[0].imageUrl).toBeNull();
 	expect(results[1].imageUrl).toBe(image.thumbnailUrl);
 	expect(maxActive).toBeLessThanOrEqual(6);
+});
+
+test("skips optional network reads when the caller has no remaining image budget", async () => {
+	const h = harness(async () => ({ images: [image] }));
+	expect(await h.enrich([place], performance.now() + 5_000)).toEqual([place]);
+	expect(h.requests()).toBe(0);
+});
+
+test("stops starting image reads early enough for their full timeout to fit", async () => {
+	let now = 0;
+	const h = harness(
+		async () => {
+			now += 6_000;
+			return { images: [image] };
+		},
+		true,
+		{ now: () => now },
+	);
+	const results = await h.enrich(
+		Array.from({ length: 12 }, (_, i) => ({ ...place, id: `place-${i}` })),
+		18_000,
+	);
+	expect(h.requests()).toBe(3);
+	expect(results.filter((result) => result.imageUrl)).toHaveLength(3);
+	expect(results).toHaveLength(12);
+});
+
+test("caches valid place reads, retries incomplete reads, and only requests photos when the caller opts in", async () => {
+	const entries = new Map<string, unknown>();
+	let reads = 0;
+	let incomplete = true;
+	let status = 200;
+	let now = 0;
+	const photoCalls: Array<{ deadline: number | undefined }> = [];
+	const service = loadModule(
+		"lib/explore/places-service.ts",
+		{
+			"server-only": {},
+			"node:crypto": { createHash },
+			"next/cache": {
+				unstable_cache:
+					(fn: (...args: unknown[]) => Promise<unknown>) =>
+					async (...args: unknown[]) => {
+						const key = JSON.stringify(args);
+						if (entries.has(key)) return entries.get(key);
+						const result = await fn(...args);
+						entries.set(key, result);
+						return result;
+					},
+			},
+			"@/lib/explore/geo": geo,
+			"@/lib/explore/place-images": {
+				addExplorePlaceImages: async (
+					results: ExploreResult[],
+					deadline: number | undefined,
+				) => {
+					photoCalls.push({ deadline });
+					return results;
+				},
+			},
+			"@/lib/explore/wikimedia-images": {
+				normalizeCommonsFileName: () => null,
+				normalizeWikidataId: () => null,
+				resolveWikimediaImages: () => {
+					throw new Error("Unexpected Wikimedia request");
+				},
+			},
+		},
+		{
+			URLSearchParams,
+			Date: { now: () => now },
+			fetch: async () => {
+				reads++;
+				return Response.json(
+					incomplete
+						? { elements: [], remark: "runtime error: incomplete result" }
+						: {
+								elements: [
+									{
+										type: "node",
+										id: 1,
+										lat: place.latitude,
+										lon: place.longitude,
+										tags: { name: place.name },
+									},
+								],
+							},
+					{ status },
+				);
+			},
+		},
+	);
+	const input = {
+		categoryQuery: null,
+		query: "attractions",
+		radiusKm: 5,
+		location: {
+			id: "location",
+			label: "Nartiang",
+			source: "manual",
+			latitude: place.latitude,
+			longitude: place.longitude,
+		},
+	};
+	await expect(service.searchExplorePlaces(input)).rejects.toThrow(
+		"incomplete response",
+	);
+	expect(reads).toBe(2);
+	incomplete = false;
+	const first = await service.searchExplorePlaces(input);
+	expect(first.results).toHaveLength(1);
+	expect(photoCalls).toHaveLength(0);
+	await service.searchExplorePlaces(input, {
+		includeImages: true,
+		deadlineMs: 45_000,
+	});
+	expect(reads).toBe(3);
+	expect(photoCalls).toEqual([{ deadline: 45_000 }]);
+	status = 429;
+	const otherInput = { ...input, query: "restaurants" };
+	await expect(service.searchExplorePlaces(otherInput)).rejects.toThrow(
+		"HTTP 429",
+	);
+	expect(reads).toBe(5);
+	await expect(service.searchExplorePlaces(otherInput)).rejects.toThrow(
+		"place search failed",
+	);
+	expect(reads).toBe(5);
+	now = 31_000;
+	status = 200;
+	await service.searchExplorePlaces(otherInput);
+	expect(reads).toBe(6);
+	const route = readFileSync("app/api/explore/search/route.ts", "utf8");
+	expect(route).toContain(
+		"includeImages: true, deadlineMs: requestStartedAt + 45_000",
+	);
 });
 
 test("the provider adapter sends a server-only key, a ten-result request, and rejects HTTP failures", async () => {

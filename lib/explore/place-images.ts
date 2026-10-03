@@ -1,6 +1,9 @@
 import "server-only";
 import { unstable_cache } from "next/cache";
-import { searchSerperImages } from "@/lib/web-search/serper-images";
+import {
+	SERPER_IMAGE_TIMEOUT_MS,
+	searchSerperImages,
+} from "@/lib/web-search/serper-images";
 import {
 	buildPlaceImageQuery,
 	type ExploreImagePlace,
@@ -10,7 +13,7 @@ import {
 import type { ExploreResult } from "./types";
 
 const CONCURRENCY = 6;
-const IMAGE_LOOKUP_BUDGET_MS = 12_000;
+const IMAGE_LOOKUP_BUDGET_MS = 18_000;
 const inFlight = new Map<string, Promise<PlaceImage | null>>();
 
 const cachedPlaceImage = unstable_cache(
@@ -34,7 +37,10 @@ function lookupPlaceImage(place: ExploreImagePlace) {
 	return pending;
 }
 
-export async function addExplorePlaceImages(results: ExploreResult[]) {
+export async function addExplorePlaceImages(
+	results: ExploreResult[],
+	requestDeadline = Number.POSITIVE_INFINITY,
+) {
 	if (!results.some((result) => !result.imageUrl)) return results;
 	if (!process.env.SERPER_API_KEY?.trim()) {
 		console.warn(
@@ -44,7 +50,10 @@ export async function addExplorePlaceImages(results: ExploreResult[]) {
 	}
 	const enriched = [...results];
 	const startedAt = performance.now();
-	const deadline = startedAt + IMAGE_LOOKUP_BUDGET_MS;
+	const deadline = Math.min(
+		requestDeadline,
+		startedAt + IMAGE_LOOKUP_BUDGET_MS,
+	);
 	let nextIndex = 0;
 	let matched = 0;
 	let failed = 0;
@@ -54,7 +63,8 @@ export async function addExplorePlaceImages(results: ExploreResult[]) {
 			const index = nextIndex++;
 			const result = results[index];
 			if (result.imageUrl) continue;
-			if (performance.now() >= deadline) {
+			// Leave enough time for an entire lookup; optional photos must fit the caller's remaining budget.
+			if (performance.now() + SERPER_IMAGE_TIMEOUT_MS > deadline) {
 				skipped++;
 				continue;
 			}
