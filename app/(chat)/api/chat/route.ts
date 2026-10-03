@@ -41,6 +41,7 @@ import {
   isRoleDailyChatLimitReached,
   requiresPaidWebSearchCredits,
 } from "@/lib/chat/free-daily-limit";
+import { resolveSavedMessageTimestamp } from "@/lib/chat/saved-message-timestamp";
 import { mergeChatUiContext, readChatUiContext } from "@/lib/chat/ui-context";
 import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
@@ -64,6 +65,7 @@ import {
   getAppSetting,
   getChatById,
   getLanguageByCodeRaw,
+  getMessageById,
   getMessageCountByUserId,
   getMessagesByChatIdPage,
   getTextGenerationPricing,
@@ -1523,13 +1525,19 @@ export async function POST(request: Request) {
         ? jobTitleReferenceData.preview.trim()
         : null;
 
+    // INSERT RETURNING confirms the actual persisted timestamp. On a duplicate
+    // send/retry, retain the original date instead of moving the message to today.
+    const savedUserTimestamp = async (saved: { id: string; createdAt: Date }[]) => {
+      return resolveSavedMessageTimestamp({ inserted: saved, messageId: message.id, chatId: id, role: "user", findExisting: (messageId) => getMessageById({ id: messageId }) });
+    };
+
     const buildDirectTextResponse = async (text: string) => {
       const userCreatedAt = new Date();
       const assistantCreatedAt = new Date(userCreatedAt.getTime() + 1);
       const assistantMessageId = generateUUID();
       const assistantParts: ChatMessage["parts"] = [{ type: "text", text }];
 
-      await saveMessages({
+      const saved = await saveMessages({
         messages: [
           {
             chatId: id,
@@ -1550,8 +1558,10 @@ export async function POST(request: Request) {
         ],
       });
 
+      const userTimestamp = await savedUserTimestamp(saved);
       const stream = createUIMessageStream<ChatMessage>({
         execute: ({ writer }) => {
+          if (userTimestamp) writer.write({ type: "data-messageTimestamp", data: userTimestamp, transient: true });
           const textId = "text-0";
           writer.write({
             type: "start",
@@ -1637,7 +1647,7 @@ export async function POST(request: Request) {
         } as ChatMessage["parts"][number]);
       }
 
-      await saveMessages({
+      const saved = await saveMessages({
         messages: [
           {
             chatId: id,
@@ -1658,8 +1668,10 @@ export async function POST(request: Request) {
         ],
       });
 
+      const userTimestamp = await savedUserTimestamp(saved);
       const stream = createUIMessageStream<ChatMessage>({
         execute: ({ writer }) => {
+          if (userTimestamp) writer.write({ type: "data-messageTimestamp", data: userTimestamp, transient: true });
           writer.write({
             type: "start",
             messageId: assistantMessageId,
@@ -1745,7 +1757,7 @@ export async function POST(request: Request) {
         } as ChatMessage["parts"][number]);
       }
 
-      await saveMessages({
+      const saved = await saveMessages({
         messages: [
           {
             chatId: id,
@@ -1766,8 +1778,10 @@ export async function POST(request: Request) {
         ],
       });
 
+      const userTimestamp = await savedUserTimestamp(saved);
       const stream = createUIMessageStream<ChatMessage>({
         execute: ({ writer }) => {
+          if (userTimestamp) writer.write({ type: "data-messageTimestamp", data: userTimestamp, transient: true });
           writer.write({
             type: "start",
             messageId: assistantMessageId,
@@ -3598,8 +3612,9 @@ export async function POST(request: Request) {
           createdAt: new Date(),
         },
       ],
-    }).catch((error) => {
+    }).then(savedUserTimestamp).catch((error) => {
       console.warn("Failed to persist user message", { chatId: id }, error);
+      return null;
     });
 
     const streamId = generateUUID();
@@ -3825,6 +3840,7 @@ export async function POST(request: Request) {
       return textSegments.join("").trim();
     };
 
+    const assistantCreatedAt = new Date();
     const persistAssistantSnapshot = async (
       step?: StepResult<any>,
       overrideText?: string
@@ -3846,7 +3862,7 @@ export async function POST(request: Request) {
             role: "assistant",
             parts: [{ type: "text", text: safeText }],
             attachments: [],
-            createdAt: new Date(),
+            createdAt: assistantCreatedAt,
           },
         ],
       }).catch((error) => {
@@ -4072,7 +4088,8 @@ export async function POST(request: Request) {
           { type: "data-webSearchStatus" }
         >)
       : null;
-    const modelUiStream = result.toUIMessageStream({
+    const modelUiStream = result.toUIMessageStream<ChatMessage>({
+      messageMetadata: () => ({ createdAt: assistantCreatedAt.toISOString() }),
       sendReasoning: modelConfig.supportsReasoning,
       onFinish: ({ messages }) => {
         const persistedMessages = messages.map((currentMessage) => ({
@@ -4094,7 +4111,7 @@ export async function POST(request: Request) {
                 }
               : part
           ),
-          createdAt: new Date(),
+          createdAt: assistantCreatedAt,
           attachments: [],
           chatId: id,
         }));
@@ -4143,9 +4160,8 @@ export async function POST(request: Request) {
         return "Oops, an error occurred!";
       },
     });
-    const uiStream = webSourcesData || webSearchStreamStatusPart
-      ? createUIMessageStream<ChatMessage>({
-          execute: ({ writer }) => {
+    const uiStream = createUIMessageStream<ChatMessage>({
+          execute: async ({ writer }) => {
             if (webSearchStreamStatusPart) {
               writer.write(webSearchStreamStatusPart);
             }
@@ -4155,9 +4171,10 @@ export async function POST(request: Request) {
             writer.merge(
               modelUiStream as Parameters<typeof writer.merge>[0]
             );
+            const userTimestamp = await persistUserMessagePromise;
+            if (userTimestamp) writer.write({ type: "data-messageTimestamp", data: userTimestamp, transient: true });
           },
-        })
-      : modelUiStream;
+        });
 
     const combinedStream = new ReadableStream({
       start(controller) {

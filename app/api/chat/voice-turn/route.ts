@@ -1,11 +1,13 @@
 import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/api/auth";
 import { noStoreHeaders } from "@/lib/api/cache";
+import { resolveSavedMessageTimestamp } from "@/lib/chat/saved-message-timestamp";
 import { VOICE_CHAT_WEB_FEATURE_FLAG_KEY } from "@/lib/constants";
 import {
   getActiveChatOwnerById,
+  getMessageById,
   recordTokenUsage,
-  saveChatAndMessages,
+  saveChatAndMessagesWithTimestamps as saveChatAndMessages,
   saveMessages,
   touchChatActivityById,
   updateChatStatusById,
@@ -154,13 +156,14 @@ export async function POST(request: Request) {
   });
 
   let createdChatForTurn = false;
+  let insertedTimestamps: { id: string; createdAt: Date }[] = [];
 
   try {
     await withTimeout(
       chat
         ? (async () => {
             await touchChatActivityById({ chatId });
-            await saveMessages({
+            insertedTimestamps = await saveMessages({
               messages: [
                 {
                   attachments: [],
@@ -208,7 +211,8 @@ export async function POST(request: Request) {
                 role: "assistant",
               },
             ],
-          }).then(() => {
+          }).then((saved) => {
+            insertedTimestamps = saved;
             createdChatForTurn = true;
           }),
       VOICE_TURN_SAVE_TIMEOUT_MS
@@ -256,9 +260,16 @@ export async function POST(request: Request) {
     return voicePersistenceUnavailable();
   }
 
+  const [userTimestamp, assistantTimestamp] = await Promise.all([
+    resolveSavedMessageTimestamp({ inserted: insertedTimestamps, messageId: userMessageId, chatId, role: "user", findExisting: (id) => getMessageById({ id }) }),
+    resolveSavedMessageTimestamp({ inserted: insertedTimestamps, messageId: assistantMessageId, chatId, role: "assistant", findExisting: (id) => getMessageById({ id }) }),
+  ]);
+
   return Response.json(
     {
       assistantMessageId,
+      userTimestamp,
+      assistantTimestamp,
       chatId,
       ok: true,
       userText,

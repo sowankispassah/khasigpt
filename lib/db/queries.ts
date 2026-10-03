@@ -1658,7 +1658,11 @@ export async function getChatById({
   }
 }
 
-export async function saveChatAndMessages({
+export async function saveChatAndMessages(input: Parameters<typeof saveChatAndMessagesWithTimestamps>[0]) {
+  await saveChatAndMessagesWithTimestamps(input);
+}
+
+export async function saveChatAndMessagesWithTimestamps({
   chatInput,
   messages,
 }: {
@@ -1689,8 +1693,10 @@ export async function saveChatAndMessages({
       }
 
       if (messages.length > 0) {
-        await tx.insert(message).values(messages).onConflictDoNothing();
+        return await tx.insert(message).values(messages).onConflictDoNothing()
+          .returning({ id: message.id, createdAt: message.createdAt });
       }
+      return [];
     });
   } catch (error) {
     throw new ChatSDKError(
@@ -1733,7 +1739,8 @@ export async function saveMessages({ messages }: { messages: DBMessage[] }) {
 
     // Ignore duplicates when the same message id is persisted twice (e.g. when
     // resuming a stream or retrying after a transient error).
-    return await db.insert(message).values(messages).onConflictDoNothing();
+    return await db.insert(message).values(messages).onConflictDoNothing()
+      .returning({ id: message.id, createdAt: message.createdAt });
   } catch (_error) {
     console.error("Failed to save messages", _error);
     const cause =

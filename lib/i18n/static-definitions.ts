@@ -3,6 +3,8 @@ import { REFERRAL_COPY } from "@/lib/referrals/copy";
 import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
+  { key: "chat.date_separator.today", defaultText: "Today {time}", description: "Local date and time above the first chat message of today." },
+  { key: "chat.date_separator.yesterday", defaultText: "Yesterday {time}", description: "Local date and time above the first chat message of yesterday." },
   { key: "jobs.details.about", defaultText: "About the job", description: "Heading for the complete job description and recruitment details." },
   { key: "jobs.details.compensation", defaultText: "Compensation by role", description: "Heading for pay amounts for each advertised role." },
   { key: "chat.feedback.action", defaultText: "Dislike or report this response", description: "Accessible description of the thumbs-down response action." },

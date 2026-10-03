@@ -25,6 +25,7 @@ import {
 import { classifyImageIntent } from "@/lib/ai/image-intent-classifier";
 import { verifyImageIntentToken } from "@/lib/ai/image-intent-token";
 import type { EnvironmentReferenceContext } from "@/lib/ai/visual-reference-types";
+import { resolveSavedMessageTimestamp } from "@/lib/chat/saved-message-timestamp";
 import {
   IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
   WEB_SEARCH_ENABLED_SETTING_KEY,
@@ -35,9 +36,10 @@ import {
   getAppSetting,
   getChatById,
   getImageGenerationChargeQuote,
+  getMessageById,
   getMessagesByChatId,
   recordWebSearchUsage,
-  saveChatAndMessages,
+  saveChatAndMessagesWithTimestamps as saveChatAndMessages,
   updateChatStatusById,
   updateMessagePartsById,
 } from "@/lib/db/queries";
@@ -565,8 +567,9 @@ export async function POST(request: Request) {
     return new ChatSDKError("offline:chat").toResponse();
   }
 
+  let userTimestamp: { id: string; createdAt: string } | null = null;
   try {
-    await saveChatAndMessages({
+    const saved = await saveChatAndMessages({
     chatInput: existingChat
       ? null
       : {
@@ -600,6 +603,7 @@ export async function POST(request: Request) {
     ],
     });
 
+    userTimestamp = await resolveSavedMessageTimestamp({ inserted: saved, messageId: resolvedUserMessageId, chatId, role: "user", findExisting: (id) => getMessageById({ id }) });
     const webSearchPlatform = getWebSearchPlatform(request);
     const [
       webSearchConfig,
@@ -829,7 +833,7 @@ export async function POST(request: Request) {
     };
 
     return Response.json(
-      { assistantMessage },
+      { assistantMessage, userTimestamp },
       {
         headers: {
           "Cache-Control": "no-store",
@@ -908,6 +912,7 @@ export async function POST(request: Request) {
     return Response.json(
       {
         assistantMessage,
+        userTimestamp,
         code: safetyRejected
           ? IMAGE_GENERATION_SAFETY_ERROR_CODE
           : "image_generation_failed",

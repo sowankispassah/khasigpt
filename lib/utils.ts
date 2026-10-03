@@ -231,7 +231,7 @@ export function convertToUIMessages(messages: DBMessage[]): ChatMessage[] {
     const createdAt =
       message.createdAt instanceof Date && !Number.isNaN(message.createdAt.getTime())
         ? message.createdAt
-        : new Date(0);
+        : null;
 
     uiMessages.push({
       id: message.id,
@@ -245,9 +245,9 @@ export function convertToUIMessages(messages: DBMessage[]): ChatMessage[] {
                 text: "",
               } as UIMessagePart<CustomUIDataTypes, ChatTools>,
             ],
-      metadata: {
+      metadata: createdAt ? {
         createdAt: formatISO(createdAt),
-      },
+      } : undefined,
     });
 
     if (role === "user") {

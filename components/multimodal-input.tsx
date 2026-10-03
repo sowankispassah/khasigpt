@@ -117,11 +117,14 @@ async function postVoiceTurn(
     if (response.ok) {
       const responseBody = (await response.json().catch(() => null)) as {
         userText?: unknown;
+        userTimestamp?: { id: string; createdAt: string } | null;
+        assistantTimestamp?: { id: string; createdAt: string } | null;
       } | null;
-      return typeof responseBody?.userText === "string" &&
-        responseBody.userText.trim()
-        ? responseBody.userText.trim()
-        : payload.userText;
+      return {
+        userText: typeof responseBody?.userText === "string" && responseBody.userText.trim() ? responseBody.userText.trim() : payload.userText,
+        userTimestamp: responseBody?.userTimestamp,
+        assistantTimestamp: responseBody?.assistantTimestamp,
+      };
     }
 
     const responseBody = await response.json().catch(() => null);
@@ -788,7 +791,7 @@ function PureMultimodalInput({
           ]);
 
           try {
-            const savedUserText = await postVoiceTurn(
+            const savedTurn = await postVoiceTurn(
               {
                 assistantMessageId: pair.assistantMessageId,
                 assistantText: pair.assistantText,
@@ -807,9 +810,12 @@ function PureMultimodalInput({
                 message.id === pair.userMessageId
                   ? {
                       ...message,
-                      parts: [{ type: "text" as const, text: savedUserText }],
+                      parts: [{ type: "text" as const, text: savedTurn.userText }],
+                      metadata: savedTurn.userTimestamp ? { createdAt: savedTurn.userTimestamp.createdAt } : message.metadata,
                     }
-                  : message
+                  : message.id === pair.assistantMessageId && savedTurn.assistantTimestamp
+                    ? { ...message, metadata: { createdAt: savedTurn.assistantTimestamp.createdAt } }
+                    : message
               )
             );
           } catch (error) {

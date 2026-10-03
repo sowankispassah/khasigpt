@@ -849,6 +849,11 @@ export function Chat({
       },
     }),
     onData: (dataPart) => {
+      if (dataPart.type === "data-messageTimestamp") {
+        setMessages((current) => current.map((entry) => entry.id === dataPart.data.id
+          ? { ...entry, metadata: { ...entry.metadata, createdAt: dataPart.data.createdAt } }
+          : entry));
+      }
       if (dataPart.type === "data-appendMessage") {
         setResumeDataPart(dataPart);
       }
@@ -1021,6 +1026,9 @@ export function Chat({
           : null;
       const messageWithId = {
         ...message,
+        metadata: {
+          createdAt: ("metadata" in message ? message.metadata?.createdAt : undefined) ?? new Date().toISOString(),
+        },
         id:
           "id" in message && typeof message.id === "string" && message.id
             ? message.id
@@ -1695,6 +1703,7 @@ export function Chat({
           {
             id: userMessageId,
             role: "user",
+            metadata: { createdAt: new Date().toISOString() },
             parts: userParts,
           },
         ]);
@@ -1722,10 +1731,17 @@ export function Chat({
         const data = (await response.json().catch(() => null)) as
           | {
               assistantMessage?: ChatMessage;
+              userTimestamp?: { id: string; createdAt: string };
               code?: string;
               message?: string;
             }
           | null;
+
+        const timestamp = data?.userTimestamp;
+        if (timestamp?.id === userMessageId && typeof timestamp.createdAt === "string") {
+          setMessages((current) => current.map((entry) => entry.id === userMessageId
+            ? { ...entry, metadata: { createdAt: timestamp.createdAt } } : entry));
+        }
 
         if (!response.ok) {
           if (response.status === 402) {

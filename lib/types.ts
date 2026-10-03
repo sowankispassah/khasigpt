@@ -25,6 +25,7 @@ export type MessageMetadata = z.infer<typeof messageMetadataSchema>;
 export type ChatTools = Record<string, never>;
 
 export type CustomUIDataTypes = {
+  messageTimestamp: { id: string; createdAt: string };
   textDelta: string;
   imageDelta: string;
   sheetDelta: string;

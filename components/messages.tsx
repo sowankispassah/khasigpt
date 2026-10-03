@@ -2,6 +2,7 @@ import type { UseChatHelpers } from "@ai-sdk/react";
 import { ArrowDownIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import {
+  Fragment,
   memo,
   useCallback,
   useEffect,
@@ -11,7 +12,9 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "@/components/language-provider";
+import { useLocalCalendarClock } from "@/hooks/use-local-calendar-clock";
 import { useMessages } from "@/hooks/use-messages";
+import { getMessageDateSeparators } from "@/lib/chat/date-separators";
 import type { Vote } from "@/lib/db/schema";
 import type { IconPromptAction } from "@/lib/icon-prompts";
 import type { JobCard } from "@/lib/jobs/types";
@@ -19,6 +22,7 @@ import { isNewsInitialMessage } from "@/lib/news/shared";
 import type { StudyPaperCard } from "@/lib/study/types";
 import type { ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { ChatDateSeparator } from "./chat-date-separator";
 import { ChatThinkingStatus } from "./chat-thinking-status";
 import { Greeting } from "./greeting";
 import { IconPromptActions } from "./icon-prompt-actions";
@@ -127,6 +131,11 @@ function PureMessages({
     [renderMessages]
   );
   const lastMessage = displayMessages.at(-1);
+  const localNow = useLocalCalendarClock();
+  const dateSeparators = useMemo(
+    () => localNow ? getMessageDateSeparators(displayMessages) : new Map<string, Date>(),
+    [displayMessages, localNow]
+  );
   const isLastUserMessage = lastMessage?.role === "user";
   const votesByMessageId = useMemo(() => {
     if (!votes) {
@@ -709,6 +718,7 @@ function PureMessages({
           ) : null}
 
           {visibleMessages.map((message, index) => {
+            const separatorDate = dateSeparators.get(message.id);
             const originalIndex = baseIndex + index;
             const sourceIndex = renderMessages.findIndex(
               (entry) => entry.id === message.id
@@ -718,6 +728,10 @@ function PureMessages({
               .reverse()
               .find((entry) => entry.role === "user")?.id;
             return (
+              <Fragment key={message.id}>
+              {localNow && separatorDate ? (
+                <ChatDateSeparator date={separatorDate} now={localNow} />
+              ) : null}
               <PreviewMessage
                 chatId={chatId}
                 isLoading={
@@ -725,7 +739,6 @@ function PureMessages({
                   displayMessages.length - 1 === originalIndex
                 }
                 isReadonly={isReadonly}
-                key={message.id}
                 message={message}
                 regenerate={regenerate}
                 requiresScrollPadding={
@@ -741,6 +754,7 @@ function PureMessages({
                 }
                 vote={votesByMessageId?.get(message.id)}
               />
+              </Fragment>
             );
           })}
 
