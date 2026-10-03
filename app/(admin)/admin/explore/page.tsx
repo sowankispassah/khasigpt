@@ -1,4 +1,5 @@
 import { ExploreAdminManager } from "@/components/admin/explore-admin-manager";
+import { ExploreProviderSettings } from "@/components/admin/explore-provider-settings";
 import { listExploreCategories } from "@/lib/explore/service";
 import { withTimeout } from "@/lib/utils/async";
 
@@ -20,6 +21,7 @@ export default async function ExploreAdminPage() {
           Configure discovery categories, subcategories, search behavior, location rules, icons, and ordering.
         </p>
       </div>
+      <ExploreProviderSettings />
       <ExploreAdminManager initialCategories={categories} />
     </div>
   );

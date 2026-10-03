@@ -1,8 +1,10 @@
+import { EXPLORE_PROVIDER_COPY } from "@/lib/explore/provider-copy";
 import { USER_FEATURE_DEFINITIONS } from "@/lib/feature-access-catalog";
 import { REFERRAL_COPY } from "@/lib/referrals/copy";
 import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
+  ...Object.entries(EXPLORE_PROVIDER_COPY).map(([name, defaultText]) => ({ key: `admin.explore.provider.${name}`, defaultText, description: "Admin Explore place-provider settings." })),
   { key: "chat.date_separator.today", defaultText: "Today {time}", description: "Local date and time above the first chat message of today." },
   { key: "chat.date_separator.yesterday", defaultText: "Yesterday {time}", description: "Local date and time above the first chat message of yesterday." },
   { key: "jobs.details.about", defaultText: "About the job", description: "Heading for the complete job description and recruitment details." },

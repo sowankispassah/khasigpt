@@ -1,0 +1,18 @@
+export const EXPLORE_PROVIDER_COPY = {
+  title: "Place search provider",
+  description: "Choose the service used for place results and photos on web and mobile. An explicit selection uses that service without switching to another provider.",
+  label: "Provider",
+  loading: "Loading provider settings…",
+  saving: "Saving…",
+  save: "Save provider",
+  credentials: "Services without a configured server API key are unavailable. A configured key still requires an active account, sufficient credits, and the appropriate API enabled.",
+  configured: "Key configured",
+  missing: "Key missing",
+  error: "Provider settings could not be loaded or saved. Please try again.",
+  retry: "Reload settings",
+  saved: "Provider saved. New searches will use this selection.",
+  google: "Google Places",
+  serper: "Serper",
+  serpent: "Serpent API",
+  openstreetmap: "OpenStreetMap",
+} as const;

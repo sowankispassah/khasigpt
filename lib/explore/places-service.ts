@@ -16,6 +16,11 @@ import {
   normalizeWikidataId,
   resolveWikimediaImages,
 } from "@/lib/explore/wikimedia-images";
+import { addExplorePlaceImages } from "./place-images";
+import { getExploreProvider } from "./provider-config";
+import { dispatchExploreProvider, exploreProviderConfigured } from "./providers";
+import { searchSerpentPlaces } from "./serpent-places";
+import { searchSerperPlaces } from "./serper-places";
 
 const GOOGLE_TEXT_SEARCH_URL =
   "https://places.googleapis.com/v1/places:searchText";
@@ -105,7 +110,7 @@ async function getGooglePhoto(
       }
     | undefined,
 ) {
-  if (!photo?.name?.startsWith("places/")) {
+  if (!photo?.name || !/^places\/[A-Za-z0-9_-]+\/photos\/[A-Za-z0-9_-]+$/.test(photo.name)) {
     return { imageUrl: null, attributions: [] as ExploreAttribution[] };
   }
   const url = new URL(`https://places.googleapis.com/v1/${photo.name}/media`);
@@ -195,23 +200,19 @@ async function searchGooglePlaces({
     const name = place.displayName?.text?.trim();
     const sourceUrl = safeHttpUrl(place.googleMapsUri);
     if (
-      !(name && sourceUrl && typeof latitude === "number" && typeof longitude === "number")
+      !(name && sourceUrl && typeof latitude === "number" && Number.isFinite(latitude) && Math.abs(latitude) <= 90 && typeof longitude === "number" && Number.isFinite(longitude) && Math.abs(longitude) <= 180)
     ) {
       return [];
     }
+    if (calculateDistanceKm(location, { latitude, longitude }) > radiusKm + 0.05) return [];
     return [{ place, latitude, longitude, name, sourceUrl }];
   });
   const photos = await Promise.all(
-    places.map((entry, index) =>
-      index < 6
-        ? getGooglePhoto(key, entry.place.photos?.[0]).catch(() => ({
+    places.map((entry) =>
+        getGooglePhoto(key, entry.place.photos?.[0]).catch(() => ({
             imageUrl: null,
             attributions: [] as ExploreAttribution[],
-          }))
-        : Promise.resolve({
-            imageUrl: null,
-            attributions: [] as ExploreAttribution[],
-          }),
+          })),
     ),
   );
   const results = places.map((entry, index) => ({
@@ -507,19 +508,20 @@ export type ExplorePlacesSearchInput = {
 };
 
 export async function searchExplorePlaces(input: ExplorePlacesSearchInput) {
-  try {
-    const googleResults = await searchGooglePlaces(input);
-    if (googleResults) {
-      return { results: googleResults, source: "google_places" as const };
-    }
-  } catch (error) {
-    console.warn(
-      "[explore/places] Google Places unavailable; using OpenStreetMap.",
-      error,
-    );
-  }
-  return {
-    results: await searchOverpass(input),
-    source: "openstreetmap" as const,
-  };
+  const provider = await getExploreProvider();
+  if (!exploreProviderConfigured(provider, process.env)) throw new Error("place_provider_not_configured");
+  return dispatchExploreProvider<{ results: ExploreResult[]; source: string }>(provider, {
+    google: async () => {
+      const results = await searchGooglePlaces(input);
+      if (!results) throw new Error("place_provider_not_configured");
+      return { results, source: "google_places" };
+    },
+    serper: async () => {
+      const results = await searchSerperPlaces(input);
+      if (!results) throw new Error("place_provider_not_configured");
+      return { results: await addExplorePlaceImages(results), source: "google_maps" };
+    },
+    serpent: async () => ({ results: await searchSerpentPlaces(input), source: "google_maps" }),
+    openstreetmap: async () => ({ results: await searchOverpass(input), source: "openstreetmap" }),
+  });
 }
