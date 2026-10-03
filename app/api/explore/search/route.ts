@@ -161,7 +161,6 @@ function errorResponse(error: unknown) {
 }
 
 export async function POST(request: Request) {
-  const requestStartedAt = performance.now();
   let generationLease: Awaited<ReturnType<typeof acquirePaidGenerationForUser>> | null = null;
   try {
     const auth = await getAuthenticatedUser(request);
@@ -230,15 +229,12 @@ export async function POST(request: Request) {
     const effectiveSearchType =
       subcategory?.searchTypeOverride ?? category?.searchType ?? "hybrid";
     const resultType = category?.resultType ?? "standard";
-    const placeSearch = await searchExplorePlaces(
-      {
-        categoryQuery: effectiveCategoryQuery,
-        location: parsed.data.location,
-        query: parsed.data.query,
-        radiusKm: parsed.data.radiusKm,
-      },
-      { includeImages: true, deadlineMs: requestStartedAt + 45_000 },
-    );
+    const placeSearch = await searchExplorePlaces({
+      categoryQuery: effectiveCategoryQuery,
+      location: parsed.data.location,
+      query: parsed.data.query,
+      radiusKm: parsed.data.radiusKm,
+    });
     const results = placeSearch.results;
     let answer: WebSearchAnswer | null = null;
     if (shouldEnrichExploreSearch(parsed.data.searchMode)) {

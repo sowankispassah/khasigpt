@@ -17,8 +17,7 @@ test.beforeEach(async ({ context, page, baseURL }) => {
     const [account] = await sql`SELECT id, "firstName", "lastName", "dateOfBirth" FROM "User" WHERE role = 'admin' AND "isActive" = true LIMIT 1`;
     if (!account) throw new Error("Active account required for read-only UI verification.");
     const name = "authjs.session-token";
-    const token = { ...account, role: "admin" as const, roleRefreshedAt: Date.now(), dbRefreshedAt: Date.now(), imageVersion: null };
-    const value = await encode({ secret, salt: name, maxAge: 600, token });
+    const value = await encode({ secret, salt: name, maxAge: 600, token: { ...account, role: "admin", roleRefreshedAt: Date.now(), dbRefreshedAt: Date.now(), imageVersion: null } });
     await context.addCookies([{ name, value, domain: "localhost", path: "/", httpOnly: true, sameSite: "Lax" }]);
   } finally {
     await sql.end();

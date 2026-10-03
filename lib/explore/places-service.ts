@@ -1,14 +1,11 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { unstable_cache } from "next/cache";
 import {
   calculateDistanceKm,
   formatDistanceKm,
   getRadiusBoundingBox,
 } from "@/lib/explore/geo";
-import { addExplorePlaceImages } from "@/lib/explore/place-images";
-import { searchSerperPlaces } from "@/lib/explore/serper-places";
 import type {
   ExploreAttribution,
   ExploreLocationInput,
@@ -23,12 +20,12 @@ import {
 const GOOGLE_TEXT_SEARCH_URL =
   "https://places.googleapis.com/v1/places:searchText";
 const OVERPASS_ENDPOINTS = [
-  "https://overpass.private.coffee/api/interpreter",
   "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
 ] as const;
 const SEARCH_TIMEOUT_MS = 15_000;
 const MAX_RESULTS = 48;
-const overpassCooldownUntil = new Map<string, number>();
 const OSM_ATTRIBUTION: ExploreAttribution = {
   displayName: "© OpenStreetMap contributors",
   uri: "https://www.openstreetmap.org/copyright",
@@ -67,7 +64,6 @@ type OverpassElement = {
 
 type OverpassResponse = {
   elements?: OverpassElement[];
-  remark?: string;
 };
 
 function safeHttpUrl(value: string | null | undefined) {
@@ -406,13 +402,10 @@ async function addWikimediaImageFallbacks(
   }
 }
 
-async function fetchOverpassPlaces(input: ExplorePlacesSearchInput) {
+async function searchOverpass(input: ExplorePlacesSearchInput) {
   const query = buildOverpassExploreQuery(input);
   let providerError: unknown = null;
   for (const endpoint of OVERPASS_ENDPOINTS) {
-    if ((overpassCooldownUntil.get(endpoint) ?? 0) > Date.now()) continue;
-    const startedAt = performance.now();
-    let status: number | null = null;
     try {
       const body = new URLSearchParams({ data: query });
       const response = await fetch(endpoint, {
@@ -426,22 +419,10 @@ async function fetchOverpassPlaces(input: ExplorePlacesSearchInput) {
         body,
         signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
       });
-      status = response.status;
       if (!response.ok) {
-        if (status === 429 || status === 406) {
-          overpassCooldownUntil.set(endpoint, Date.now() + 30_000);
-        }
         throw new Error(`OpenStreetMap search returned HTTP ${response.status}.`);
       }
       const payload = (await response.json()) as OverpassResponse;
-      if (!Array.isArray(payload.elements) || payload.remark) {
-        throw new Error("OpenStreetMap search returned an incomplete response.");
-      }
-      console.info("[explore/places] lookup completed", {
-        provider: new URL(endpoint).hostname,
-        durationMs: Math.round(performance.now() - startedAt),
-        count: payload.elements.length,
-      });
       const candidates = (payload.elements ?? []).flatMap((element) => {
         const latitude = element.lat ?? element.center?.lat;
         const longitude = element.lon ?? element.center?.lon;
@@ -513,22 +494,10 @@ async function fetchOverpassPlaces(input: ExplorePlacesSearchInput) {
       );
     } catch (error) {
       providerError = error;
-      console.warn("[explore/places] lookup failed", {
-        provider: new URL(endpoint).hostname,
-        durationMs: Math.round(performance.now() - startedAt),
-        status,
-        errorType: error instanceof Error ? error.name : "unknown",
-      });
     }
   }
   throw providerError ?? new Error("Coordinate-aware place search failed.");
 }
-
-const searchOverpass = unstable_cache(
-  fetchOverpassPlaces,
-  ["explore-overpass-places-v1"],
-  { revalidate: 600 },
-);
 
 export type ExplorePlacesSearchInput = {
   categoryQuery: string | null;
@@ -537,48 +506,20 @@ export type ExplorePlacesSearchInput = {
   radiusKm: number;
 };
 
-export async function searchExplorePlaces(
-  input: ExplorePlacesSearchInput,
-  imageOptions: { includeImages?: boolean; deadlineMs?: number } = {},
-) {
-  if (imageOptions.includeImages) {
-    console.info("[explore/images] search requested", {
-      credentialsConfigured: Boolean(process.env.SERPER_API_KEY?.trim()),
-    });
-  }
-  const includePlaceImages = (results: ExploreResult[]) =>
-    imageOptions.includeImages
-      ? addExplorePlaceImages(results, imageOptions.deadlineMs)
-      : Promise.resolve(results);
+export async function searchExplorePlaces(input: ExplorePlacesSearchInput) {
   try {
     const googleResults = await searchGooglePlaces(input);
     if (googleResults) {
-      return {
-        results: await includePlaceImages(googleResults),
-        source: "google_places" as const,
-      };
+      return { results: googleResults, source: "google_places" as const };
     }
   } catch (error) {
     console.warn(
-      "[explore/places] Google Places unavailable; trying fallback place search.",
+      "[explore/places] Google Places unavailable; using OpenStreetMap.",
       error,
     );
   }
-  try {
-    const mapResults = await searchSerperPlaces(input);
-    if (mapResults?.length) {
-      return {
-        results: await includePlaceImages(mapResults),
-        source: "google_maps" as const,
-      };
-    }
-  } catch (error) {
-    console.warn("[explore/places] Map fallback unavailable; using OpenStreetMap.", {
-      reason: error instanceof Error ? error.message : "provider_failed",
-    });
-  }
   return {
-    results: await includePlaceImages(await searchOverpass(input)),
+    results: await searchOverpass(input),
     source: "openstreetmap" as const,
   };
 }

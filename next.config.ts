@@ -85,7 +85,7 @@ const securityHeaders = [
       "default-src 'self'",
       scriptSrc,
       "style-src 'self' 'unsafe-inline'",
-      `img-src 'self' data: blob: https://*.vercel-storage.com https://*.blob.vercel-storage.com https://*.public.blob.vercel-storage.com https://avatar.vercel.sh https://i.ytimg.com https://lh3.googleusercontent.com https://commons.wikimedia.org https://upload.wikimedia.org https://*.gstatic.com https://*.bing.net ${contactImageOrigin(process.env.SUPABASE_URL)}`.trim(),
+      `img-src 'self' data: blob: https://*.vercel-storage.com https://*.blob.vercel-storage.com https://*.public.blob.vercel-storage.com https://avatar.vercel.sh https://i.ytimg.com https://lh3.googleusercontent.com https://commons.wikimedia.org https://upload.wikimedia.org ${contactImageOrigin(process.env.SUPABASE_URL)}`.trim(),
       "font-src 'self'",
       "worker-src 'self' blob:",
       connectSrc,
