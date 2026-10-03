@@ -6,6 +6,7 @@ import {
   formatDistanceKm,
   getRadiusBoundingBox,
 } from "@/lib/explore/geo";
+import { addExplorePlaceImages } from "@/lib/explore/place-images";
 import type {
   ExploreAttribution,
   ExploreLocationInput,
@@ -510,7 +511,10 @@ export async function searchExplorePlaces(input: ExplorePlacesSearchInput) {
   try {
     const googleResults = await searchGooglePlaces(input);
     if (googleResults) {
-      return { results: googleResults, source: "google_places" as const };
+      return {
+        results: await addExplorePlaceImages(googleResults),
+        source: "google_places" as const,
+      };
     }
   } catch (error) {
     console.warn(
@@ -519,7 +523,7 @@ export async function searchExplorePlaces(input: ExplorePlacesSearchInput) {
     );
   }
   return {
-    results: await searchOverpass(input),
+    results: await addExplorePlaceImages(await searchOverpass(input)),
     source: "openstreetmap" as const,
   };
 }
