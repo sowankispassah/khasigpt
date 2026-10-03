@@ -6,6 +6,7 @@ import ts from "typescript";
 import { z } from "zod";
 import { normalizeAppSettingValueForWrite } from "@/lib/db/app-setting-validation";
 import * as geo from "@/lib/explore/geo";
+import * as budgetPolicy from "@/lib/explore/google-budget-policy";
 import * as providers from "@/lib/explore/providers";
 import { parseSerpentPlaces } from "@/lib/explore/serpent-results";
 
@@ -56,6 +57,8 @@ function adminHarness(admin: boolean, env: Record<string, string> = {}) {
     "@/lib/db/queries": { setAppSetting: async () => { writes++; } },
     "@/lib/explore/provider-config": { EXPLORE_PROVIDER_CACHE_TAG: "explore-provider", readExploreProvider: async () => { reads++; return "openstreetmap"; } },
     "@/lib/explore/providers": providers,
+    "@/lib/explore/google-budget-policy": budgetPolicy,
+    "@/lib/explore/google-budget": { readGoogleBudget: async () => budgetPolicy.parseGoogleBudget(undefined), saveGoogleBudgetAndProvider: async () => { writes++; return budgetPolicy.parseGoogleBudget(undefined); } },
     "@/lib/security/admin-api-auth": { requireAdminApiUser: async () => admin ? { id: "admin" } : null },
   }, env);
   return { route, writes: () => writes, reads: () => reads, invalidations };
@@ -73,6 +76,17 @@ test("unconfigured and invalid providers cannot replace the active provider", as
   expect((await h.route.POST(request("google"))).status).toBe(409);
   expect((await h.route.POST(request("unknown"))).status).toBe(400);
   expect(h.writes()).toBe(0); expect(h.invalidations).toEqual([]);
+});
+test("automatic fallback requires a configured selected fallback and validates usage inputs", async () => {
+  const h = adminHarness(true, { GOOGLE_MAPS_API_KEY: "private-test-key" });
+  const budget = { ...budgetPolicy.parseGoogleBudget(undefined), enabled: true };
+  const { searchUsed: _searchUsed, photoUsed: _photoUsed, ...googleBudget } = budget;
+  const post = (value: unknown) => new Request("https://example.com/api/admin/explore/provider", { method: "POST", body: JSON.stringify(value) });
+  expect((await h.route.POST(post({ provider: "google", googleBudget }))).status).toBe(409);
+  expect((await h.route.POST(post({ provider: "google", googleBudget: { ...googleBudget, searchLimit: -1 } }))).status).toBe(400);
+  expect(h.writes()).toBe(0);
+  expect((await h.route.POST(post({ provider: "google", googleBudget: { ...googleBudget, fallbackProvider: "openstreetmap" } }))).status).toBe(200);
+  expect(h.writes()).toBe(1);
 });
 test("saving invalidates only the provider cache immediately and never returns secrets", async () => {
   const h = adminHarness(true, { GOOGLE_MAPS_API_KEY: "private-test-key" });
@@ -92,6 +106,8 @@ test("Google retrieves photos beyond the first six, avoids out-of-radius charges
     "@/lib/explore/wikimedia-images": {},
     "./provider-config": { getExploreProvider: async () => "google" },
     "./providers": providers,
+    "./google-budget-policy": budgetPolicy,
+    "./google-fallback": { runGoogleWithFallback: (google: () => Promise<unknown>) => google() },
     "./serper-places": { searchSerperPlaces: () => { throw new Error("Unexpected paid fallback"); } },
     "./serpent-places": { searchSerpentPlaces: () => { throw new Error("Unexpected paid fallback"); } },
     "./place-images": { addExplorePlaceImages: () => { throw new Error("Unexpected image service"); } },

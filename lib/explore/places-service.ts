@@ -16,6 +16,8 @@ import {
   normalizeWikidataId,
   resolveWikimediaImages,
 } from "@/lib/explore/wikimedia-images";
+import { GoogleQuotaError } from "./google-budget-policy";
+import { runGoogleWithFallback } from "./google-fallback";
 import { addExplorePlaceImages } from "./place-images";
 import { getExploreProvider } from "./provider-config";
 import { dispatchExploreProvider, exploreProviderConfigured } from "./providers";
@@ -109,6 +111,7 @@ async function getGooglePhoto(
         authorAttributions?: Array<{ displayName?: string; uri?: string }>;
       }
     | undefined,
+  beforePhoto?: () => void,
 ) {
   if (!photo?.name || !/^places\/[A-Za-z0-9_-]+\/photos\/[A-Za-z0-9_-]+$/.test(photo.name)) {
     return { imageUrl: null, attributions: [] as ExploreAttribution[] };
@@ -118,10 +121,12 @@ async function getGooglePhoto(
   url.searchParams.set("maxWidthPx", "900");
   url.searchParams.set("maxHeightPx", "600");
   url.searchParams.set("skipHttpRedirect", "true");
+  beforePhoto?.();
   const response = await fetch(url, {
     cache: "no-store",
     signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
   });
+  if (response.status === 429) throw new GoogleQuotaError();
   if (!response.ok) {
     return { imageUrl: null, attributions: [] as ExploreAttribution[] };
   }
@@ -156,7 +161,7 @@ async function searchGooglePlaces({
   location,
   query,
   radiusKm,
-}: ExplorePlacesSearchInput) {
+}: ExplorePlacesSearchInput, beforePhoto?: () => void) {
   const key = process.env.GOOGLE_MAPS_API_KEY?.trim();
   if (!key) return null;
   const boundingBox = getRadiusBoundingBox(location, radiusKm);
@@ -190,11 +195,12 @@ async function searchGooglePlaces({
     }),
     signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
   });
+  if (response.status === 429) throw new GoogleQuotaError();
   if (!response.ok) {
     throw new Error(`Google Places returned HTTP ${response.status}.`);
   }
   const payload = (await response.json()) as GooglePlacesResponse;
-  const places = (payload.places ?? []).flatMap((place) => {
+  const places = (payload.places ?? []).slice(0, 20).flatMap((place) => {
     const latitude = place.location?.latitude;
     const longitude = place.location?.longitude;
     const name = place.displayName?.text?.trim();
@@ -209,10 +215,13 @@ async function searchGooglePlaces({
   });
   const photos = await Promise.all(
     places.map((entry) =>
-        getGooglePhoto(key, entry.place.photos?.[0]).catch(() => ({
+        getGooglePhoto(key, entry.place.photos?.[0], beforePhoto).catch((error) => {
+          if (error instanceof GoogleQuotaError) throw error;
+          return ({
             imageUrl: null,
             attributions: [] as ExploreAttribution[],
-          })),
+          });
+        }),
     ),
   );
   const results = places.map((entry, index) => ({
@@ -510,18 +519,22 @@ export type ExplorePlacesSearchInput = {
 export async function searchExplorePlaces(input: ExplorePlacesSearchInput) {
   const provider = await getExploreProvider();
   if (!exploreProviderConfigured(provider, process.env)) throw new Error("place_provider_not_configured");
-  return dispatchExploreProvider<{ results: ExploreResult[]; source: string }>(provider, {
-    google: async () => {
-      const results = await searchGooglePlaces(input);
-      if (!results) throw new Error("place_provider_not_configured");
-      return { results, source: "google_places" };
-    },
-    serper: async () => {
-      const results = await searchSerperPlaces(input);
-      if (!results) throw new Error("place_provider_not_configured");
-      return { results: await addExplorePlaceImages(results), source: "google_maps" };
-    },
+  const serper = async () => {
+    const results = await searchSerperPlaces(input);
+    if (!results) throw new Error("place_provider_not_configured");
+    return { results: await addExplorePlaceImages(results), source: "google_maps" };
+  };
+  const alternatives = {
+    serper,
     serpent: async () => ({ results: await searchSerpentPlaces(input), source: "google_maps" }),
     openstreetmap: async () => ({ results: await searchOverpass(input), source: "openstreetmap" }),
+  };
+  return dispatchExploreProvider<{ results: ExploreResult[]; source: string }>(provider, {
+    google: () => runGoogleWithFallback(async (beforePhoto) => {
+      const results = await searchGooglePlaces(input, beforePhoto);
+      if (!results) throw new Error("place_provider_not_configured");
+      return { results, source: "google_places" };
+    }, alternatives),
+    ...alternatives,
   });
 }

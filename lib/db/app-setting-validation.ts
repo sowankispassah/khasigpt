@@ -28,6 +28,7 @@ import { BILLING_COUPONS_ACCESS_KEY,
   VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
   WEB_SEARCH_ENABLED_SETTING_KEY,} from "@/lib/constants";
+import { GOOGLE_BUDGET_SETTING_KEY, googleBudgetSchema } from "@/lib/explore/google-budget-policy";
 import { EXPLORE_PROVIDER_SETTING_KEY, parseExploreProvider } from "@/lib/explore/providers";
 import { parseFeatureAccessModeStrict } from "@/lib/feature-access";
 
@@ -96,6 +97,8 @@ function getJsonByteLength(value: unknown) {
 
 export function normalizeAppSettingValueForWrite<T>(key: string, value: T): T {
   const normalizedKey = key.trim();
+
+  if (normalizedKey === GOOGLE_BUDGET_SETTING_KEY) return googleBudgetSchema.parse(value) as T;
 
   if (normalizedKey === EXPLORE_PROVIDER_SETTING_KEY) {
     if (value === null || value === undefined) throw new Error("invalid_explore_provider");
