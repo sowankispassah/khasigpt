@@ -398,6 +398,11 @@ export function ExplorePageClient({
     [location, radiusKm, response, searchPending, translate],
   );
 
+  const runSearchRef = useRef(runSearch);
+  useEffect(() => {
+    runSearchRef.current = runSearch;
+  }, [runSearch]);
+
   useEffect(() => {
     if (!(sessionRestored && location) || lastSearch || searchPending) return;
     const restored = restoredSearchRef.current;
@@ -440,14 +445,14 @@ export function ExplorePageClient({
     setRadiusDebouncing(true);
     setLoadingMode("radius");
     const timeout = window.setTimeout(() => {
-      void runSearch({
+      void runSearchRef.current({
         selection: lastSearch,
         radiusOverride: radiusKm,
         mode: "radius",
       });
     }, 650);
     return () => window.clearTimeout(timeout);
-  }, [lastSearch, location, radiusKm, runSearch]);
+  }, [lastSearch, location, radiusKm]);
 
   useEffect(
     () => () => {
