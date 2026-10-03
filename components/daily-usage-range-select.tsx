@@ -41,7 +41,7 @@ export function DailyUsageRangeSelect({
   return (
     <div className="flex items-center gap-2 text-sm">
       <label
-        className="text-xs font-medium text-muted-foreground"
+        className="font-medium text-muted-foreground text-xs"
         htmlFor="daily-usage-range"
       >
         {translate("subscriptions.range.label", "Range")}

@@ -1,12 +1,12 @@
 declare module "@auth/core/jwt" {
   type RequestLike = Request | { headers: Headers | Record<string, string> };
 
-  interface GetTokenParamsBase {
+  type GetTokenParamsBase = {
     req: RequestLike;
     secret?: string | string[];
     secureCookie?: boolean;
     cookieName?: string;
-  }
+  };
 
   export interface GetTokenParams<R extends boolean = false>
     extends GetTokenParamsBase {
@@ -31,14 +31,14 @@ declare module "@auth/core/jwt" {
     salt: string;
   }): Promise<JWT | null>;
 
-export function getToken<R extends boolean = false>(
-  params: GetTokenParams<R>
-): Promise<R extends true ? string : JWT | null>;
+  export function getToken<R extends boolean = false>(
+    params: GetTokenParams<R>
+  ): Promise<R extends true ? string : JWT | null>;
 }
 
 declare module "next-auth/jwt" {
-  interface JWT {
+  type JWT = {
     id?: string;
     role?: string;
-  }
+  };
 }

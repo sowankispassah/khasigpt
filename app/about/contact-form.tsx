@@ -1,10 +1,24 @@
 "use client";
 
-import { useActionState, useEffect, useState, type ChangeEvent } from "react";
+import { useSession } from "next-auth/react";
+import {
+  type ChangeEvent,
+  useActionState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
-import { submitContactFormAction, type ContactFormState } from "./actions";
+import {
+  EditableTranslation,
+  useEditableTranslation,
+} from "@/components/translation-edit-provider";
+import { applyContactPrefill, type ContactPrefill, getContactPrefill } from "@/lib/contact/profile-prefill";
+import { type ContactFormState, submitContactFormAction } from "./actions";
 
 const initialState: ContactFormState = { status: "idle" };
 
@@ -24,25 +38,72 @@ const emptyValues: FormValues = {
   message: "",
 };
 
-export function ContactForm() {
+type ContactFormProps = {
+  translations?: Record<string, string>;
+};
+
+export function ContactForm({ translations = {} }: ContactFormProps) {
+  const { data: session, status: sessionStatus } = useSession();
+  const prefill = useMemo(() => getContactPrefill(session?.user), [session?.user]);
+  const latestPrefill = useRef(prefill);
+  const editedIdentity = useRef(new Set<keyof ContactPrefill>());
   const [state, formAction, isPending] = useActionState<
     ContactFormState,
     FormData
   >(submitContactFormAction, initialState);
-  const [values, setValues] = useState<FormValues>(emptyValues);
-  const { translate } = useTranslation();
+  const [values, setValues] = useState<FormValues>(() => ({ ...emptyValues, ...prefill }));
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const { translate: runtimeTranslate } = useTranslation();
+  const translate = useCallback(
+    (key: string, fallback: string) =>
+      translations[key] ?? runtimeTranslate(key, fallback),
+    [runtimeTranslate, translations]
+  );
+  const namePlaceholder = useEditableTranslation(
+    "contact.form.placeholder.name",
+    "Your name"
+  );
+  const emailPlaceholder = useEditableTranslation(
+    "contact.form.placeholder.email",
+    "you@example.com"
+  );
+  const phonePlaceholder = useEditableTranslation(
+    "contact.form.placeholder.phone",
+    "+91 98765 43210"
+  );
+  const subjectPlaceholder = useEditableTranslation(
+    "contact.form.placeholder.subject",
+    "How can we help?"
+  );
+  const messagePlaceholder = useEditableTranslation(
+    "contact.form.placeholder.message",
+    "Share a few details about your request..."
+  );
+
+  useEffect(() => {
+    latestPrefill.current = prefill;
+    if (sessionStatus !== "loading") {
+      setValues((current) => applyContactPrefill(current, prefill, editedIdentity.current));
+    }
+  }, [prefill, sessionStatus]);
 
   useEffect(() => {
     if (state.status === "success") {
-      setValues(emptyValues);
+      editedIdentity.current.clear();
+      setValues({ ...emptyValues, ...latestPrefill.current });
+      setSelectedFiles([]);
+      if (fileInput.current) fileInput.current.value = "";
     } else if (state.status === "error") {
       setValues(state.values);
     }
   }, [state]);
 
   const handleChange =
-    (field: keyof FormValues) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    (field: keyof FormValues) =>
+    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       const nextValue = event.target.value;
+      if (field === "name" || field === "email" || field === "phone") editedIdentity.current.add(field);
       setValues((prev) => ({
         ...prev,
         [field]: nextValue,
@@ -56,17 +117,22 @@ export function ContactForm() {
     >
       <div className="grid gap-3 md:grid-cols-2">
         <label className="flex flex-col gap-2">
-          <span className="text-sm font-medium">
-            {translate("contact.form.field.name", "Name")}
+          <span className="font-medium text-sm">
+            <EditableTranslation
+              defaultText="Name"
+              translationKey="contact.form.field.name"
+            />
           </span>
+          {namePlaceholder.editButton}
           <input
+            autoComplete="name"
             className="h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            value={values.name}
-            onChange={handleChange("name")}
             name="name"
-            placeholder={translate("contact.form.placeholder.name", "Your name")}
+            onChange={handleChange("name")}
+            placeholder={namePlaceholder.text}
             required
             type="text"
+            value={values.name}
           />
           {state.status === "error" && state.errors?.name ? (
             <span className="text-destructive text-xs">
@@ -75,17 +141,22 @@ export function ContactForm() {
           ) : null}
         </label>
         <label className="flex flex-col gap-2">
-          <span className="text-sm font-medium">
-            {translate("contact.form.field.email", "Email")}
+          <span className="font-medium text-sm">
+            <EditableTranslation
+              defaultText="Email"
+              translationKey="contact.form.field.email"
+            />
           </span>
+          {emailPlaceholder.editButton}
           <input
+            autoComplete="email"
             className="h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            value={values.email}
-            onChange={handleChange("email")}
             name="email"
-            placeholder={translate("contact.form.placeholder.email", "you@example.com")}
+            onChange={handleChange("email")}
+            placeholder={emailPlaceholder.text}
             required
             type="email"
+            value={values.email}
           />
           {state.status === "error" && state.errors?.email ? (
             <span className="text-destructive text-xs">
@@ -94,16 +165,21 @@ export function ContactForm() {
           ) : null}
         </label>
         <label className="flex flex-col gap-2 md:col-span-2">
-          <span className="text-sm font-medium">
-            {translate("contact.form.field.phone", "Phone (optional)")}
+          <span className="font-medium text-sm">
+            <EditableTranslation
+              defaultText="Phone (optional)"
+              translationKey="contact.form.field.phone"
+            />
           </span>
+          {phonePlaceholder.editButton}
           <input
+            autoComplete="tel"
             className="h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            value={values.phone}
-            onChange={handleChange("phone")}
             name="phone"
-            placeholder={translate("contact.form.placeholder.phone", "+91 98765 43210")}
+            onChange={handleChange("phone")}
+            placeholder={phonePlaceholder.text}
             type="tel"
+            value={values.phone}
           />
           {state.status === "error" && state.errors?.phone ? (
             <span className="text-destructive text-xs">
@@ -113,17 +189,21 @@ export function ContactForm() {
         </label>
       </div>
       <label className="flex flex-col gap-2">
-        <span className="text-sm font-medium">
-          {translate("contact.form.field.subject", "Subject")}
+        <span className="font-medium text-sm">
+          <EditableTranslation
+            defaultText="Subject"
+            translationKey="contact.form.field.subject"
+          />
         </span>
+        {subjectPlaceholder.editButton}
         <input
           className="h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          value={values.subject}
-          onChange={handleChange("subject")}
           name="subject"
-          placeholder={translate("contact.form.placeholder.subject", "How can we help?")}
+          onChange={handleChange("subject")}
+          placeholder={subjectPlaceholder.text}
           required
           type="text"
+          value={values.subject}
         />
         {state.status === "error" && state.errors?.subject ? (
           <span className="text-destructive text-xs">
@@ -132,19 +212,20 @@ export function ContactForm() {
         ) : null}
       </label>
       <label className="flex flex-col gap-2">
-        <span className="text-sm font-medium">
-          {translate("contact.form.field.message", "Message")}
+        <span className="font-medium text-sm">
+          <EditableTranslation
+            defaultText="Message"
+            translationKey="contact.form.field.message"
+          />
         </span>
+        {messagePlaceholder.editButton}
         <textarea
           className="min-h-[140px] rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          value={values.message}
-          onChange={handleChange("message")}
           name="message"
-          placeholder={translate(
-            "contact.form.placeholder.message",
-            "Share a few details about your request..."
-          )}
+          onChange={handleChange("message")}
+          placeholder={messagePlaceholder.text}
           required
+          value={values.message}
         />
         {state.status === "error" && state.errors?.message ? (
           <span className="text-destructive text-xs">
@@ -153,8 +234,26 @@ export function ContactForm() {
         ) : null}
       </label>
       <div className="flex flex-col gap-2">
+        <label className="font-medium text-sm" htmlFor="contact-attachments">
+          <EditableTranslation defaultText="Attachments (optional)" description="Contact form file picker label." translationKey="contact.form.attachments.label" />
+        </label>
+        <input
+          accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.docx"
+          className="w-full cursor-pointer rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:cursor-pointer file:rounded file:border-0 file:bg-muted file:px-3 file:py-1"
+          id="contact-attachments"
+          multiple
+          name="attachments"
+          onChange={(event) => setSelectedFiles(Array.from(event.target.files ?? [], (file) => file.name))}
+          ref={fileInput}
+          type="file"
+        />
+        <p className="text-muted-foreground text-xs"><EditableTranslation defaultText="Up to 3 files, 3 MB total. PDF, images, text, or DOCX." description="Contact attachment size and format guidance." translationKey="contact.form.attachments.help" /></p>
+        {selectedFiles.length ? <ul className="list-inside list-disc text-xs">{selectedFiles.map((name, index) => <li className="break-all" key={`${index}-${name}`}>{name}</li>)}</ul> : null}
+        {state.status === "error" && state.attachmentError ? <p className="text-destructive text-xs" role="alert">{translate(`contact.form.attachments.error.${state.attachmentError}`, state.attachmentError === "too_many" ? "Select up to 3 files." : state.attachmentError === "too_large" ? "Attachments must be 3 MB or smaller in total." : state.attachmentError === "invalid_type" ? "Choose PDF, image, text, or DOCX files." : "Could not upload the attachment. Please try again.")}</p> : null}
+      </div>
+      <div className="flex flex-col gap-2">
         <button
-          className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground text-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
           disabled={isPending}
           type="submit"
         >
@@ -164,20 +263,28 @@ export function ContactForm() {
                 <LoaderIcon size={16} />
               </span>
               <span>
-                {translate("contact.form.submit.sending", "Sending...")}
+                <EditableTranslation
+                  defaultText="Sending..."
+                  translationKey="contact.form.submit.sending"
+                />
               </span>
             </span>
           ) : (
-            translate("contact.form.submit.default", "Send message")
+            <EditableTranslation
+              defaultText="Send message"
+              translationKey="contact.form.submit.default"
+            />
           )}
         </button>
         <div
           aria-live="polite"
-          className="min-h-[1rem] text-sm text-muted-foreground"
+          className="min-h-[1rem] text-muted-foreground text-sm"
         >
           {state.status === "error" ? (
             <span className="text-destructive">
-              {state.message && state.message.trim().length > 0
+              {state.errorCode === "rate_limited"
+                ? translate("contact.form.submit.rate_limited", "Too many contact requests. Please try again later.")
+                : state.message && state.message.trim().length > 0
                 ? state.message
                 : translate(
                     "contact.form.submit.error_generic",
@@ -186,10 +293,10 @@ export function ContactForm() {
             </span>
           ) : state.status === "success" ? (
             <span className="text-emerald-500">
-              {translate(
-                "contact.form.submit.success",
-                "Thanks! We'll reach out soon."
-              )}
+              <EditableTranslation
+                defaultText="Thanks! We'll reach out soon."
+                translationKey="contact.form.submit.success"
+              />
             </span>
           ) : null}
         </div>
