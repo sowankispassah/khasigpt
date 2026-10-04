@@ -82,10 +82,12 @@ async function mountExplore(page: Page, options: { imageSearch?: boolean; photoR
 test("revisit ignores saved keyword and radius, and narrowing filters nearest first without a search", async ({page}) => {
   const requests = await mountExplore(page);
   const slider = page.getByRole("slider",{name:"Search radius",exact:true});
-  await expect(slider).toHaveValue("50");
+  await expect(slider).toHaveValue("10");
   await expect(page.getByPlaceholder("Search restaurants, shops, businesses, events, places...")).toHaveValue("");
   const names = page.locator("h3");
-  expect(await names.allTextContents()).toEqual(["Place 1","Place 25","Place 49"]);
+  expect(await names.allTextContents()).toEqual(["Place 1"]);
+  await slider.press("End");
+  await expect(page.getByText("Place 49",{exact:true})).toBeVisible();
   await slider.press("ArrowLeft");
   await slider.press("ArrowLeft");
   await expect(page.getByText("Place 49",{exact:true})).toHaveCount(0);
@@ -93,9 +95,9 @@ test("revisit ignores saved keyword and radius, and narrowing filters nearest fi
   expect(requests.map(request => request.radiusKm)).toEqual([50]);
   await page.reload();
   await page.addScriptTag({content:bundle});
-  await expect(slider).toHaveValue("50");
+  await expect(slider).toHaveValue("10");
   await expect(page.getByPlaceholder("Search restaurants, shops, businesses, events, places...")).toHaveValue("");
-  await expect(page.getByText("Place 49",{exact:true})).toBeVisible();
+  await expect(page.getByText("Place 49",{exact:true})).toHaveCount(0);
   expect(requests.map(request => request.radiusKm)).toEqual([50,50]);
 });
 
@@ -103,6 +105,7 @@ test("the web list and slider are usable before details complete; details cannot
   let release!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
   const requests = await mountExplore(page, { progressive: true, detailsGate: () => gate });
+  await page.getByRole("slider", { name: "Search radius", exact: true }).press("End");
   expect(await page.locator("h3").allTextContents()).toEqual(["Place 1", "Place 25", "Place 49"]);
   await page.getByPlaceholder("Search restaurants, shops, businesses, events, places...").fill("rice");
   await expect(page.getByRole("button", { name: "Search", exact: true })).toBeEnabled();
@@ -129,6 +132,7 @@ test("photo loading covers detail lookup and image download, then stops on load"
   const details = new Promise<void>((resolve) => { releaseDetails = resolve; });
   const image = new Promise<void>((resolve) => { releaseImage = resolve; });
   await mountExplore(page,{progressive:true,photos:true,detailsGate:()=>details,imageGate:image});
+  await page.getByRole("slider", { name: "Search radius", exact: true }).press("End");
   await expect(page.getByRole("status")).toHaveCount(3);
   await expect(page.getByRole("status").first()).toHaveText("Loading photo…");
   releaseDetails();
@@ -169,6 +173,7 @@ test("a new search remains available while the previous search hydrates", async 
   let release!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
   await mountExplore(page, { progressive: true, detailsGate: (query) => query === "cafe" ? Promise.resolve() : gate });
+  await page.getByRole("slider", { name: "Search radius", exact: true }).press("End");
   await page.getByPlaceholder("Search restaurants, shops, businesses, events, places...").fill("cafe");
   await page.getByRole("button", { name: "Search", exact: true }).click();
   await expect(page.getByText("Details cafe", { exact: false })).toBeVisible();

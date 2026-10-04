@@ -143,7 +143,7 @@ export function ExplorePageClient({
   >("choose");
   const [sessionRestored, setSessionRestored] = useState(false);
   const [manualLocation, setManualLocation] = useState("");
-  const [radiusKm, setRadiusKm] = useState(50);
+  const [radiusKm, setRadiusKm] = useState(10);
   const [locationPending, setLocationPending] = useState(false);
   const [manualPending, setManualPending] = useState(false);
   const [searchPending, setSearchPending] = useState(false);
@@ -449,7 +449,7 @@ export function ExplorePageClient({
     setSelectedCategoryId(null);
     setSelectedSubcategoryId(null);
     setQuery("");
-    setRadiusKm(50);
+    setRadiusKm(10);
     setSearchPending(false);
     setDetail(null);
     setError(null);
