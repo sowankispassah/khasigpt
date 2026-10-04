@@ -493,6 +493,12 @@ function listingHarness() {
 }
 const listingPlace = { ...samplePhotoPlace, id: "serpent-ChIJ123456789", lookupMode: "listing" as const };
 
+test("listing photos prefer the larger gallery photo over a small cover preview", () => {
+  const h = listingHarness();
+  const payload = { success: true, place: { name: "Langbang Cafe", data_id: "0x123:0x456", cover_image: "https://lh3.googleusercontent.com/photo=w86-h114-k-no", images: [{ url: "https://lh3.googleusercontent.com/photo=w408-h544-k-no" }] } };
+  expect(h.module.selectSerpentListingPhoto(payload, { parameter: "data_id", value: "0x123:0x456" }).imageUrl).toContain("w408");
+});
+
 test("listing photos reuse exact identity across names, distance changes and concurrent users", async () => {
   const h = listingHarness();
   const [first, second] = await Promise.all([h.module.lookupSerpentListingPhoto(listingPlace), h.module.lookupSerpentListingPhoto({ ...listingPlace, name: "Langbang Cafe (updated name)", address: "Updated address" })]);

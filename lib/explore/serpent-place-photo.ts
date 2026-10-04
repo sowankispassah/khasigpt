@@ -33,9 +33,11 @@ export function selectSerpentListingPhoto(payload: unknown, reference: Reference
   if (root.success !== true || typeof place.name !== "string" || !place.name.trim()) throw new Error("invalid_listing_response");
   if ((reference.parameter === "place_id" && place.place_id !== reference.value) ||
     (reference.parameter === "data_id" && place.data_id !== reference.value)) throw new Error("listing_identity_mismatch");
-  const imageUrl = placePhoto(place.cover_image) ??
-    (Array.isArray(place.images) ? place.images.map((image) => placePhoto(record(image).url)).find(Boolean) ?? null : null) ??
-    placePhoto(record(place.thumbnail).url);
+  // A listing's cover may be a tiny preview of a larger image in its gallery.
+  const candidates = [place.cover_image, ...(Array.isArray(place.images) ? place.images.map((image) => record(image).url) : []), record(place.thumbnail).url]
+    .map(placePhoto).filter((value): value is string => Boolean(value));
+  const size = (value: string) => Number(/=w(\d+)/.exec(new URL(value).pathname)?.[1] ?? 0);
+  const imageUrl = candidates.sort((a, b) => size(b) - size(a))[0] ?? null;
   // A partial detail read cannot prove that the listing has no photos.
   if (!imageUrl && (place.detail_status === "core_only" || record(root.meta).partial === true || record(root.meta).partialResults === true)) throw new Error("listing_photo_incomplete");
   if (!imageUrl) return null;
