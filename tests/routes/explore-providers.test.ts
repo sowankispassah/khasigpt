@@ -123,9 +123,9 @@ test("discovery deduplicates names and coordinates without collapsing separate b
   expect(discovery.isGeneralDiscovery({ query: discovery.DISCOVERY_QUERY, categoryQuery: "hotels" })).toBe(false);
 });
 
-test("Google discovery admits each intent separately through the existing allowance and fallback boundary", async () => {
+test("Google initial discovery uses one all-type coordinate search and one allowance admission; names and presets stay textual", async () => {
   let admissions = 0;
-  const queries: string[] = [];
+  const calls: Array<{ url: string; body: any }> = [];
   const service = load("lib/explore/places-service.ts", {
     "server-only": {}, "node:crypto": { createHash }, "@/lib/explore/geo": geo,
     "@/lib/explore/wikimedia-images": {}, "./google-budget-policy": budgetPolicy,
@@ -134,11 +134,51 @@ test("Google discovery admits each intent separately through the existing allowa
     "./google-fallback": { runGoogleWithFallback: async (google: () => Promise<unknown>) => { admissions++; return google(); } },
     "./serpent-places": {}, "./serper-places": {}, "./place-images": {},
   }, { GOOGLE_MAPS_API_KEY: "test" }, {
-    fetch: async (_url: string, init: RequestInit) => { queries.push(JSON.parse(init.body as string).textQuery); return Response.json({ places: [] }); },
+    fetch: async (url: string, init: RequestInit) => {
+      calls.push({ url, body: JSON.parse(init.body as string) });
+      return Response.json({ places: [
+        { id: "cafe", displayName: { text: "Langbang Cafe" }, location: { latitude: 25.576, longitude: 91.88 }, googleMapsUri: "https://maps.google.com/?cid=2" },
+        { id: "gaming", displayName: { text: "NXGS Gaming Studio" }, location: { latitude: 25.5701, longitude: 91.88 }, googleMapsUri: "https://maps.google.com/?cid=1" },
+        { id: "far", displayName: { text: "Outside radius" }, location: { latitude: 26.57, longitude: 91.88 }, googleMapsUri: "https://maps.google.com/?cid=3" },
+        { id: "invalid", displayName: { text: "Invalid coordinates" }, location: { latitude: 999, longitude: 91.88 }, googleMapsUri: "https://maps.google.com/?cid=4" },
+      ] });
+    },
   });
-  await service.searchExplorePlaces({ location, radiusKm: 50, query: discovery.DISCOVERY_QUERY, categoryQuery: null });
+  const input = { location, radiusKm: 50, query: discovery.DISCOVERY_QUERY, categoryQuery: null };
+  const result = await service.searchExplorePlaces(input);
+  expect(admissions).toBe(1);
+  expect(calls).toEqual([{ url: "https://places.googleapis.com/v1/places:searchNearby", body: {
+    maxResultCount: 20, rankPreference: "DISTANCE",
+    locationRestriction: { circle: { center: { latitude: location.latitude, longitude: location.longitude }, radius: 50_000 } },
+  } }]);
+  expect(result.results.map((place: any) => place.name)).toEqual(["NXGS Gaming Studio", "Langbang Cafe"]);
+  await service.searchExplorePlaces({ ...input, query: "nxgs" });
+  await service.searchExplorePlaces({ ...input, query: "restaurant, food, drinks", categoryQuery: "restaurant" });
   expect(admissions).toBe(3);
+  expect(calls.slice(1).map((call) => [call.url, call.body.textQuery])).toEqual([
+    ["https://places.googleapis.com/v1/places:searchText", "nxgs"],
+    ["https://places.googleapis.com/v1/places:searchText", "restaurant restaurant, food, drinks"],
+  ]);
+  expect(calls[1].body.locationRestriction.rectangle).toEqual(geo.getRadiusBoundingBox(location, 50));
+});
+
+test("Google initial discovery preserves the admin-selected fallback's full discovery and photo policy", async () => {
+  const queries: string[] = [];
+  const service = load("lib/explore/places-service.ts", {
+    "server-only": {}, "node:crypto": { createHash }, "@/lib/explore/geo": geo,
+    "@/lib/explore/wikimedia-images": {}, "./google-budget-policy": budgetPolicy,
+    "./provider-config": { getExploreProvider: async () => "google", getSerpentMapsQuickEnabled: async () => true, getSerpentPhotoSource: async () => "maps_place" },
+    "./providers": providers, "./serpent-policy": serpentPolicy,
+    "./google-fallback": { runGoogleWithFallback: async (_google: unknown, alternatives: any) => alternatives.serpent() },
+    "./serpent-places": { searchSerpentPlaces: async (input: any) => {
+      queries.push(input.query);
+      return [{ id: input.query, name: input.query, latitude: 25.57, longitude: 91.88, distanceKm: 0.1 }];
+    } }, "./serper-places": {}, "./place-images": {},
+  }, { GOOGLE_MAPS_API_KEY: "test", SERPENT_API_KEY: "test" });
+  const result = await service.searchExplorePlaces({ location, radiusKm: 50, query: discovery.DISCOVERY_QUERY, categoryQuery: null, detailMode: "list" });
   expect(queries).toEqual([...discovery.DISCOVERY_TERMS]);
+  expect(result).toMatchObject({ source: "google_maps", partial: false, imageSearch: true, photoLookupSource: "maps_place", detailsPending: false });
+  expect(result.results).toHaveLength(3);
 });
 
 test("missing provider preserves OpenStreetMap and invalid saved selections fail explicitly", () => {

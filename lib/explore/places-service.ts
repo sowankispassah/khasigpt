@@ -28,6 +28,8 @@ import { searchSerperPlaces } from "./serper-places";
 
 const GOOGLE_TEXT_SEARCH_URL =
   "https://places.googleapis.com/v1/places:searchText";
+const GOOGLE_NEARBY_SEARCH_URL =
+  "https://places.googleapis.com/v1/places:searchNearby";
 const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
@@ -166,8 +168,24 @@ async function searchGooglePlaces({
 }: ExplorePlacesSearchInput, beforePhoto?: () => void) {
   const key = process.env.GOOGLE_MAPS_API_KEY?.trim();
   if (!key) return null;
-  const boundingBox = getRadiusBoundingBox(location, radiusKm);
-  const response = await fetch(GOOGLE_TEXT_SEARCH_URL, {
+  const nearby = isGeneralDiscovery({ categoryQuery, query });
+  // Initial discovery must include all place types, including businesses that
+  // don't match our food/shop/attraction keywords. Keep named searches textual.
+  const body = nearby ? {
+    maxResultCount: 20,
+    rankPreference: "DISTANCE",
+    locationRestriction: { circle: {
+      center: { latitude: location.latitude, longitude: location.longitude },
+      radius: Math.min(radiusKm * 1000, 50_000),
+    } },
+  } : {
+    textQuery: [categoryQuery, query].filter(Boolean).join(" "),
+    pageSize: 20,
+    rankPreference: "DISTANCE",
+    regionCode: "IN",
+    locationRestriction: { rectangle: getRadiusBoundingBox(location, radiusKm) },
+  };
+  const response = await fetch(nearby ? GOOGLE_NEARBY_SEARCH_URL : GOOGLE_TEXT_SEARCH_URL, {
     method: "POST",
     cache: "no-store",
     headers: {
@@ -188,13 +206,7 @@ async function searchGooglePlaces({
         "places.photos",
       ].join(","),
     },
-    body: JSON.stringify({
-      textQuery: [categoryQuery, query].filter(Boolean).join(" "),
-      pageSize: 20,
-      rankPreference: "DISTANCE",
-      regionCode: "IN",
-      locationRestriction: { rectangle: boundingBox },
-    }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
   });
   if (response.status === 429) throw new GoogleQuotaError();
@@ -543,15 +555,20 @@ async function searchSingleIntent(input: ExplorePlacesSearchInput, provider: Awa
       const results = await searchGooglePlaces(input, beforePhoto);
       if (!results) throw new Error("place_provider_not_configured");
       return { results, source: "google_places" };
-    }, alternatives),
+    }, isGeneralDiscovery(input) ? {
+      // The selected fallback retains its own broad discovery behavior; a
+      // Google allowance rollover must not reduce it to one sentinel query.
+      serper: () => searchProviderPlaces(input, "serper"),
+      serpent: () => searchProviderPlaces(input, "serpent"),
+      openstreetmap: () => searchProviderPlaces(input, "openstreetmap"),
+    } : alternatives),
     ...alternatives,
   });
 }
 
-export async function searchExplorePlaces(input: ExplorePlacesSearchInput): Promise<PlaceSearchResult> {
-  const provider = await getExploreProvider();
-  // OSM already queries the union of nearby amenity/shop/tourism tags in one read.
-  if (!isGeneralDiscovery(input) || provider === "openstreetmap") return searchSingleIntent(input, provider);
+async function searchProviderPlaces(input: ExplorePlacesSearchInput, provider: Awaited<ReturnType<typeof getExploreProvider>>): Promise<PlaceSearchResult> {
+  // Google queries all nearby types directly; OSM reads the union of tags.
+  if (!isGeneralDiscovery(input) || provider === "openstreetmap" || provider === "google") return searchSingleIntent(input, provider);
   // Each intent keeps the selected provider, cache, photo policy and Google quota
   // reservation. No enrichment/search-provider switch is caused by an empty list.
   const settled = await Promise.allSettled(DISCOVERY_TERMS.map((query) => searchSingleIntent({ ...input, query }, provider)));
@@ -571,4 +588,8 @@ export async function searchExplorePlaces(input: ExplorePlacesSearchInput): Prom
     imageSearch: available.some((value) => value.imageSearch),
     photoLookupSource: available.find((value) => value.photoLookupSource)?.photoLookupSource,
   };
+}
+
+export async function searchExplorePlaces(input: ExplorePlacesSearchInput): Promise<PlaceSearchResult> {
+  return searchProviderPlaces(input, await getExploreProvider());
 }
