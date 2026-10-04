@@ -2,10 +2,10 @@
 
 import { ChevronDown, ChevronUp, Compass, icons, LoaderCircle, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import type {
   ExploreCategoryDto,
   ExploreLocationMode,
-  ExploreResultType,
   ExploreSearchType,
   ExploreSubcategoryDto,
 } from "@/lib/explore/types";
@@ -26,7 +26,6 @@ const LOCATION_MODES: Array<{ value: ExploreLocationMode; label: string }> = [
   { value: "meghalaya_wide", label: "Meghalaya Wide" },
   { value: "current_or_selected", label: "Current or Selected Location" },
 ];
-const RESULT_TYPES: ExploreResultType[] = ["business", "place", "restaurant", "event", "sports", "experience", "standard"];
 const ICON_NAMES = Object.keys(icons).filter((name) => /^[A-Z]/.test(name));
 
 function IconPreview({ name, className = "size-5" }: { name: string; className?: string }) {
@@ -115,7 +114,7 @@ export function ExploreAdminManager({ initialCategories }: { initialCategories: 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-muted-foreground text-sm">{categories.length} categories configured</p>
         <button className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground text-sm" onClick={() => setEditor({ kind: "category", value: null })} type="button">
-          <Plus className="size-4" /> Add Category
+          <Plus className="size-4" /> <EditableTranslation translationKey="admin.explore.category.add" defaultText="Add Category" />
         </button>
       </div>
       {status ? <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm">{status}</p> : null}
@@ -129,7 +128,7 @@ export function ExploreAdminManager({ initialCategories }: { initialCategories: 
                 <IconPreview name={category.iconName} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{category.name}</p>
-                  <p className="truncate text-muted-foreground text-xs">{category.searchType} · {category.locationMode} · {category.resultType}</p>
+                  <p className="truncate text-muted-foreground text-xs">{category.searchQuery}</p>
                 </div>
                 <span className={`rounded-full px-2 py-0.5 text-xs ${category.isEnabled ? "bg-emerald-500/10 text-emerald-700" : "bg-muted text-muted-foreground"}`}>{category.isEnabled ? "Enabled" : "Disabled"}</span>
                 <span className="text-muted-foreground text-xs">{category.subcategories.length} subcategories</span>
@@ -179,7 +178,6 @@ function ExploreEditor({ editor, onClose, onSaved }: { editor: Exclude<EditorSta
   const submit = async (formData: FormData) => {
     setPending(true);
     setError(null);
-    const prompts = String(formData.get("suggestedPrompts") ?? "").split("\n").map((item) => item.trim()).filter(Boolean);
     const base = {
       name: String(formData.get("name") ?? ""),
       description: String(formData.get("description") ?? "") || null,
@@ -190,11 +188,15 @@ function ExploreEditor({ editor, onClose, onSaved }: { editor: Exclude<EditorSta
     };
     const value = isCategory ? {
       ...base,
-      searchType: String(formData.get("searchType")),
-      locationMode: String(formData.get("locationMode")),
-      resultType: String(formData.get("resultType")),
-      suggestedPrompts: prompts,
-      showOnHome: formData.get("showOnHome") === "on",
+      // Keep legacy metadata when editing; new categories are nearby search presets.
+      description: current?.description ?? null,
+      iconName: current?.iconName ?? "Compass",
+      isEnabled: current?.isEnabled ?? true,
+      searchType: "local",
+      locationMode: "current_or_selected",
+      resultType: "standard",
+      suggestedPrompts: (current as ExploreCategoryDto | null)?.suggestedPrompts ?? [],
+      showOnHome: (current as ExploreCategoryDto | null)?.showOnHome ?? true,
     } : {
       ...base,
       categoryId: editor.category.id,
@@ -212,33 +214,28 @@ function ExploreEditor({ editor, onClose, onSaved }: { editor: Exclude<EditorSta
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
-      <form action={submit} className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-xl border bg-background p-5 shadow-xl">
-        <div className="flex items-center justify-between"><h2 className="font-semibold text-xl">{current ? "Edit" : "Add"} {isCategory ? "Category" : "Subcategory"}</h2><button className="cursor-pointer rounded-md border px-3 py-1.5 text-sm" disabled={pending} onClick={onClose} type="button">Close</button></div>
+      <form onSubmit={(event) => { event.preventDefault(); if (!pending) void submit(new FormData(event.currentTarget)); }} className={`max-h-[92vh] w-full ${isCategory ? "max-w-xl" : "max-w-3xl"} overflow-y-auto rounded-xl border bg-background p-5 shadow-xl`}>
+        <div className="flex items-center justify-between"><h2 className="font-semibold text-xl"><EditableTranslation translationKey={`admin.explore.category.${current ? "edit" : "add"}${isCategory ? "" : "_subcategory"}`} defaultText={`${current ? "Edit" : "Add"} ${isCategory ? "Category" : "Subcategory"}`} /></h2><button className="cursor-pointer rounded-md border px-3 py-1.5 text-sm" disabled={pending} onClick={onClose} type="button"><EditableTranslation translationKey="common.close" defaultText="Close" /></button></div>
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           <Field label="Name"><input className="rounded-md border bg-background px-3 py-2" defaultValue={current?.name ?? ""} name="name" required /></Field>
           <Field label="Display order"><input className="rounded-md border bg-background px-3 py-2" defaultValue={current?.displayOrder ?? 0} min={0} name="displayOrder" type="number" /></Field>
-          <Field className="md:col-span-2" label="Description"><textarea className="min-h-20 rounded-md border bg-background px-3 py-2" defaultValue={current?.description ?? ""} name="description" /></Field>
+          {!isCategory ? <Field className="md:col-span-2" label="Description"><textarea className="min-h-20 rounded-md border bg-background px-3 py-2" defaultValue={current?.description ?? ""} name="description" /></Field> : null}
           <Field className="md:col-span-2" label="Internal search query"><input className="rounded-md border bg-background px-3 py-2" defaultValue={current?.searchQuery ?? ""} name="searchQuery" required /></Field>
-          <Field className="md:col-span-2" label="Icon"><div className="flex items-center gap-2"><IconPreview name={iconSearch} /><input className="flex-1 rounded-md border bg-background px-3 py-2" list="explore-icons" name="iconName" onChange={(event) => setIconSearch(event.target.value)} value={iconSearch} /><Search className="size-4" /></div><datalist id="explore-icons">{iconMatches.map((name) => <option key={name} value={name} />)}</datalist><div className="mt-2 flex flex-wrap gap-1">{iconMatches.slice(0, 12).map((name) => <button className="cursor-pointer rounded border p-2" key={name} onClick={() => setIconSearch(name)} title={name} type="button"><IconPreview className="size-4" name={name} /></button>)}</div></Field>
-          {isCategory ? <>
-            <Field label="Search type"><select className="rounded-md border bg-background px-3 py-2" defaultValue={(current as ExploreCategoryDto | null)?.searchType ?? "hybrid"} name="searchType">{SEARCH_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></Field>
-            <Field label="Location behavior"><select className="rounded-md border bg-background px-3 py-2" defaultValue={(current as ExploreCategoryDto | null)?.locationMode ?? "current_or_selected"} name="locationMode">{LOCATION_MODES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></Field>
-            <Field label="Result layout"><select className="rounded-md border bg-background px-3 py-2 capitalize" defaultValue={(current as ExploreCategoryDto | null)?.resultType ?? "standard"} name="resultType">{RESULT_TYPES.map((item) => <option key={item} value={item}>{item}</option>)}</select></Field>
-            <Field className="md:col-span-2" label="Suggested prompts (one per line)"><textarea className="min-h-24 rounded-md border bg-background px-3 py-2" defaultValue={(current as ExploreCategoryDto | null)?.suggestedPrompts.join("\n") ?? ""} name="suggestedPrompts" /></Field>
-            <label className="flex cursor-pointer items-center gap-2"><input defaultChecked={(current as ExploreCategoryDto | null)?.showOnHome ?? true} name="showOnHome" type="checkbox" /> Show on Explore home</label>
-          </> : <>
+          {!isCategory ? <Field className="md:col-span-2" label="Icon"><div className="flex items-center gap-2"><IconPreview name={iconSearch} /><input className="flex-1 rounded-md border bg-background px-3 py-2" list="explore-icons" name="iconName" onChange={(event) => setIconSearch(event.target.value)} value={iconSearch} /><Search className="size-4" /></div><datalist id="explore-icons">{iconMatches.map((name) => <option key={name} value={name} />)}</datalist><div className="mt-2 flex flex-wrap gap-1">{iconMatches.slice(0, 12).map((name) => <button className="cursor-pointer rounded border p-2" key={name} onClick={() => setIconSearch(name)} title={name} type="button"><IconPreview className="size-4" name={name} /></button>)}</div></Field> : null}
+          {!isCategory ? <>
             <Field label="Search type override"><select className="rounded-md border bg-background px-3 py-2" defaultValue={(current as ExploreSubcategoryDto | null)?.searchTypeOverride ?? ""} name="searchTypeOverride"><option value="">Use parent</option>{SEARCH_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></Field>
             <Field label="Location override"><select className="rounded-md border bg-background px-3 py-2" defaultValue={(current as ExploreSubcategoryDto | null)?.locationModeOverride ?? ""} name="locationModeOverride"><option value="">Use parent</option>{LOCATION_MODES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></Field>
-          </>}
-          <label className="flex cursor-pointer items-center gap-2"><input defaultChecked={current?.isEnabled ?? true} name="isEnabled" type="checkbox" /> Enabled</label>
+          </> : null}
+          {!isCategory ? <label className="flex cursor-pointer items-center gap-2"><input defaultChecked={current?.isEnabled ?? true} name="isEnabled" type="checkbox" /> Enabled</label> : null}
         </div>
         {error ? <p className="mt-4 text-destructive text-sm">{error}</p> : null}
-        <div className="mt-5 flex justify-end gap-2"><button className="cursor-pointer rounded-md border px-4 py-2 text-sm" disabled={pending} onClick={onClose} type="button">Cancel</button><button className="inline-flex min-w-28 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm" disabled={pending} type="submit">{pending ? <><LoaderCircle className="size-4 animate-spin" /> Saving...</> : "Save"}</button></div>
+        <div className="mt-5 flex justify-end gap-2"><button className="cursor-pointer rounded-md border px-4 py-2 text-sm" disabled={pending} onClick={onClose} type="button"><EditableTranslation translationKey="common.cancel" defaultText="Cancel" /></button><button className="inline-flex min-w-28 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm" disabled={pending} type="submit">{pending ? <><LoaderCircle className="size-4 animate-spin" /> <EditableTranslation translationKey="common.saving" defaultText="Saving..." /></> : <EditableTranslation translationKey="common.save" defaultText="Save" />}</button></div>
       </form>
     </div>
   );
 }
 
 function Field({ label, className = "", children }: { label: string; className?: string; children: React.ReactNode }) {
-  return <fieldset className={`flex flex-col gap-1 border-0 p-0 text-sm ${className}`}><legend className="font-medium">{label}</legend>{children}</fieldset>;
+  const key = ({ Name: "name", "Display order": "display_order", "Internal search query": "search_query" } as Record<string, string>)[label];
+  return <fieldset className={`flex flex-col gap-1 border-0 p-0 text-sm ${className}`}><legend className="font-medium">{key ? <EditableTranslation translationKey={`admin.explore.category.${key}`} defaultText={label} /> : label}</legend>{children}</fieldset>;
 }

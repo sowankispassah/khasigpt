@@ -6,9 +6,11 @@ import ts from "typescript";
 import { z } from "zod";
 import { normalizeAppSettingValueForWrite } from "@/lib/db/app-setting-validation";
 import { mergeExploreDetails } from "@/lib/explore/details";
+import * as discovery from "@/lib/explore/discovery";
 import * as geo from "@/lib/explore/geo";
 import * as budgetPolicy from "@/lib/explore/google-budget-policy";
 import * as imageMatching from "@/lib/explore/image-matching";
+import * as presets from "@/lib/explore/preset-search";
 import * as providers from "@/lib/explore/providers";
 import * as serpentPolicy from "@/lib/explore/serpent-policy";
 import { parseSerpentPlaces, placePhoto } from "@/lib/explore/serpent-results";
@@ -33,12 +35,80 @@ function photoCacheMock() {
 function load(file: string, mocks: Record<string, unknown>, env: Record<string, string> = {}, globals: Record<string, unknown> = {}) {
   const exports: Record<string, any> = {};
   const code = ts.transpileModule(readFileSync(file, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-  vm.runInNewContext(code, { exports, URL, AbortSignal, process: { env }, console: { info: () => {} }, require: (name: string) => {
+  vm.runInNewContext(code, { exports, URL, AbortSignal, process: { env }, console: { info: () => {}, warn: () => {} }, require: (name: string) => {
+    if (name === "./discovery") return discovery;
+    if (name === "@/lib/explore/preset-search") return presets;
     if (!(name in mocks)) throw new Error(`Unexpected dependency ${name}`);
     return mocks[name];
   }, ...globals });
   return exports;
 }
+
+function discoveryHarness() {
+  const calls: string[] = [];
+  const failures = new Set<string>();
+  const restaurant = { id: "serpent-cafe", name: "Langbang Cafe", latitude: 25.57, longitude: 91.88, distanceKm: 0.3, imageUrl: null };
+  const shop = { ...restaurant, id: "serpent-shop", name: "Local shop", distanceKm: 0.1 };
+  const falls = { ...restaurant, id: "serpent-falls", name: "Waterfall", distanceKm: 1.2 };
+  const service = load("lib/explore/places-service.ts", {
+    "server-only": {}, "node:crypto": { createHash }, "@/lib/explore/geo": geo,
+    "@/lib/explore/wikimedia-images": {}, "./google-budget-policy": budgetPolicy,
+    "./provider-config": { getExploreProvider: async () => "serpent", getSerpentMapsQuickEnabled: async () => true, getSerpentPhotoSource: async () => "maps_place" },
+    "./providers": providers, "./serpent-policy": serpentPolicy, "./google-fallback": {},
+    "./serpent-places": { searchSerpentPlaces: async (input: any) => {
+      calls.push(input.query);
+      if (failures.has(input.query)) throw new Error("lookup_unavailable");
+      return input.query === "restaurant" ? [restaurant] : input.query === "shops and services" ? [shop, restaurant] : [falls];
+    } }, "./serper-places": {}, "./place-images": {},
+  }, { SERPENT_API_KEY: "test" });
+  return { service, calls, failures };
+}
+
+test("initial discovery includes food, shops and attractions, deduplicates and sorts nearest first without bulk photo enrichment", async () => {
+  const h = discoveryHarness();
+  const result = await h.service.searchExplorePlaces({ location, radiusKm: 50, query: discovery.DISCOVERY_QUERY, categoryQuery: null, detailMode: "list" });
+  expect(h.calls).toEqual([...discovery.DISCOVERY_TERMS]);
+  expect(result.results.map((place: any) => place.name)).toEqual(["Local shop", "Langbang Cafe", "Waterfall"]);
+  expect(result).toMatchObject({ partial: false, imageSearch: true, photoLookupSource: "maps_place", detailsPending: false });
+  h.calls.length = 0;
+  await h.service.searchExplorePlaces({ location, radiusKm: 50, query: "restaurant", categoryQuery: null });
+  expect(h.calls).toEqual(["restaurant"]);
+});
+
+test("discovery preserves available places with explicit partial state; total failures remain retryable errors", async () => {
+  const h = discoveryHarness();
+  const input = { location, radiusKm: 50, query: discovery.DISCOVERY_QUERY, categoryQuery: null };
+  h.failures.add("shops and services");
+  expect(await h.service.searchExplorePlaces(input)).toMatchObject({ partial: true, results: [{ name: "Langbang Cafe" }, { name: "Waterfall" }] });
+  for (const query of discovery.DISCOVERY_TERMS) h.failures.add(query);
+  await expect(h.service.searchExplorePlaces(input)).rejects.toThrow("lookup_unavailable");
+  h.failures.clear();
+  expect((await h.service.searchExplorePlaces(input)).partial).toBe(false);
+});
+
+test("discovery deduplicates names and coordinates without collapsing separate branches or specific category searches", () => {
+  const place = { id: "a", name: "Cafe", latitude: 25.57, longitude: 91.88, distanceKm: 0.1 } as any;
+  expect(discovery.mergeDiscoveryResults([[place], [{ ...place, id: "b", name: " cafe " }, { ...place, id: "c", latitude: 25.58, distanceKm: 1 }]])).toHaveLength(2);
+  expect(discovery.isGeneralDiscovery({ query: discovery.DISCOVERY_QUERY, categoryQuery: "hotels" })).toBe(false);
+});
+
+test("Google discovery admits each intent separately through the existing allowance and fallback boundary", async () => {
+  let admissions = 0;
+  const queries: string[] = [];
+  const service = load("lib/explore/places-service.ts", {
+    "server-only": {}, "node:crypto": { createHash }, "@/lib/explore/geo": geo,
+    "@/lib/explore/wikimedia-images": {}, "./google-budget-policy": budgetPolicy,
+    "./provider-config": { getExploreProvider: async () => "google" },
+    "./providers": providers, "./serpent-policy": serpentPolicy,
+    "./google-fallback": { runGoogleWithFallback: async (google: () => Promise<unknown>) => { admissions++; return google(); } },
+    "./serpent-places": {}, "./serper-places": {}, "./place-images": {},
+  }, { GOOGLE_MAPS_API_KEY: "test" }, {
+    fetch: async (_url: string, init: RequestInit) => { queries.push(JSON.parse(init.body as string).textQuery); return Response.json({ places: [] }); },
+  });
+  await service.searchExplorePlaces({ location, radiusKm: 50, query: discovery.DISCOVERY_QUERY, categoryQuery: null });
+  expect(admissions).toBe(3);
+  expect(queries).toEqual([...discovery.DISCOVERY_TERMS]);
+});
 
 test("missing provider preserves OpenStreetMap and invalid saved selections fail explicitly", () => {
   expect(providers.parseExploreProvider(undefined)).toBe("openstreetmap");
@@ -345,6 +415,8 @@ test("legacy clients retain full detail mode; background details preserve list m
 test("fast list API response preserves auth and returns before summaries, billing or detail hydration", async () => {
   let authenticated = true;
   let chats = 0;
+  let selectedCategory: any = null;
+  const placeInputs: any[] = [];
   const calls: string[] = [];
   const forbiddenOptionalCall = () => { throw new Error("Optional work blocked the list"); };
   const route = load("app/api/explore/search/route.ts", {
@@ -363,9 +435,10 @@ test("fast list API response preserves auth and returns before summaries, billin
     "@/lib/explore/photo-token": { createPhotoLookupToken: forbiddenOptionalCall },
     "@/lib/explore/places-service": { searchExplorePlaces: async (input: { detailMode: string }) => {
       calls.push(input.detailMode);
+      placeInputs.push(input);
       return { results: [{ id: "a", name: "Cafe", distanceKm: 1 }], detailsPending: input.detailMode === "list" };
     } },
-    "@/lib/explore/service": { getEnabledExploreSelection: async () => ({ category: null, subcategory: null }) },
+    "@/lib/explore/service": { getEnabledExploreSelection: async () => ({ category: selectedCategory, subcategory: null }) },
     "@/lib/explore/types": { shouldEnrichExploreSearch: (mode: string) => mode === "enriched" },
     "@/lib/explore/validation": { exploreSearchInputSchema },
     "@/lib/free-messages": {},
@@ -387,9 +460,14 @@ test("fast list API response preserves auth and returns before summaries, billin
   const full = await route.POST(post({ ...input, searchMode: "places_only", detailMode: "full", chatId: list.chatId, locationContextKey: list.locationContextKey }));
   expect(full.status).toBe(200);
   expect(chats).toBe(1);
+  selectedCategory = { id: "1ae3affc-d65e-44c9-a5de-fb9570945740", name: "Eat Nearby", searchQuery: "restaurant", resultType: "standard", searchType: "local" };
+  const preset = await route.POST(post({ ...input, categoryId: selectedCategory.id, query: "Eat Nearby", detailMode: "full" }));
+  expect(preset.status).toBe(200);
+  expect(await preset.json()).toMatchObject({ searchMode: "places_only" });
+  expect(placeInputs.at(-1)).toMatchObject({ query: "restaurant", categoryQuery: null });
   authenticated = false;
   expect((await route.POST(post(input))).status).toBe(401);
-  expect(calls).toEqual(["list", "full"]);
+  expect(calls).toEqual(["list", "full", "full"]);
 });
 
 
@@ -541,4 +619,16 @@ test("listing lookup rejects unrelated sources, coordinate-only URLs, avatar ima
   const payload = { success: true, place: { name: "Cafe", place_id: "ChIJ123456789", detail_status: "complete", cover_image: "https://lh3.googleusercontent.com/a/AAAAAAAAAA/photo.jpg", images: [{ url: "https://lh3.googleusercontent.com/real-photo" }] } };
   expect(h.module.selectSerpentListingPhoto(payload, { parameter: "place_id", value: "ChIJ123456789" })?.imageUrl).toBe("https://lh3.googleusercontent.com/real-photo");
   expect(() => h.module.selectSerpentListingPhoto(payload, { parameter: "place_id", value: "ChIJwrong" })).toThrow("listing_identity_mismatch");
+});
+
+
+test("preset resolution excludes display labels and duplicate internal keywords, and preserves custom narrowing", () => {
+  const category = { name: "Eat Nearby", searchQuery: "restaurant" };
+  for (const query of ["Eat Nearby", "restaurant", " RESTAURANT "]) {
+    expect(presets.resolveExplorePreset(query, category, null)).toEqual({ query: "restaurant", categoryQuery: null, isPreset: true });
+  }
+  const subcategory = { name: "Tea Stops", searchQuery: "cafe" };
+  expect(presets.resolveExplorePreset("Tea Stops", category, subcategory)).toEqual({ query: "cafe", categoryQuery: null, isPreset: true });
+  expect(presets.resolveExplorePreset("vegetarian", category, null)).toEqual({ query: "vegetarian", categoryQuery: "restaurant", isPreset: false });
+  expect(presets.resolveExplorePreset("restaurant", null, null).isPreset).toBe(false);
 });

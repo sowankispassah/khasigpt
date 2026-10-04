@@ -370,7 +370,7 @@ export function ExplorePageClient({
             if (currentRequestIdRef.current !== requestId || full.clientRequestId !== requestId ||
               full.chatId !== body.chatId || full.location.id !== location.id || full.radiusKm !== 50) return;
             setResponse((current) => current?.clientRequestId === requestId ? {
-              ...current, answer: full.answer, detailsPending: false,
+              ...current, answer: full.answer, detailsPending: false, partial: full.partial,
               results: mergeExploreDetails(current.results, full.results),
             } : current);
             setDetail((current) => current ? mergeExploreDetails([current], full.results)[0] : null);
@@ -621,11 +621,11 @@ export function ExplorePageClient({
   const runCategorySearch = (category: ExploreCategoryDto) => {
     setSelectedCategoryId(category.id);
     setSelectedSubcategoryId(null);
-    setQuery(category.name);
+    setQuery(category.searchQuery);
     void runSearch({
       selection: {
         categoryId: category.id,
-        query: category.name,
+        query: category.searchQuery,
         subcategoryId: null,
       },
       mode: "category",
@@ -1007,30 +1007,18 @@ export function ExplorePageClient({
               translationKey="explore.categories.around_you"
             />
           </h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="flex flex-wrap gap-2">
             {categories.map((category) => {
               const selected = selectedCategoryId === category.id;
               return (
                 <button
-                  className={`min-h-24 cursor-pointer rounded-xl border p-4 text-left transition hover:border-primary/50 hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-60 ${selected ? "border-primary bg-primary/5" : "bg-card"}`}
+                  className={`min-h-10 cursor-pointer rounded-full border px-4 py-2 text-sm transition hover:border-primary/50 hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-60 ${selected ? "border-primary bg-primary/5" : "bg-card"}`}
                   disabled={isLoading}
                   key={category.id}
                   onClick={() => runCategorySearch(category)}
                   type="button"
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="rounded-lg bg-primary/10 p-2 text-primary">
-                      <DynamicIcon name={category.iconName} />
-                    </span>
-                    <div>
-                      <p className="font-medium">{category.name}</p>
-                      {category.description ? (
-                        <p className="mt-1 line-clamp-2 text-muted-foreground text-sm">
-                          {category.description}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
+                  {category.name}
                 </button>
               );
             })}
@@ -1038,7 +1026,7 @@ export function ExplorePageClient({
         </section>
       ) : null}
 
-      {selectedCategory ? (
+      {selectedCategory && (selectedCategory.subcategories.length > 0 || selectedCategory.suggestedPrompts.length > 0) ? (
         <section className="space-y-3 rounded-xl border bg-card p-4">
           <h2 className="font-semibold text-lg">{selectedCategory.name}</h2>
           <div className="flex flex-wrap gap-2">
@@ -1049,11 +1037,11 @@ export function ExplorePageClient({
                 key={subcategory.id}
                 onClick={() => {
                   setSelectedSubcategoryId(subcategory.id);
-                  setQuery(subcategory.name);
+                  setQuery(subcategory.searchQuery);
                   void runSearch({
                     selection: {
                       categoryId: selectedCategory.id,
-                      query: subcategory.name,
+                      query: subcategory.searchQuery,
                       subcategoryId: subcategory.id,
                     },
                     mode: "category",
@@ -1156,6 +1144,11 @@ export function ExplorePageClient({
 
       {!isLoading && response ? (
         <section className="space-y-4">
+          {response.partial ? (
+            <output className="block text-muted-foreground text-sm">
+              <EditableTranslation translationKey="explore.results.partial" defaultText="Some nearby results couldn't be loaded. Search a specific category or try again." />
+            </output>
+          ) : null}
           <div>
             <h2 className="font-semibold text-xl">
               <EditableTranslation

@@ -27,6 +27,7 @@ import { ChatSDKError } from "@/lib/errors";
 import { isExploreMeghalayaEnabledForRole } from "@/lib/explore/config";
 import { createPhotoLookupToken } from "@/lib/explore/photo-token";
 import { searchExplorePlaces } from "@/lib/explore/places-service";
+import { resolveExplorePreset } from "@/lib/explore/preset-search";
 import { getEnabledExploreSelection } from "@/lib/explore/service";
 import type {
   ExploreLocationInput,
@@ -226,15 +227,16 @@ export async function POST(request: Request) {
       });
     }
 
-    const effectiveCategoryQuery =
-      subcategory?.searchQuery ?? category?.searchQuery ?? null;
+    const presetSearch = resolveExplorePreset(parsed.data.query, category, subcategory);
+    const effectiveCategoryQuery = presetSearch.categoryQuery;
+    const searchMode = presetSearch.isPreset ? "places_only" : parsed.data.searchMode;
     const effectiveSearchType =
       subcategory?.searchTypeOverride ?? category?.searchType ?? "hybrid";
     const resultType = category?.resultType ?? "standard";
     const placeSearch = await searchExplorePlaces({
       categoryQuery: effectiveCategoryQuery,
       location: parsed.data.location,
-      query: parsed.data.query,
+      query: presetSearch.query,
       radiusKm: parsed.data.radiusKm,
       detailMode: parsed.data.detailMode,
     });
@@ -251,7 +253,7 @@ export async function POST(request: Request) {
     });
     const detailsPending = placeSearch.detailsPending === true;
     let answer: WebSearchAnswer | null = null;
-    if (shouldEnrichExploreSearch(parsed.data.searchMode) && !detailsPending) {
+    if (shouldEnrichExploreSearch(searchMode) && !detailsPending) {
       const [config, registry, subscription, freeSettings, messageCount, webSearchOverride] =
         await Promise.all([
           loadWebSearchConfig(),
@@ -504,7 +506,7 @@ export async function POST(request: Request) {
         radiusKm: parsed.data.radiusKm,
         results,
       });
-    if (shouldEnrichExploreSearch(parsed.data.searchMode) && !detailsPending) {
+    if (shouldEnrichExploreSearch(searchMode) && !detailsPending) {
       const now = new Date();
       const assistantParts: ChatMessage["parts"] = [
         {
@@ -568,8 +570,9 @@ export async function POST(request: Request) {
       radiusKm: parsed.data.radiusKm,
       results,
       searchQueries: answer?.searchQueries ?? [],
-      searchMode: parsed.data.searchMode,
+      searchMode,
       detailsPending,
+      partial: placeSearch.partial === true,
     };
     return NextResponse.json(response, { headers: noStoreHeaders() });
   } catch (error) {

@@ -16,6 +16,7 @@ import {
   normalizeWikidataId,
   resolveWikimediaImages,
 } from "@/lib/explore/wikimedia-images";
+import { DISCOVERY_TERMS, isGeneralDiscovery, mergeDiscoveryResults } from "./discovery";
 import { GoogleQuotaError } from "./google-budget-policy";
 import { runGoogleWithFallback } from "./google-fallback";
 import { addExplorePlaceImages } from "./place-images";
@@ -518,8 +519,9 @@ export type ExplorePlacesSearchInput = {
   detailMode?: "list" | "full";
 };
 
-export async function searchExplorePlaces(input: ExplorePlacesSearchInput) {
-  const provider = await getExploreProvider();
+type PlaceSearchResult = { results: ExploreResult[]; source: string; detailsPending?: boolean; imageSearch?: boolean; photoLookupSource?: "image_search" | "maps_place"; partial?: boolean };
+
+async function searchSingleIntent(input: ExplorePlacesSearchInput, provider: Awaited<ReturnType<typeof getExploreProvider>>): Promise<PlaceSearchResult> {
   if (!exploreProviderConfigured(provider, process.env)) throw new Error("place_provider_not_configured");
   const serper = async () => {
     const results = await searchSerperPlaces(input);
@@ -536,7 +538,7 @@ export async function searchExplorePlaces(input: ExplorePlacesSearchInput) {
     },
     openstreetmap: async () => ({ results: await searchOverpass(input), source: "openstreetmap" }),
   };
-  return dispatchExploreProvider<{ results: ExploreResult[]; source: string; detailsPending?: boolean; imageSearch?: boolean; photoLookupSource?: "image_search" | "maps_place" }>(provider, {
+  return dispatchExploreProvider<PlaceSearchResult>(provider, {
     google: () => runGoogleWithFallback(async (beforePhoto) => {
       const results = await searchGooglePlaces(input, beforePhoto);
       if (!results) throw new Error("place_provider_not_configured");
@@ -544,4 +546,29 @@ export async function searchExplorePlaces(input: ExplorePlacesSearchInput) {
     }, alternatives),
     ...alternatives,
   });
+}
+
+export async function searchExplorePlaces(input: ExplorePlacesSearchInput): Promise<PlaceSearchResult> {
+  const provider = await getExploreProvider();
+  // OSM already queries the union of nearby amenity/shop/tourism tags in one read.
+  if (!isGeneralDiscovery(input) || provider === "openstreetmap") return searchSingleIntent(input, provider);
+  // Each intent keeps the selected provider, cache, photo policy and Google quota
+  // reservation. No enrichment/search-provider switch is caused by an empty list.
+  const settled = await Promise.allSettled(DISCOVERY_TERMS.map((query) => searchSingleIntent({ ...input, query }, provider)));
+  const available = settled.flatMap((value) => value.status === "fulfilled" ? [value.value] : []);
+  if (!available.length) {
+    const failure = settled.find((value) => value.status === "rejected");
+    throw failure?.status === "rejected" ? failure.reason : new Error("discovery_unavailable");
+  }
+  const partial = available.length !== DISCOVERY_TERMS.length;
+  const results = mergeDiscoveryResults(available.map((value) => value.results));
+  // An incomplete empty set is not a confirmed absence of nearby places.
+  if (partial && !results.length) throw new Error("discovery_incomplete");
+  if (partial) console.warn("[explore/discovery] Some intents unavailable", { completed: available.length, requested: DISCOVERY_TERMS.length });
+  return {
+    results, source: available[0].source, partial,
+    detailsPending: available.some((value) => value.detailsPending),
+    imageSearch: available.some((value) => value.imageSearch),
+    photoLookupSource: available.find((value) => value.photoLookupSource)?.photoLookupSource,
+  };
 }

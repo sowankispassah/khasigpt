@@ -18,7 +18,7 @@ test.beforeAll(async () => {
   };
   const output = await build({
     stdin: {
-      contents: "import React from 'react'; import {createRoot} from 'react-dom/client'; import {ExplorePageClient} from './components/explore/explore-page-client'; createRoot(document.getElementById('root')).render(React.createElement(ExplorePageClient,{initialCategories:[]}));",
+      contents: "import React from 'react'; import {createRoot} from 'react-dom/client'; import {ExplorePageClient} from './components/explore/explore-page-client'; createRoot(document.getElementById('root')).render(React.createElement(ExplorePageClient,{initialCategories:window.testCategories ?? []}));",
       resolveDir: process.cwd(),
       loader: "tsx",
     },
@@ -38,7 +38,7 @@ test.beforeAll(async () => {
   bundle = output.outputFiles[0].text;
 });
 
-async function mountExplore(page: Page, options: { imageSearch?: boolean; photoRequests?: string[]; progressive?: boolean; failDetails?: boolean; photos?: boolean; imageGate?: Promise<void>; failImage?: boolean; detailsGate?: (query: string) => Promise<void> } = {}) {
+async function mountExplore(page: Page, options: { categories?: unknown[]; partial?: boolean; imageSearch?: boolean; photoRequests?: string[]; progressive?: boolean; failDetails?: boolean; photos?: boolean; imageGate?: Promise<void>; failImage?: boolean; detailsGate?: (query: string) => Promise<void> } = {}) {
   const requests: Array<{radiusKm: number; searchMode: string; detailMode: string}> = [];
   const location = {id:"test",label:"Shangpung, Meghalaya",latitude:25.48,longitude:92.36,source:"manual",accuracy:null};
   await page.route("https://images.explore.test/**", async (route) => {
@@ -65,6 +65,7 @@ async function mountExplore(page: Page, options: { imageSearch?: boolean; photoR
         clientRequestId:body.clientRequestId, location, locationContextKey:"test-context",
         radiusKm:body.radiusKm, results:(body.detailMode === "full" ? [25,1,49,999] : options.imageSearch ? Array.from({ length: 20 }, (_, i) => i + 1) : [25,1,49]).map(distanceKm => ({id:`place-${distanceKm}`,name:`Place ${distanceKm}`,distanceKm,distance:`${distanceKm} km`,photoLookupToken: options.imageSearch ? `ticket-${distanceKm}` : undefined,imageUrl:options.photos && body.detailMode === "full" ? "https://images.explore.test/photo.png" : null,sourceUrl:"https://example.com",attributions:[]})), searchQueries:[], searchMode:body.searchMode,
         detailsPending: options.progressive && body.detailMode === "list",
+        partial: options.partial,
       }}).catch(() => {});
       return;
     }
@@ -72,6 +73,7 @@ async function mountExplore(page: Page, options: { imageSearch?: boolean; photoR
   });
   await page.goto("https://explore.test/");
   await page.evaluate((selectedLocation) => sessionStorage.setItem("explore.locationSession.v2",JSON.stringify({location:selectedLocation,query:"restaurant",radiusKm:10,categoryId:null,subcategoryId:null})),location);
+  await page.evaluate(categories => { (window as any).testCategories = categories; },options.categories ?? []);
   await page.addScriptTag({content:bundle});
   await expect(page.getByRole("heading", {name:"Place 1",exact:true})).toBeVisible();
   expect(requests).toHaveLength(options.progressive ? 2 : 1);
@@ -125,6 +127,13 @@ test("failed optional details keep confirmed web results and do not show a searc
   await expect(page.getByText("Unable to load Explore results right now. Please try again.", { exact: true })).toHaveCount(0);
   expect(requests).toHaveLength(2);
   await expect(page.getByRole("status")).toHaveCount(0);
+});
+
+test("partial discovery displays available places with a recoverable warning", async ({ page }) => {
+  await mountExplore(page, { partial: true });
+  await expect(page.getByRole("status")).toHaveText("Some nearby results couldn't be loaded. Search a specific category or try again.");
+  await expect(page.getByRole("heading", { name: "Place 1", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Search", exact: true })).toBeEnabled();
 });
 
 test("photo loading covers detail lookup and image download, then stops on load", async ({page}) => {
@@ -198,4 +207,14 @@ test("image mode looks up visible cards only, stops empty-photo loading and reus
   expect(new Set(photos).size).toBe(photos.length);
   expect(photos.length).toBeLessThanOrEqual(12);
   expect(requests).toHaveLength(1);
+});
+
+
+test("category presets show the display label but send only the internal keyword", async ({ page }) => {
+  const requests = await mountExplore(page, { categories: [{ id: "food", name: "Eat Nearby", searchQuery: "restaurant", iconName: "Compass", description: "Legacy description", subcategories: [], suggestedPrompts: [], displayOrder: 0 }] });
+  await page.getByRole("button", { name: "Eat Nearby", exact: true }).click();
+  await expect(page.getByPlaceholder("Search restaurants, shops, businesses, events, places...")).toHaveValue("restaurant");
+  await expect.poll(() => requests.length).toBe(2);
+  expect(requests[1]).toMatchObject({ query: "restaurant", categoryId: "food", searchMode: "places_only", radiusKm: 50 });
+  await expect(page.getByText("Legacy description")).toHaveCount(0);
 });

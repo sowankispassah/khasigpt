@@ -5,6 +5,13 @@ import { GOOGLE_ALLOWANCE_COPY } from "@/lib/web-search/google-allowance-copy";
 import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
+  { key: "admin.explore.category.add", defaultText: "Add Category", description: "Opens the Explore category preset form." },
+  { key: "admin.explore.category.edit", defaultText: "Edit Category", description: "Explore category preset form title." },
+  { key: "admin.explore.category.add_subcategory", defaultText: "Add Subcategory", description: "Explore subcategory form title." },
+  { key: "admin.explore.category.edit_subcategory", defaultText: "Edit Subcategory", description: "Explore subcategory form title." },
+  { key: "admin.explore.category.name", defaultText: "Name", description: "Explore preset category display name." },
+  { key: "admin.explore.category.display_order", defaultText: "Display order", description: "Explore category display order." },
+  { key: "admin.explore.category.search_query", defaultText: "Internal search query", description: "Keyword used to search when an Explore category is selected." },
   { key: "explore.search.clear", defaultText: "Clear search", description: "Clears the Explore keyword and category and restores general nearby results." },
   { key: "explore.photo.loading", defaultText: "Loading photo…", description: "Shown while Explore place photos are being fetched or downloaded, on web and Android." },
   ...Object.entries(GOOGLE_ALLOWANCE_COPY).map(([name, defaultText]) => ({ key: `admin.web_search.allowance.${name}`, defaultText, description: "Admin Google grounding allowance settings." })),
@@ -6111,6 +6118,7 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   { key: "explore.results.empty_location", defaultText: "No results found within {distance} km of {location}.", description: "Explore empty result message scoped to location and radius." },
   { key: "explore.results.increase_radius", defaultText: "Increase to {distance} km", description: "Explore empty-state action to increase radius." },
   { key: "explore.results.showing_count", defaultText: "Showing {shown} of {total} results", description: "Explore result count shown above the result cards." },
+  { key: "explore.results.partial", defaultText: "Some nearby results couldn't be loaded. Search a specific category or try again.", description: "Explore warning when only some discovery searches completed." },
   { key: "explore.results.load_more", defaultText: "Load more ({count} remaining)", description: "Explore action that reveals the next batch of already-loaded nearby result cards." },
   { key: "admin.contacts.account.first_name", defaultText: "First name", description: "Matched contact account first name label." },
   { key: "admin.contacts.account.last_name", defaultText: "Last name", description: "Matched contact account last name label." },

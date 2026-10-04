@@ -101,6 +101,7 @@ export type ExploreSearchResponse = {
   searchQueries: string[];
   searchMode: ExploreRequestMode;
   detailsPending?: boolean;
+  partial?: boolean;
 };
 
 export const EXPLORE_REQUEST_MODES = ["places_only", "enriched"] as const;
