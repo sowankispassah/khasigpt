@@ -5,6 +5,8 @@ import { GOOGLE_ALLOWANCE_COPY } from "@/lib/web-search/google-allowance-copy";
 import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
+  { key: "explore.search.clear", defaultText: "Clear search", description: "Clears the Explore keyword and category and restores general nearby results." },
+  { key: "explore.photo.loading", defaultText: "Loading photo…", description: "Shown while Explore place photos are being fetched or downloaded, on web and Android." },
   ...Object.entries(GOOGLE_ALLOWANCE_COPY).map(([name, defaultText]) => ({ key: `admin.web_search.allowance.${name}`, defaultText, description: "Admin Google grounding allowance settings." })),
   ...Object.entries(EXPLORE_PROVIDER_COPY).map(([name, defaultText]) => ({ key: `admin.explore.provider.${name}`, defaultText, description: "Admin Explore place-provider settings." })),
   { key: "chat.date_separator.today", defaultText: "Today {time}", description: "Local date and time above the first chat message of today." },

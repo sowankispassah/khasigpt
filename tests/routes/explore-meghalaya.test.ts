@@ -255,7 +255,7 @@ test.describe("Explore Meghalaya", () => {
     expect(web).toContain("setResponse(null)");
     expect(web).toContain('type="range"');
     expect(web).toContain("max={50}");
-    expect(web).toContain('mode === "search" ? "enriched" : "places_only"');
+    expect(web).toContain('"enriched" : "places_only"');
     expect(web).toContain("visibleResultCount");
     expect(web).toContain("explore.results.load_more");
     expect(native).toContain("api.exploreSearch");
@@ -264,7 +264,7 @@ test.describe("Explore Meghalaya", () => {
     expect(native).toContain("requestForegroundPermissionsAsync");
     expect(native).toContain("clientRequestId");
     expect(native).toContain("maximumValue={50}");
-    expect(native).toContain('mode === "search" ? "enriched" : "places_only"');
+    expect(native).toContain('"enriched" : "places_only"');
     expect(native).toContain("visibleResultCount");
     expect(native).toContain("explore.results.load_more");
     expect(locationRoute).toContain("resolveManualExploreLocation");

@@ -12,6 +12,7 @@ import {
   NotebookPen,
   Search,
   Star,
+  X,
 } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -308,7 +309,7 @@ export function ExplorePageClient({
               locationContextKeyRef.current,
             location,
             radiusKm: 50,
-            searchMode: mode === "search" ? "enriched" : "places_only",
+            searchMode: mode === "search" && normalized !== DISCOVERY_QUERY ? "enriched" : "places_only",
             detailMode: "list",
           }),
           signal: controller.signal,
@@ -365,6 +366,9 @@ export function ExplorePageClient({
           }).catch(() => {
             // The confirmed core list stays usable even when optional enrichment fails.
             if (!controller.signal.aborted) console.info("[explore] Optional details unavailable.");
+            if (currentRequestIdRef.current === requestId) {
+              setResponse((current) => current?.clientRequestId === requestId ? { ...current, detailsPending: false } : current);
+            }
           });
         }
       } catch (searchError) {
@@ -584,10 +588,17 @@ export function ExplorePageClient({
     setLocationStage("choose");
   };
 
+  const clearSearch = () => {
+    setQuery("");
+    setSelectedCategoryId(null);
+    setSelectedSubcategoryId(null);
+    void runSearch({ selection: { categoryId: null, query: DISCOVERY_QUERY, subcategoryId: null }, mode: "search" });
+  };
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const normalized = query.trim();
-    if (!normalized) return;
+    if (!normalized) { clearSearch(); return; }
     const selection = {
       categoryId: selectedCategoryId,
       query: normalized,
@@ -909,16 +920,23 @@ export function ExplorePageClient({
             <Search className="absolute top-3 left-3 size-5 text-muted-foreground" />
             <input
               aria-label={placeholder}
-              className="min-h-11 w-full rounded-xl border bg-background pr-3 pl-10 outline-none focus:ring-2 focus:ring-primary/30"
+              className="min-h-11 w-full rounded-xl border bg-background pr-32 pl-10 outline-none focus:ring-2 focus:ring-primary/30"
               onChange={(event) => setQuery(event.target.value)}
               placeholder={placeholder}
               value={query}
             />
+            {query || selectedCategoryId || (lastSearch && lastSearch.query !== DISCOVERY_QUERY) ? (
+              <button className="absolute top-1 right-1 inline-flex min-h-9 cursor-pointer items-center gap-1 rounded-lg px-2 text-muted-foreground text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isLoading} onClick={clearSearch} type="button">
+                <X aria-hidden className="size-4" />
+                <EditableTranslation translationKey="explore.search.clear" defaultText="Clear search" />
+              </button>
+            ) : null}
             {placeholderEdit}
           </div>
           <button
             className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary px-5 font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={isLoading || !query.trim()}
+            disabled={isLoading}
             type="submit"
           >
             {searchPending && loadingMode === "search" ? (
@@ -1170,6 +1188,7 @@ export function ExplorePageClient({
                   .slice(0, visibleResultCount)
                   .map((result) => (
                     <ResultCard
+                      photosPending={response.detailsPending === true}
                       key={result.id}
                       onOpen={() => setDetail(result)}
                       result={result}
@@ -1209,20 +1228,7 @@ export function ExplorePageClient({
       {detail ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-xl border bg-background shadow-xl">
-            {detail.imageUrl ? (
-              <Image
-                alt={detail.name}
-                className="aspect-video w-full rounded-t-xl object-cover"
-                height={600}
-                src={detail.imageUrl}
-                unoptimized
-                width={1000}
-              />
-            ) : (
-              <div className="flex aspect-video items-center justify-center rounded-t-xl bg-muted">
-                <Compass className="size-16 text-muted-foreground/40" />
-              </div>
-            )}
+            <PlacePhoto result={detail} photosPending={response?.detailsPending === true} hero />
             <div className="space-y-4 p-5">
               <div>
                 <h2 className="font-semibold text-2xl">{detail.name}</h2>
@@ -1373,9 +1379,11 @@ function EmptyResults({
 function ResultCard({
   result,
   onOpen,
+  photosPending,
 }: {
   result: ExploreResult;
   onOpen: () => void;
+  photosPending: boolean;
 }) {
   return (
     <article className="group overflow-hidden rounded-xl border bg-card shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
@@ -1384,21 +1392,7 @@ function ResultCard({
         onClick={onOpen}
         type="button"
       >
-        {result.imageUrl ? (
-          <Image
-            alt={result.name}
-            className="aspect-[16/9] w-full object-cover"
-            height={360}
-            loading="lazy"
-            src={result.imageUrl}
-            unoptimized
-            width={640}
-          />
-        ) : (
-          <div className="flex aspect-[16/9] items-center justify-center bg-muted">
-            <Compass className="size-10 text-muted-foreground/35" />
-          </div>
-        )}
+        <PlacePhoto result={result} photosPending={photosPending} />
         <div className="space-y-2 p-4 pb-2">
           <h3 className="line-clamp-2 font-semibold">{result.name}</h3>
           {result.address ? (
@@ -1414,6 +1408,41 @@ function ResultCard({
         <ResultAttributions result={result} />
       </div>
     </article>
+  );
+}
+
+function PlacePhoto({ result, photosPending, hero = false }: {
+  result: ExploreResult;
+  photosPending: boolean;
+  hero?: boolean;
+}) {
+  const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const imageUrl = result.imageUrl;
+  const showImage = Boolean(imageUrl && imageUrl !== failedUrl);
+  const loading = imageUrl ? showImage && loadedUrl !== imageUrl : photosPending;
+  return (
+    <div aria-busy={loading} className={`relative flex aspect-video items-center justify-center overflow-hidden bg-muted ${hero ? "rounded-t-xl" : ""}`}>
+      {showImage && imageUrl ? (
+        <Image
+          alt={result.name}
+          className={`absolute inset-0 h-full w-full object-cover transition-opacity ${loadedUrl === imageUrl ? "opacity-100" : "opacity-0"}`}
+          height={hero ? 600 : 360}
+          loading={hero ? "eager" : "lazy"}
+          onError={() => setFailedUrl(imageUrl)}
+          onLoad={() => setLoadedUrl(imageUrl)}
+          src={imageUrl}
+          unoptimized
+          width={hero ? 1000 : 640}
+        />
+      ) : null}
+      {loading ? (
+        <output className="flex flex-col items-center gap-2 text-muted-foreground">
+          <LoaderCircle aria-hidden className="size-5 animate-spin motion-reduce:animate-none" />
+          <span className="text-xs"><EditableTranslation translationKey="explore.photo.loading" defaultText="Loading photo…" /></span>
+        </output>
+      ) : !showImage ? <Compass aria-hidden className={`${hero ? "size-16" : "size-10"} text-muted-foreground/35`} /> : null}
+    </div>
   );
 }
 

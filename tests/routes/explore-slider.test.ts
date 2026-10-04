@@ -11,7 +11,7 @@ let bundle: string;
 test.beforeAll(async () => {
   const mocks: Record<string, string> = {
     "next/navigation": "export const useRouter = () => ({push() {}});",
-    "next/image": "export default function Image() { return null; }",
+    "next/image": "import React from 'react'; export default function Image({unoptimized,...props}) { return React.createElement('img',props); }",
     "@/components/language-provider": "const translate = (key, fallback) => fallback; export const useTranslation = () => ({translate});",
     "@/components/translation-edit-provider": "import React from 'react'; export const EditableTranslation = ({defaultText}) => React.createElement('span',null,defaultText); export const useEditableTranslation = (key,text) => ({text,editButton:null});",
     "@/lib/ui/global-progress": "export function startGlobalProgress() {}",
@@ -38,9 +38,13 @@ test.beforeAll(async () => {
   bundle = output.outputFiles[0].text;
 });
 
-async function mountExplore(page: Page, options: { progressive?: boolean; failDetails?: boolean; detailsGate?: (query: string) => Promise<void> } = {}) {
+async function mountExplore(page: Page, options: { progressive?: boolean; failDetails?: boolean; photos?: boolean; imageGate?: Promise<void>; failImage?: boolean; detailsGate?: (query: string) => Promise<void> } = {}) {
   const requests: Array<{radiusKm: number; searchMode: string; detailMode: string}> = [];
   const location = {id:"test",label:"Shangpung, Meghalaya",latitude:25.48,longitude:92.36,source:"manual",accuracy:null};
+  await page.route("https://images.explore.test/**", async (route) => {
+    await options.imageGate;
+    await route.fulfill(options.failImage ? {status:503,body:"Unavailable"} : {contentType:"image/png",body:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6pQAAAAASUVORK5CYII=","base64")}).catch(() => {});
+  });
   await page.route("https://explore.test/**", async (route) => {
     if (route.request().url().endsWith("/api/explore/search")) {
       const body = route.request().postDataJSON();
@@ -55,7 +59,7 @@ async function mountExplore(page: Page, options: { progressive?: boolean; failDe
       await route.fulfill({json:{
         answer:body.detailMode === "full" ? `Details ${body.query}` : `Results for ${body.radiusKm} km`, category:null, chatId:"chat-test",
         clientRequestId:body.clientRequestId, location, locationContextKey:"test-context",
-        radiusKm:body.radiusKm, results:(body.detailMode === "full" ? [25,1,49,999] : [25,1,49]).map(distanceKm => ({id:`place-${distanceKm}`,name:`Place ${distanceKm}`,distanceKm,distance:`${distanceKm} km`,sourceUrl:"https://example.com",attributions:[]})), searchQueries:[], searchMode:body.searchMode,
+        radiusKm:body.radiusKm, results:(body.detailMode === "full" ? [25,1,49,999] : [25,1,49]).map(distanceKm => ({id:`place-${distanceKm}`,name:`Place ${distanceKm}`,distanceKm,distance:`${distanceKm} km`,imageUrl:options.photos && body.detailMode === "full" ? "https://images.explore.test/photo.png" : null,sourceUrl:"https://example.com",attributions:[]})), searchQueries:[], searchMode:body.searchMode,
         detailsPending: options.progressive && body.detailMode === "list",
       }}).catch(() => {});
       return;
@@ -65,7 +69,7 @@ async function mountExplore(page: Page, options: { progressive?: boolean; failDe
   await page.goto("https://explore.test/");
   await page.evaluate((selectedLocation) => sessionStorage.setItem("explore.locationSession.v2",JSON.stringify({location:selectedLocation,query:"restaurant",radiusKm:10,categoryId:null,subcategoryId:null})),location);
   await page.addScriptTag({content:bundle});
-  await expect(page.getByText("Results for 50 km", {exact:false})).toBeVisible();
+  await expect(page.getByRole("heading", {name:"Place 1",exact:true})).toBeVisible();
   expect(requests).toHaveLength(options.progressive ? 2 : 1);
   return requests;
 }
@@ -113,6 +117,48 @@ test("failed optional details keep confirmed web results and do not show a searc
   await expect(page.getByText("Place 1", { exact: true })).toBeVisible();
   await expect(page.getByText("Unable to load Explore results right now. Please try again.", { exact: true })).toHaveCount(0);
   expect(requests).toHaveLength(2);
+  await expect(page.getByRole("status")).toHaveCount(0);
+});
+
+test("photo loading covers detail lookup and image download, then stops on load", async ({page}) => {
+  let releaseDetails!: () => void; let releaseImage!: () => void;
+  const details = new Promise<void>((resolve) => { releaseDetails = resolve; });
+  const image = new Promise<void>((resolve) => { releaseImage = resolve; });
+  await mountExplore(page,{progressive:true,photos:true,detailsGate:()=>details,imageGate:image});
+  await expect(page.getByRole("status")).toHaveCount(3);
+  await expect(page.getByRole("status").first()).toHaveText("Loading photo…");
+  releaseDetails();
+  await expect(page.locator("article img")).toHaveCount(3);
+  await expect(page.getByRole("status")).toHaveCount(3);
+  releaseImage();
+  await expect(page.getByRole("status")).toHaveCount(0);
+  await expect(page.locator('article [aria-busy="true"]')).toHaveCount(0);
+});
+
+test("photo indicators stop when no photo is found or the image download fails", async ({page}) => {
+  await mountExplore(page,{progressive:true});
+  await expect(page.getByRole("status")).toHaveCount(0);
+  await mountExplore(page,{progressive:true,photos:true,failImage:true});
+  await expect(page.getByRole("status")).toHaveCount(0);
+  await expect(page.locator("article img")).toHaveCount(0);
+});
+
+test("clear search and submitting an empty input restore nearby results without category or web enrichment", async ({page}) => {
+  const requests = await mountExplore(page);
+  const input = page.getByPlaceholder("Search restaurants, shops, businesses, events, places...");
+  const search = page.getByRole("button",{name:"Search",exact:true});
+  await expect(search).toBeEnabled();
+  await input.fill("cafe"); await search.click();
+  await expect(page.getByText("Place 1",{exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"Clear search",exact:true}).click();
+  await expect(input).toHaveValue("");
+  await expect(page.getByText("Place 1",{exact:true})).toBeVisible();
+  await input.fill("restaurant"); await search.click();
+  await expect(page.getByText("Place 1",{exact:true})).toBeVisible();
+  await input.fill(""); await search.click();
+  await expect(page.getByText("Place 1",{exact:true})).toBeVisible();
+  expect(requests).toHaveLength(5);
+  for (const index of [2,4]) expect(requests[index]).toMatchObject({query:"Nearby places, businesses, food, services, attractions and activities",categoryId:null,subcategoryId:null,searchMode:"places_only",radiusKm:50});
 });
 
 test("a new search remains available while the previous search hydrates", async ({ page }) => {
