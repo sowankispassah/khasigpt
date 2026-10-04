@@ -72,7 +72,7 @@ export type WebSearchAnswer = {
   citations: WebSearchCitation[];
   searchCallCount: number;
   providerBillingUnitCount: number;
-  /** Server-only aggregate: Google generation plus any paid grounding queries. */
+  /** Server-only aggregate cost, including optional provider lookups. */
   providerCostUsd?: number;
   /** Customer charges cannot exceed the amount admitted before the search. */
   billableProviderCostUsd?: number;
@@ -80,6 +80,8 @@ export type WebSearchAnswer = {
 };
 
 export type WebSearchConfig = {
+  /** Zero disables the optional Serpent Amazon India lookup. */
+  serpentProductCostPerCallUsd?: number;
   accessMode: "disabled" | "admin_only" | "enabled";
   provider: WebSearchProvider;
   fallbackProvider: WebSearchProvider;

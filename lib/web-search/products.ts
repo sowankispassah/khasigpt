@@ -187,7 +187,7 @@ export function extractShoppingProducts(answer: string) {
   };
 }
 
-function getShoppingRequestLabel(userMessage: string) {
+export function getShoppingRequestLabel(userMessage: string) {
   const withoutRequestPrefix = userMessage
     .replace(
       /^\s*(?:please\s+)?(?:find|show|search|look)\s+(?:for\s+)?(?:me\s+)?/i,
@@ -505,7 +505,7 @@ export function productTitlesMatch(candidateTitle: string, pageTitle: string) {
   return smallerSetSize > 0 && intersection >= 2 && intersection / smallerSetSize >= 0.5;
 }
 
-function extractMaximumBudget(userMessage: string) {
+export function extractMaximumBudget(userMessage: string) {
   const match = userMessage.match(
     /\b(?:under|below|less\s+than|up\s+to|max(?:imum)?|within|not\s+more\s+than)\s*(?:₹|rs\.?|inr)?\s*([\d,]+(?:\.\d{1,2})?)/i
   );

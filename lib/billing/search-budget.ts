@@ -10,10 +10,9 @@ export function searchCreditAllowance({ provider, shopping = false, costPerCallU
   pricing: Pick<GenerationPricing, "usdToInr" | "walletUnitsPerInr">;
   groundingAdmission?: { maximumProviderCostUsd: number };
 }) {
-  // This adapter executes exactly one HTTP search. Grounding can perform an
-  // unbounded number of internal searches; a prompt instruction is not a cap.
-  // Let the caller's existing fallback run without starting that paid request.
-  if (provider === "gemini_grounding" && groundingAdmission) {
+  // Reserve the aggregate cap for grounding or the optional Serpent product
+  // lookup before dispatch. A prompt instruction alone is not a billing cap.
+  if ((provider === "gemini_grounding" || provider === "serpent") && groundingAdmission) {
     if ([groundingAdmission.maximumProviderCostUsd, markup, pricing.usdToInr, pricing.walletUnitsPerInr].some(value => !Number.isFinite(value) || value <= 0)) throw new ChatSDKError("bad_request:configuration");
     return Math.ceil(groundingAdmission.maximumProviderCostUsd * markup * pricing.usdToInr * pricing.walletUnitsPerInr);
   }

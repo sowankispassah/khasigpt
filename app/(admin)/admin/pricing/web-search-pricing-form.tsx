@@ -114,6 +114,7 @@ export function WebSearchPricingForm({
     config.paidUsersEnabled
   );
   const [maxCalls, setMaxCalls] = useState(String(config.maxCalls));
+  const [serpentProductCost, setSerpentProductCost] = useState(String(config.serpentProductCostPerCallUsd ?? 0));
   const [providerPricing, setProviderPricing] = useState<ProviderPricingState>(
     () => initialProviderPricing(config)
   );
@@ -172,6 +173,7 @@ export function WebSearchPricingForm({
   }, [fallbackProvider, provider]);
 
   const pricingIsValid =
+    Number.isFinite(Number(serpentProductCost)) && Number(serpentProductCost) >= 0 && Number(serpentProductCost) <= 100 &&
     hasValidWebSearchProviderCosts({
       fallbackProvider,
       provider,
@@ -234,6 +236,7 @@ export function WebSearchPricingForm({
           freeUsersEnabled,
           paidUsersEnabled,
           maxCalls: numericMaxCalls,
+          serpentProductCostPerCallUsd: Number(serpentProductCost),
           providerPricing: Object.fromEntries(
             BILLABLE_PROVIDER_ROWS.map(({ value }) => [
               value,
@@ -458,6 +461,15 @@ export function WebSearchPricingForm({
       ) : null}
       {provider === "serpent" && <p className="rounded-md border p-3 text-muted-foreground text-xs"><EditableTranslation translationKey="admin.web_search.serpent_note" defaultText="Serpent uses one Google Web SERP page per search, localized to India. Shopping cards appear when listings are returned; otherwise retailer browse links are shown. Its dedicated Shopping endpoint has not launched. Provider cost is per page: Default $0.0006, Growth $0.00006, Scale $0.00003. Enter your account rate below. News and videos also use this Web SERP request, with inline video cards when available. No paid AI add-ons are requested." description="Serpent search coverage and billing explanation." /></p>}
       {!serpentConfigured && <p className="text-muted-foreground text-xs"><EditableTranslation translationKey="admin.web_search.serpent_not_configured" defaultText="Add SERPENT_API_KEY to the server environment before activating Serpent." description="Missing Serpent server credential." /></p>}
+      {serpentConfigured && (
+        <div className="space-y-2 rounded-md border p-3">
+          <label htmlFor="serpent-product-cost" className="text-sm font-medium">
+            <EditableTranslation translationKey="admin.web_search.serpent_product_cost" defaultText="Serpent product lookup cost (USD per call)" description="Admin price for the optional Amazon India product lookup." />
+          </label>
+          <input id="serpent-product-cost" className="block w-44 cursor-pointer rounded-md border bg-background px-3 py-2" type="number" min={0} max={100} step={0.000001} value={serpentProductCost} disabled={isSaving} onChange={event => setSerpentProductCost(event.target.value)} />
+          <p className="text-xs text-muted-foreground"><EditableTranslation translationKey="admin.web_search.serpent_product_note" defaultText="Set zero to disable. A positive price enables one Amazon India lookup when Serpent shopping results have no product photos. Default $0.00002, Growth $0.000018, Scale $0.000014 per call. Matching items keep their own photos, prices and links. Completed lookups add this cost to the web-search cost and use the Serpent markup; ordinary searches do not run it." description="Serpent product lookup coverage, pricing and disabled state." /></p>
+        </div>
+      )}
       {!serperConfigured ? (
         <p className="rounded-md border border-amber-300/60 bg-amber-50/50 p-3 text-amber-900 text-xs dark:bg-amber-950/20 dark:text-amber-100">
           {translate(

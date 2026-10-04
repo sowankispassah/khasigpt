@@ -467,6 +467,7 @@ async function answerWithSerper({
 }
 
 export type WebSearchAnswerInput = {
+  serpentPricing?: { webCostUsd: number; productCostUsd: number };
   provider: WebSearchProvider;
   userMessage: string;
   conversationContext?: string;
@@ -480,6 +481,7 @@ export type WebSearchAnswerInput = {
 
 export const webSearchService = {
   async answerWithSearch({
+    serpentPricing,
     conversationContext,
     includeNews = false,
     includeVideos = false,
@@ -512,8 +514,10 @@ export const webSearchService = {
           userMessage,
         });
       case "serpent":
-        beforeProviderCall?.();
-        return answerWithSerpent({ includeNews, includeProducts, includeVideos, userMessage });
+        beforeProviderCall?.(includeProducts && serpentPricing && serpentPricing.productCostUsd > 0
+          ? { maximumProviderCostUsd: serpentPricing.webCostUsd + serpentPricing.productCostUsd }
+          : undefined);
+        return answerWithSerpent({ includeNews, includeProducts, includeVideos, userMessage, pricing: serpentPricing });
       case "disabled":
         throw new Error("Web search is disabled.");
       default:

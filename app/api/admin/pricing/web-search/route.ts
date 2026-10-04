@@ -96,6 +96,10 @@ export async function POST(request: NextRequest) {
   }
 
   const maxCalls = parseNumber(body.maxCalls, { integer: true, max: 10, min: 1 });
+  const productLookupCost = body.serpentProductCostPerCallUsd === undefined ? undefined
+    : typeof body.serpentProductCostPerCallUsd === "number"
+      ? parseNumber(body.serpentProductCostPerCallUsd, { integer: false, max: 100, min: 0 }) : null;
+  if (productLookupCost === null) return NextResponse.json({ error: "invalid_pricing" }, { status: 400 });
   const providerPricing = body.providerPricing;
   if (!isRecord(providerPricing)) {
     return NextResponse.json(
@@ -182,6 +186,7 @@ export async function POST(request: NextRequest) {
   if ((provider === "serpent" || fallbackProvider === "serpent") && !process.env.SERPENT_API_KEY?.trim()) return NextResponse.json({ error: "provider_not_configured", message: "Add SERPENT_API_KEY to activate Serpent." }, { status: 400, headers: { "Cache-Control": "no-store" } });
 
   const values: Record<string, unknown> = {
+    ...(productLookupCost === undefined ? {} : { web_search_serpent_product_cost_per_call_usd: productLookupCost }),
     ...(providerPricing.serpent === undefined ? {} : {
       [WEB_SEARCH_SERPENT_COST_PER_CALL_USD_SETTING_KEY]: providerCostPerCallUsd.serpent,
       [WEB_SEARCH_SERPENT_MARKUP_MULTIPLIER_SETTING_KEY]: parsedProviderPricing.serpent?.markupMultiplier,

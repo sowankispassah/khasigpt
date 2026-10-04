@@ -3346,6 +3346,7 @@ export async function POST(request: Request) {
         try {
           webSearchAnswer = await webSearchService.answerWithSearch({
             beforeProviderCall: (admission) => reserveSearch(attemptedProvider, admission),
+            serpentPricing: { webCostUsd: webSearchConfig.providerCostPerCallUsd.serpent, productCostUsd: webSearchConfig.serpentProductCostPerCallUsd ?? 0 },
             conversationContext,
             includeNews: newsSearchRequest,
             includeProducts: webSearchDecision.hasShoppingIntent,
@@ -3370,6 +3371,7 @@ export async function POST(request: Request) {
             try {
               webSearchAnswer = await webSearchService.answerWithSearch({
                 beforeProviderCall: (admission) => reserveSearch(fallbackProvider, admission),
+                serpentPricing: { webCostUsd: webSearchConfig.providerCostPerCallUsd.serpent, productCostUsd: webSearchConfig.serpentProductCostPerCallUsd ?? 0 },
                 conversationContext,
                 includeNews: newsSearchRequest,
                 includeProducts: webSearchDecision.hasShoppingIntent,

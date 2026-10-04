@@ -33,6 +33,7 @@ import type {
 
 export const WEB_SEARCH_CONFIG_CACHE_TAG = "web-search-config";
 export const WEB_SEARCH_SETTING_KEYS = [
+  "web_search_serpent_product_cost_per_call_usd",
   GOOGLE_SEARCH_ALLOWANCE_KEY,
   WEB_SEARCH_ENABLED_SETTING_KEY,
   WEB_SEARCH_PROVIDER_SETTING_KEY,
@@ -121,6 +122,7 @@ export function resolveWebSearchConfig(
   );
 
   return {
+    serpentProductCostPerCallUsd: parseConfiguredPositiveNumber(values.get("web_search_serpent_product_cost_per_call_usd"), 100),
     googleAllowanceEnabled: googleSearchAllowanceSchema.safeParse(values.get(GOOGLE_SEARCH_ALLOWANCE_KEY)).data?.enabled ?? false,
     accessMode: parseFeatureAccessMode(accessMode, "admin_only"),
     provider: parseProvider(values.get(WEB_SEARCH_PROVIDER_SETTING_KEY), DEFAULT_PROVIDER),

@@ -5408,6 +5408,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     defaultText: "Customer markup",
     description: "Web Search admin setting for the provider-cost markup.",
   },
+  { key: "admin.web_search.serpent_product_cost", defaultText: "Serpent product lookup cost (USD per call)", description: "Admin price for the optional Amazon India product lookup." },
+  { key: "admin.web_search.serpent_product_note", defaultText: "Set zero to disable. A positive price enables one Amazon India lookup when Serpent shopping results have no product photos. Default $0.00002, Growth $0.000018, Scale $0.000014 per call. Matching items keep their own photos, prices and links. Completed lookups add this cost to the web-search cost and use the Serpent markup; ordinary searches do not run it.", description: "Serpent product lookup coverage and billing." },
   { key: "admin.web_search.provider.serpent", defaultText: "Serpent Web Search", description: "Admin search provider option." },
   { key: "admin.web_search.provider_not_configured", defaultText: "Add the selected provider’s server API key before activating it.", description: "Missing selected search-provider key." },
   { key: "admin.web_search.serpent_not_configured", defaultText: "Add SERPENT_API_KEY to the server environment before activating Serpent.", description: "Missing Serpent key warning." },
