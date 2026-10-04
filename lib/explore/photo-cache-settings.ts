@@ -1,5 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
+import { getCache } from "@vercel/functions";
 import { eq } from "drizzle-orm";
 import { revalidateTag, unstable_cache } from "next/cache";
 import { withAdminDatabase } from "@/lib/db/admin-database";
@@ -27,6 +28,9 @@ export async function updatePhotoCachePolicy(input: { successTtlSeconds?: number
     return value;
   }), { retry: false });
   revalidateTag(PHOTO_CACHE_SETTINGS_TAG, { expire: 0 });
-  if (input.reset) revalidateTag(PHOTO_CACHE_TAG, { expire: 0 });
+  if (input.reset) {
+    await getCache().expireTag(PHOTO_CACHE_TAG);
+    revalidateTag(PHOTO_CACHE_TAG, { expire: 0 });
+  }
   return policy;
 }

@@ -1,9 +1,17 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { revalidateTag, unstable_cache } from "next/cache";
+import { getCache } from "@vercel/functions";
+import { z } from "zod";
 import type { PlaceImage } from "./image-matching";
 import { MISSING_PHOTO_TTL_SECONDS, PHOTO_CACHE_TAG, photoCacheExpired } from "./photo-cache-policy";
 import { getPhotoCachePolicy } from "./photo-cache-settings";
+
+const healthSchema = z.object({ usable: z.boolean(), checkedAt: z.number().finite() });
+const entrySchema = z.object({ photo: z.object({ imageUrl: z.string().url(), title: z.string(), sourceUrl: z.string().url() }).nullable(), fetchedAt: z.number().finite() });
+
+function sharedCache() {
+  return getCache({ namespace: "khasigpt-explore-photos", keyHashFunction: (key) => createHash("sha256").update(key).digest("hex") });
+}
 
 // Probe only the public image CDNs allowed by both photo selectors; never follow redirects.
 async function probePhoto(imageUrl: string, _generation: string, _day: number): Promise<boolean> {
@@ -16,10 +24,16 @@ async function probePhoto(imageUrl: string, _generation: string, _day: number): 
     return response.status !== 404 && response.status !== 410;
   } catch { return true; }
 }
-const cachedProbe = unstable_cache(probePhoto, ["explore-photo-health-v1"], { revalidate: false, tags: [PHOTO_CACHE_TAG] });
 async function usablePhoto(photo: PlaceImage, generation: string) {
+  const cache = sharedCache();
+  const key = `explore-photo-health-v2:${generation}:${createHash("sha256").update(photo.imageUrl).digest("hex")}`;
+  const parsed = healthSchema.safeParse(await cache.get(key));
+  const previous = parsed.success ? parsed.data : null;
+  if (previous && Date.now() - previous.checkedAt < MISSING_PHOTO_TTL_SECONDS * 1000) return previous.usable;
   // Daily checks cost no search-provider credits. A new URL is checked immediately.
-  return cachedProbe(photo.imageUrl, generation, Math.floor(Date.now() / (MISSING_PHOTO_TTL_SECONDS * 1000)));
+  const usable = await probePhoto(photo.imageUrl, generation, 0);
+  await cache.set(key, { usable, checkedAt: Date.now() }, { ttl: MISSING_PHOTO_TTL_SECONDS, tags: [PHOTO_CACHE_TAG], name: "Explore photo link health" });
+  return usable;
 }
 
 export function createSharedPhotoLookup<T>(namespace: string, fetchPhoto: (input: T) => Promise<PlaceImage | null>) {
@@ -31,19 +45,18 @@ export function createSharedPhotoLookup<T>(namespace: string, fetchPhoto: (input
     const existing = inFlight.get(key);
     if (existing) return existing;
     const pending = (async () => {
-      const tag = `explore-photo:${namespace}:${identity}:${policy.generation}`;
-      const cached = unstable_cache(async () => {
-        const candidate = await fetchPhoto(input);
-        const photo = candidate && await usablePhoto(candidate, policy.generation) ? candidate : null;
-        return { photo, fetchedAt: Date.now() };
-      }, ["explore-photo-v2", key], { revalidate: false, tags: [PHOTO_CACHE_TAG, tag] });
-      let entry = await cached();
-      // Explicit expiry avoids stale-while-revalidate serving an expired photo or no-photo result.
-      if (photoCacheExpired(entry, policy, Date.now()) || (entry.photo && !await usablePhoto(entry.photo, policy.generation))) {
-        revalidateTag(tag, { expire: 0 });
-        entry = await cached();
-      }
-      return entry.photo;
+      const cache = sharedCache();
+      const cacheKey = `explore-photo-v3:${key}`;
+      const parsed = entrySchema.safeParse(await cache.get(cacheKey));
+      const entry = parsed.success ? parsed.data : null;
+      if (entry && !photoCacheExpired(entry, policy, Date.now()) && (!entry.photo || await usablePhoto(entry.photo, policy.generation))) return entry.photo;
+      // Replace expired entries directly; no deferred tag invalidation can erase the refill.
+      const candidate = await fetchPhoto(input);
+      const photo = candidate && await usablePhoto(candidate, policy.generation) ? candidate : null;
+      // Retain public metadata up to the supported maximum so increasing the admin expiry
+      // can reuse existing entries. The timestamp above enforces the currently selected TTL.
+      await cache.set(cacheKey, { photo, fetchedAt: Date.now() }, { ttl: photo ? 365 * 86_400 : MISSING_PHOTO_TTL_SECONDS, tags: [PHOTO_CACHE_TAG], name: "Explore shared place photo" });
+      return photo;
     })().finally(() => inFlight.delete(key));
     inFlight.set(key, pending);
     return pending;

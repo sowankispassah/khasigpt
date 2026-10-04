@@ -20,18 +20,11 @@ function harness() {
   let now = Date.UTC(2026, 9, 5); let configuration = policy.parsePhotoCachePolicy(undefined);
   let photo: any = { imageUrl: "https://lh3.googleusercontent.com/photo", title: "Cafe", sourceUrl: "https://www.google.com/maps?cid=1" };
   let status = 200; let fail = false; let calls = 0; let probes = 0;
-  const entries = new Map<string, { tags: string[]; value: Promise<unknown> }>();
+  const entries = new Map<string, unknown>();
   const module = load("lib/explore/photo-cache.ts", {
-    "server-only": {}, "node:crypto": { createHash }, "./photo-cache-policy": policy,
+    "server-only": {}, "node:crypto": { createHash }, zod: { z }, "./photo-cache-policy": policy,
     "./photo-cache-settings": { getPhotoCachePolicy: async () => configuration },
-    "next/cache": {
-      unstable_cache: (fn: any, keys: string[], options: any) => (...args: unknown[]) => {
-        const key = JSON.stringify([keys, args]);
-        if (!entries.has(key)) entries.set(key, { tags: options.tags, value: fn(...args).catch((error: unknown) => { entries.delete(key); throw error; }) });
-        return entries.get(key)?.value;
-      },
-      revalidateTag: (tag: string) => { for (const [key, entry] of entries) if (entry.tags.includes(tag)) entries.delete(key); },
-    },
+    "@vercel/functions": { getCache: () => ({ get: async (key: string) => entries.get(key), set: async (key: string, value: unknown) => { entries.set(key, value); } }) },
   }, { Date: { now: () => now }, fetch: async (_url: URL, options: RequestInit) => { probes++; expect(options.method).toBe("HEAD"); expect(options.redirect).toBe("manual"); return new Response(null, { status }); } });
   const lookup = module.createSharedPhotoLookup("listing", async () => { calls++; if (fail) throw new Error("upstream_failed"); return photo; });
   return { lookup, calls: () => calls, probes: () => probes, advance: (seconds: number) => { now += seconds * 1000; },
