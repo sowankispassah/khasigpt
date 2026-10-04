@@ -9,6 +9,7 @@ import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import { calculateCostPlusPreview } from "@/lib/billing/cost-plus";
 import { TOKENS_PER_CREDIT } from "@/lib/constants";
+import { GOOGLE_ALLOWANCE_COPY } from "@/lib/web-search/google-allowance-copy";
 import {
   type BillableWebSearchProvider,
   hasValidWebSearchProviderCosts,
@@ -115,6 +116,7 @@ export function WebSearchPricingForm({
   const [pricingContext, setPricingContext] =
     useState<PricingPreviewContext | null>(null);
   const maxCallsApplies = provider !== "serper";
+  const allowanceMode = googleAllowanceEnabled && provider === "gemini_grounding";
 
   useEffect(() => {
     const controller = new AbortController();
@@ -395,7 +397,7 @@ export function WebSearchPricingForm({
       </div>
       <GoogleSearchAllowanceSettings refreshToken={allowanceRefresh} onSaved={(allowance) => { setGoogleAllowanceEnabled(allowance.enabled); if (allowance.enabled) { setProvider("gemini_grounding"); setFallbackProvider(allowance.fallbackProvider); } }} />
 
-      <label className="flex max-w-xl flex-col gap-2 text-sm">
+      {!allowanceMode && <label className="flex max-w-xl flex-col gap-2 text-sm">
         <span className="font-medium">
           {maxCallsApplies
             ? label("admin.web_search.max_calls", "Max search calls")
@@ -428,7 +430,7 @@ export function WebSearchPricingForm({
               : label("admin.web_search.not_applicable", "N/A")
           }
         />
-      </label>
+      </label>}
       {provider === "serper" ? (
         <div className="space-y-1 text-xs">
           <p className="font-medium text-red-600 dark:text-red-400">
@@ -471,6 +473,7 @@ export function WebSearchPricingForm({
               "Set provider cost and customer markup independently for every search provider. Changing the active provider does not change these saved prices."
             )}
           </p>
+          {allowanceMode && <p className="mt-2 text-muted-foreground text-xs">{translate("admin.web_search.allowance.pricingNote", GOOGLE_ALLOWANCE_COPY.pricingNote)}</p>}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1120px] text-sm">
@@ -514,7 +517,8 @@ export function WebSearchPricingForm({
                 const pricing = providerPricing[providerKey];
                 const isPrimary = provider === providerKey;
                 const isFallback = fallbackProvider === providerKey;
-                const preview = pricingContext
+                const usesTokenPricing = allowanceMode && providerKey === "gemini_grounding";
+                const preview = pricingContext && !usesTokenPricing
                   ? calculateCostPlusPreview({
                       markupMultiplier: Number(pricing.markupMultiplier),
                       providerCostUsd: Number(pricing.providerCostPerCallUsd),
@@ -546,9 +550,9 @@ export function WebSearchPricingForm({
                             providerRow.defaultLabel
                           )
                         )}
-                        aria-required={isPrimary || isFallback}
+                        aria-required={!usesTokenPricing && (isPrimary || isFallback)}
                         className="w-44 cursor-pointer rounded-md border bg-background px-3 py-2"
-                        disabled={isSaving}
+                        disabled={isSaving || usesTokenPricing}
                         max={100}
                         min={0}
                         onChange={(event) =>
@@ -558,7 +562,7 @@ export function WebSearchPricingForm({
                             event.target.value
                           )
                         }
-                        required={isPrimary || isFallback}
+                        required={!usesTokenPricing && (isPrimary || isFallback)}
                         step={0.000001}
                         type="number"
                         value={pricing.providerCostPerCallUsd}
@@ -594,7 +598,7 @@ export function WebSearchPricingForm({
                       />
                     </td>
                     <td className="px-4 py-3 text-right font-medium">
-                      {preview
+                      {usesTokenPricing ? translate("admin.web_search.allowance.variableCharge", GOOGLE_ALLOWANCE_COPY.variableCharge) : preview
                         ? `₹${formatNumber(preview.customerChargeInr)}`
                         : "—"}
                     </td>

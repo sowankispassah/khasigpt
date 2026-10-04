@@ -1,5 +1,7 @@
 export const GOOGLE_ALLOWANCE_COPY = {
 	title: "Google monthly search allowance",
+	variableCharge: "Based on actual tokens",
+	pricingNote: "In allowance mode, Google Search queries within the free allowance cost $0. Google generation tokens use the rates above and this row's markup. The fixed search-unit price below does not apply in this mode; Serper uses its saved price when selected as fallback.",
 	description:
 		"Choose a fixed primary provider above, or enable Google-first routing with a fallback below. This allowance is separate from Google Places.",
 	enabled: "Use Google first, then switch near its free allowance",
