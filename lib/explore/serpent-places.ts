@@ -20,7 +20,9 @@ const requestBudget = unstable_cache(async () => {
     // Per the provider contract, budgets below roughly a quarter are clamped.
     const floor = Math.max(Math.ceil(maximum / 4), Number.isFinite(minimum) ? minimum : 5);
     if (floor > 40) throw new Error("unsupported_place_limits");
-    const seconds = Math.min(maximum, Math.max(15, floor));
+    // Measured Maps discovery + detail takes about 35–39 s for local queries.
+    // A 15 s cutoff can stop discovery itself, before core records are available.
+    const seconds = Math.min(maximum, Math.max(40, floor));
     console.info("[explore/serpent] Request budget", { maximum, floor, seconds, confirmed: true });
     return seconds;
   } catch {
@@ -28,7 +30,7 @@ const requestBudget = unstable_cache(async () => {
     console.info("[explore/serpent] Request budget", { seconds: 40, confirmed: false });
     return 40;
   }
-}, ["explore-serpent-limits-v1"], { revalidate: 3600 });
+}, ["explore-serpent-limits-v2"], { revalidate: 3600 });
 
 const cachedSearch = unstable_cache(async (query: string, latitude: number, longitude: number) => {
   const key = process.env.SERPENT_API_KEY?.trim();
@@ -40,11 +42,20 @@ const cachedSearch = unstable_cache(async (query: string, latitude: number, long
   endpoint.searchParams.set("country", "in");
   // Search the broad 50 km map view once, then filter distance locally.
   endpoint.searchParams.set("zoom", "9");
-  // End optional enrichment at the shortest supported upstream deadline.
+  // Allow the measured discovery path to complete within our bounded request.
   endpoint.searchParams.set("timeout", String(await requestBudget()));
   const started = Date.now();
   const response = await fetch(endpoint, { headers: { "X-API-Key": key }, cache: "no-store", signal: AbortSignal.timeout(45_000) });
-  if (!response.ok) throw new Error(`Place search returned HTTP ${response.status}.`);
+  if (!response.ok) {
+    const failure = await response.json().catch(() => null);
+    // Log only published machine codes, never provider messages or request data.
+    const knownCodes = ["temporarily_unavailable", "request_timeout", "rate_limit_exceeded", "insufficient_credits", "invalid_parameter", "invalid_api_key", "internal_error"];
+    console.info("[explore/serpent] Maps failed", {
+      elapsedMs: Date.now() - started, status: response.status,
+      code: knownCodes.includes(failure?.code) ? failure.code : "unknown",
+    });
+    throw new Error(`Place search returned HTTP ${response.status}.`);
+  }
   const payload = await response.json();
   const results = parseSerpentPlaces(payload, {
     location: { id: "center", label: "", latitude, longitude, accuracy: null, source: "manual" },
@@ -59,7 +70,7 @@ const cachedSearch = unstable_cache(async (query: string, latitude: number, long
   // An incomplete empty search is not evidence that there are no nearby places.
   if (partial && results.length === 0) throw new Error("place_search_incomplete");
   return results;
-}, ["explore-serpent-quick-v3"], { revalidate: 600 });
+}, ["explore-serpent-quick-v4"], { revalidate: 600 });
 
 const inFlight = new Map<string, ReturnType<typeof cachedSearch>>();
 export async function searchSerpentPlaces(input: ExplorePlacesSearchInput) {

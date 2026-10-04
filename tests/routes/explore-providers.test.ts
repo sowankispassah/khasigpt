@@ -148,7 +148,7 @@ test("Serpent sends server credentials and coordinates to its documented Maps en
   expect(await adapter.searchSerpentPlaces(input)).toEqual([]);
   expect(String(requested)).toContain("https://api.apiserpent.com/api/maps/search/quick?");
   expect(String(requested)).toContain("lat=25.57");
-  expect(new URL(String(requested)).searchParams.get("timeout")).toBe("38");
+  expect(new URL(String(requested)).searchParams.get("timeout")).toBe("40");
   expect(new URL(String(requested)).searchParams.get("zoom")).toBe("9");
   expect(new URL(String(requested)).searchParams.get("q")).toBe("restaurants near shillong, meghalaya");
   expect(headers).toEqual({ "X-API-Key": "private-test-key" });
@@ -215,3 +215,23 @@ test("unavailable Maps limits do not block searches and preserve a bounded reque
   expect(await adapter.searchSerpentPlaces({ categoryQuery:null, location, query:"rice", radiusKm:50 })).toEqual([]);
   expect(budget).toBe("40");
 });
+
+for (const [maximum, expected] of [[45, "40"], [20, "20"]] as const) {
+  test(`Maps discovery budget respects the published ${maximum}s ceiling`, async () => {
+    let requested: URL | null = null;
+    const adapter = load("lib/explore/serpent-places.ts", {
+      "server-only": {}, "next/cache": { unstable_cache: (fn: unknown) => fn },
+      "./serpent-results": { parseSerpentPlaces },
+    }, { SERPENT_API_KEY: "test" }, {
+      fetch: async (url: URL) => {
+        if (String(url).endsWith("/api/status")) return Response.json({ data: { limits: {
+          timeout_param: { min: 5 }, endpoints: { "/api/maps/search/quick": { max_seconds: maximum } },
+        } } });
+        requested = url;
+        return Response.json({ success: true, places: [] });
+      },
+    });
+    await adapter.searchSerpentPlaces({ categoryQuery: null, location, query: "rice", radiusKm: 50 });
+    expect(new URL(String(requested)).searchParams.get("timeout")).toBe(expected);
+  });
+}
