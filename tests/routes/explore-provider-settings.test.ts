@@ -14,8 +14,31 @@ test.beforeAll(async () => {
   const output = await build({ stdin: { contents: "import React from 'react'; import {createRoot} from 'react-dom/client'; import {ExploreProviderSettings} from './components/admin/explore-provider-settings'; createRoot(document.getElementById('root')).render(React.createElement(ExploreProviderSettings));", resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, platform: "browser", jsx: "automatic", define: { "process.env.NODE_ENV": '"test"' }, plugins: [{ name: "admin-context-mocks", setup(plugin: any) { plugin.onResolve({filter:/^@\/components\//},({path: name}: {path:string})=>name in mocks ? {path:name,namespace:"mock"}:undefined); plugin.onLoad({filter:/.*/,namespace:"mock"},({path: name}: {path:string})=>({contents:mocks[name],loader:"js",resolveDir:process.cwd()})); } }] });
   bundle = output.outputFiles[0].text;
 });
+
+test("Serpent option survives a failed save and can be retried without blocking other controls", async ({ page }) => {
+  let fail = true;
+  const configuration = { provider: "serpent", configured: { google: true, serper: true, serpent: true, openstreetmap: true }, googleBudget: parseGoogleBudget(undefined), serpentMapsQuickEnabled: true };
+  await page.route("https://settings.test/**", async (route) => {
+    if (!route.request().url().endsWith("/api/admin/explore/provider")) return route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' });
+    if (route.request().method() === "POST") {
+      if (fail) return route.fulfill({ status: 503, json: { error: "save_failed" } });
+      configuration.serpentMapsQuickEnabled = route.request().postDataJSON().serpentMapsQuickEnabled;
+    }
+    return route.fulfill({ json: configuration });
+  });
+  await page.goto("https://settings.test/"); await page.addScriptTag({ content: bundle });
+  const quick = page.getByRole("checkbox", { name: "Enable Maps Quick", exact: true });
+  await quick.uncheck();
+  await page.getByRole("button", { name: "Save provider", exact: true }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(quick).toBeEnabled(); await expect(quick).not.toBeChecked();
+  await expect(page.getByRole("combobox", { name: "Provider", exact: true })).toBeEnabled();
+  fail = false;
+  await page.getByRole("button", { name: "Save provider", exact: true }).click();
+  await expect(page.getByText("Provider saved. New searches will use this selection.")).toBeVisible();
+});
 test("admin chooses Google with a separate fallback and saves both without exposing keys", async ({page}) => {
-  let configuration = { provider: "serpent", configured: { google:true,serper:true,serpent:true,openstreetmap:true }, googleBudget: parseGoogleBudget(undefined) };
+  let configuration = { provider: "serpent", configured: { google:true,serper:true,serpent:true,openstreetmap:true }, googleBudget: parseGoogleBudget(undefined), serpentMapsQuickEnabled: true };
   const writes: any[] = [];
   await page.route("https://settings.test/**", async (route) => {
     if (route.request().url().endsWith("/api/admin/explore/provider")) {
@@ -25,14 +48,19 @@ test("admin chooses Google with a separate fallback and saves both without expos
   });
   await page.goto("https://settings.test/"); await page.addScriptTag({content:bundle});
   await expect(page.getByRole("combobox",{name:"Provider",exact:true})).toHaveValue("serpent");
+  await expect(page.getByRole("checkbox",{name:"Enable Maps Quick",exact:true})).toBeChecked();
+  await page.getByRole("checkbox",{name:"Enable Maps Quick",exact:true}).uncheck();
   await expect(page.getByRole("combobox",{name:"Fallback provider",exact:true})).toHaveCount(0);
   await page.getByRole("combobox",{name:"Provider",exact:true}).selectOption("google");
   await page.getByRole("checkbox",{name:"Switch provider after Google's free allowance"}).check();
   await page.getByRole("combobox",{name:"Fallback provider",exact:true}).selectOption("serpent");
+  await expect(page.getByRole("checkbox",{name:"Enable Maps Quick",exact:true})).not.toBeChecked();
   await page.getByRole("spinbutton",{name:"Monthly Google search allowance"}).fill("7000");
   await page.getByRole("button",{name:"Save provider",exact:true}).click();
   await expect(page.getByText("Provider saved. New searches will use this selection.")).toBeVisible();
-  expect(writes).toHaveLength(1); expect(writes[0]).toMatchObject({provider:"google",googleBudget:{enabled:true,fallbackProvider:"serpent",searchLimit:7000}});
+  expect(writes).toHaveLength(1); expect(writes[0]).toMatchObject({provider:"google",serpentMapsQuickEnabled:false,googleBudget:{enabled:true,fallbackProvider:"serpent",searchLimit:7000}});
   expect(writes[0].googleBudget.searchUsed).toBeUndefined();
   await expect(page.getByRole("button",{name:"Save provider",exact:true})).toBeDisabled();
+  await page.reload(); await page.addScriptTag({content:bundle});
+  await expect(page.getByRole("checkbox",{name:"Enable Maps Quick",exact:true})).not.toBeChecked();
 });

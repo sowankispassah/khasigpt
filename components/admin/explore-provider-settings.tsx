@@ -8,9 +8,10 @@ import { Button } from "@/components/ui/button";
 import { EXPLORE_FALLBACK_PROVIDERS, type GoogleBudget, googleBillingMonth, parseGoogleBudget } from "@/lib/explore/google-budget-policy";
 import { EXPLORE_PROVIDER_COPY } from "@/lib/explore/provider-copy";
 import { EXPLORE_PROVIDERS, type ExploreProvider } from "@/lib/explore/providers";
+import { parseSerpentMapsQuickEnabled } from "@/lib/explore/serpent-policy";
 
 const names: Record<ExploreProvider, string> = EXPLORE_PROVIDER_COPY;
-type Configuration = { provider: ExploreProvider; configured: Record<ExploreProvider, boolean>; googleBudget: GoogleBudget };
+type Configuration = { provider: ExploreProvider; configured: Record<ExploreProvider, boolean>; googleBudget: GoogleBudget; serpentMapsQuickEnabled?: boolean };
 const endpoint = "/api/admin/explore/provider";
 function Copy({ name, text }: { name: string; text: string }) {
   return <EditableTranslation translationKey={`admin.explore.provider.${name}`} defaultText={text} />;
@@ -20,6 +21,7 @@ export function ExploreProviderSettings() {
   const [configuration, setConfiguration] = useState<Configuration | null>(null);
   const [selected, setSelected] = useState<ExploreProvider>("openstreetmap");
   const [budget, setBudget] = useState<GoogleBudget>(() => parseGoogleBudget(undefined));
+  const [serpentMapsQuickEnabled, setSerpentMapsQuickEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(false);
@@ -32,6 +34,7 @@ export function ExploreProviderSettings() {
       const value: Configuration = await response.json();
       if (signal?.aborted) return;
       setConfiguration(value); setSelected(value.provider); setBudget(value.googleBudget);
+      setSerpentMapsQuickEnabled(parseSerpentMapsQuickEnabled(value.serpentMapsQuickEnabled));
     } catch {
       if (!signal?.aborted) setError(true);
     } finally { if (!signal?.aborted) setLoading(false); }
@@ -41,10 +44,11 @@ export function ExploreProviderSettings() {
     setSaving(true); setError(false); setSaved(false);
     try {
       const { searchUsed: _searchUsed, photoUsed: _photoUsed, ...googleBudget } = budget;
-      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: selected, googleBudget }), signal: AbortSignal.timeout(8_000) });
+      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: selected, googleBudget, serpentMapsQuickEnabled }), signal: AbortSignal.timeout(8_000) });
       if (!response.ok) throw new Error("save_failed");
       const value: Configuration = await response.json();
       setConfiguration(value); setBudget(value.googleBudget); setSaved(true);
+      setSerpentMapsQuickEnabled(parseSerpentMapsQuickEnabled(value.serpentMapsQuickEnabled));
     } catch { setError(true); } finally { setSaving(false); }
   }
   return <section className="rounded-xl border bg-card p-5" aria-busy={loading || saving}>
@@ -56,7 +60,7 @@ export function ExploreProviderSettings() {
         <select id="explore-provider" className="h-10 cursor-pointer rounded-md border bg-background px-3 text-sm" value={selected} disabled={saving} onChange={(event) => { setSelected(event.target.value as ExploreProvider); setSaved(false); }}>
           {EXPLORE_PROVIDERS.map((provider) => <option key={provider} value={provider} disabled={!configuration.configured[provider]}>{translate(`admin.explore.provider.${provider}`, names[provider])}</option>)}
         </select>
-        <Button className="cursor-pointer" disabled={saving || (selected === configuration.provider && JSON.stringify(budget) === JSON.stringify(configuration.googleBudget)) || !configuration.configured[selected] || (selected === "google" && budget.enabled && !configuration.configured[budget.fallbackProvider]) || budget.month !== googleBillingMonth()} onClick={save}>
+        <Button className="cursor-pointer" disabled={saving || (selected === configuration.provider && JSON.stringify(budget) === JSON.stringify(configuration.googleBudget) && serpentMapsQuickEnabled === parseSerpentMapsQuickEnabled(configuration.serpentMapsQuickEnabled)) || !configuration.configured[selected] || (selected === "google" && budget.enabled && !configuration.configured[budget.fallbackProvider]) || budget.month !== googleBillingMonth()} onClick={save}>
           {saving && <Loader2 className="mr-2 size-4 animate-spin" />}<Copy name={saving ? "saving" : "save"} text={saving ? "Saving…" : "Save provider"} />
         </Button>
       </div>
@@ -75,6 +79,14 @@ export function ExploreProviderSettings() {
           <p className="text-sm"><EditableTranslation translationKey="admin.explore.provider.usage_counts" defaultText={EXPLORE_PROVIDER_COPY.usage_counts} values={{ searches: budget.searchUsed, photos: budget.photoUsed, month: budget.month }} /></p>
           <p className="text-muted-foreground text-xs"><Copy name="reservation_note" text={EXPLORE_PROVIDER_COPY.reservation_note} /></p>
         </>}
+      </div>}
+      {(selected === "serpent" || (selected === "google" && budget.enabled && budget.fallbackProvider === "serpent")) && <div className="mt-4 space-y-2 rounded-lg border p-4">
+        <h3 className="font-medium text-sm"><Copy name="serpent_options" text={EXPLORE_PROVIDER_COPY.serpent_options} /></h3>
+        <label aria-label={translate("admin.explore.provider.serpent_maps_quick", EXPLORE_PROVIDER_COPY.serpent_maps_quick)} className="flex cursor-pointer items-center gap-2 text-sm">
+          <input type="checkbox" className="cursor-pointer" checked={serpentMapsQuickEnabled} disabled={saving} onChange={(event) => { setSerpentMapsQuickEnabled(event.target.checked); setSaved(false); }} />
+          <Copy name="serpent_maps_quick" text={EXPLORE_PROVIDER_COPY.serpent_maps_quick} />
+        </label>
+        <p className="text-muted-foreground text-xs"><Copy name="serpent_maps_quick_description" text={EXPLORE_PROVIDER_COPY.serpent_maps_quick_description} /></p>
       </div>}
       <p className="mt-3 text-muted-foreground text-xs"><Copy name="credentials" text="Services without a configured server API key are unavailable. A configured key still requires an active account, sufficient credits, and the appropriate API enabled." /></p>
       <ul className="mt-3 flex flex-wrap gap-3 text-xs">{(["google", "serper", "serpent"] as const).map((provider) => <li key={provider}><Copy name={provider} text={names[provider]} />: <Copy name={configuration.configured[provider] ? "configured" : "missing"} text={configuration.configured[provider] ? "Key configured" : "Key missing"} /></li>)}</ul>

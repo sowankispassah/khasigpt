@@ -9,6 +9,7 @@ import { mergeExploreDetails } from "@/lib/explore/details";
 import * as geo from "@/lib/explore/geo";
 import * as budgetPolicy from "@/lib/explore/google-budget-policy";
 import * as providers from "@/lib/explore/providers";
+import * as serpentPolicy from "@/lib/explore/serpent-policy";
 import { parseSerpentPlaces } from "@/lib/explore/serpent-results";
 import { exploreSearchInputSchema } from "@/lib/explore/validation";
 
@@ -37,6 +38,35 @@ test("missing provider preserves OpenStreetMap and invalid saved selections fail
   expect(providers.exploreProviderConfigured("serper", { SERPER_API_KEY: " " })).toBe(false);
 });
 
+test("Serpent Maps Quick defaults and validation", () => {
+  expect(serpentPolicy.parseSerpentMapsQuickEnabled(undefined)).toBe(true);
+  expect(serpentPolicy.parseSerpentMapsQuickEnabled(false)).toBe(false);
+  expect(() => serpentPolicy.parseSerpentMapsQuickEnabled("false")).toThrow();
+  expect(normalizeAppSettingValueForWrite(serpentPolicy.SERPENT_MAPS_QUICK_SETTING_KEY, false)).toBe(false);
+  expect(() => normalizeAppSettingValueForWrite(serpentPolicy.SERPENT_MAPS_QUICK_SETTING_KEY, null)).toThrow();
+});
+
+for (const fallback of [false, true]) {
+  for (const enabled of [false, true]) {
+    test(`Serpent ${fallback ? "fallback" : "primary"} enforces Maps Quick ${enabled ? "enabled" : "disabled"}`, async () => {
+      const calls: string[] = [];
+      const service = load("lib/explore/places-service.ts", {
+        "server-only": {}, "node:crypto": { createHash }, "@/lib/explore/geo": geo,
+        "@/lib/explore/wikimedia-images": {}, "./google-budget-policy": budgetPolicy,
+        "./provider-config": { getExploreProvider: async () => fallback ? "google" : "serpent", getSerpentMapsQuickEnabled: async () => enabled },
+        "./providers": providers, "./serpent-policy": serpentPolicy,
+        "./google-fallback": { runGoogleWithFallback: (_google: unknown, alternatives: any) => alternatives.serpent() },
+        "./serpent-places": { searchSerpentPlaces: async (input: any) => { calls.push(input.detailMode); return [{ id: "nearby" }]; } },
+        "./serper-places": {}, "./place-images": {},
+      }, { SERPENT_API_KEY: "test", GOOGLE_MAPS_API_KEY: "test" });
+      const input = { location, radiusKm: 50, query: "restaurant", categoryQuery: null };
+      expect(await service.searchExplorePlaces({ ...input, detailMode: "list" })).toMatchObject({ detailsPending: enabled });
+      expect(await service.searchExplorePlaces({ ...input, detailMode: "full" })).toMatchObject({ detailsPending: false });
+      expect(calls).toEqual(enabled ? ["list", "full"] : ["list", "list"]);
+    });
+  }
+}
+
 test("selected provider failures and empty results never dispatch other paid providers", async () => {
   const calls: string[] = [];
   const handlers = Object.fromEntries(providers.EXPLORE_PROVIDERS.map((provider) => [provider, async () => { calls.push(provider); if (provider === "google") throw new Error("HTTP 429"); return []; }])) as Record<providers.ExploreProvider, () => Promise<never[]>>;
@@ -57,18 +87,19 @@ test("Serpent keeps nearby core records, safe photos and source attribution whil
 });
 
 function adminHarness(admin: boolean, env: Record<string, string> = {}) {
+  const savedQuick: unknown[] = [];
   let writes = 0; let reads = 0; const invalidations: unknown[] = [];
   const route = load("app/api/admin/explore/provider/route.ts", {
     "next/cache": { revalidateTag: (...args: unknown[]) => invalidations.push(args) },
     "next/server": { NextResponse: Response }, zod: { z },
     "@/lib/db/queries": { setAppSetting: async () => { writes++; } },
-    "@/lib/explore/provider-config": { EXPLORE_PROVIDER_CACHE_TAG: "explore-provider", readExploreProvider: async () => { reads++; return "openstreetmap"; } },
+    "@/lib/explore/provider-config": { EXPLORE_PROVIDER_CACHE_TAG: "explore-provider", readExploreProvider: async () => { reads++; return "openstreetmap"; }, readSerpentMapsQuickEnabled: async () => true },
     "@/lib/explore/providers": providers,
     "@/lib/explore/google-budget-policy": budgetPolicy,
-    "@/lib/explore/google-budget": { readGoogleBudget: async () => budgetPolicy.parseGoogleBudget(undefined), saveGoogleBudgetAndProvider: async () => { writes++; return budgetPolicy.parseGoogleBudget(undefined); } },
+    "@/lib/explore/google-budget": { readGoogleBudget: async () => budgetPolicy.parseGoogleBudget(undefined), saveGoogleBudgetAndProvider: async (_provider: unknown, _budget: unknown, quick: unknown) => { writes++; savedQuick.push(quick); return budgetPolicy.parseGoogleBudget(undefined); } },
     "@/lib/security/admin-api-auth": { requireAdminApiUser: async () => admin ? { id: "admin" } : null },
   }, env);
-  return { route, writes: () => writes, reads: () => reads, invalidations };
+  return { route, writes: () => writes, reads: () => reads, invalidations, savedQuick };
 }
 const request = (provider: unknown) => new Request("https://example.com/api/admin/explore/provider", { method: "POST", body: JSON.stringify({ provider }) });
 
@@ -104,6 +135,18 @@ test("saving invalidates only the provider cache immediately and never returns s
   expect(response.headers.get("Cache-Control")).toContain("no-store");
 });
 
+test("admin saves Maps Quick disabled and rejects non-booleans", async () => {
+  const h = adminHarness(true, { SERPENT_API_KEY: "private-test-key" });
+  const post = (quick: unknown) => new Request("https://example.com/api/admin/explore/provider", { method: "POST", body: JSON.stringify({ provider: "serpent", serpentMapsQuickEnabled: quick }) });
+  expect((await h.route.POST(post("false"))).status).toBe(400);
+  expect(h.writes()).toBe(0);
+  const response = await h.route.POST(post(false));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ provider: "serpent", serpentMapsQuickEnabled: false });
+  expect(h.savedQuick).toEqual([false]);
+  expect(h.invalidations).toEqual([["explore-provider", { expire: 0 }]]);
+});
+
 test("Google retrieves photos beyond the first six, avoids out-of-radius charges and isolates photo failures", async () => {
   const photoCalls: string[] = [];
   let searches = 0;
@@ -112,6 +155,7 @@ test("Google retrieves photos beyond the first six, avoids out-of-radius charges
     "@/lib/explore/geo": geo,
     "@/lib/explore/wikimedia-images": {},
     "./provider-config": { getExploreProvider: async () => "google" },
+    "./serpent-policy": serpentPolicy,
     "./providers": providers,
     "./google-budget-policy": budgetPolicy,
     "./google-fallback": { runGoogleWithFallback: (google: () => Promise<unknown>) => google() },

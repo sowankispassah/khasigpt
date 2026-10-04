@@ -19,9 +19,10 @@ import {
 import { GoogleQuotaError } from "./google-budget-policy";
 import { runGoogleWithFallback } from "./google-fallback";
 import { addExplorePlaceImages } from "./place-images";
-import { getExploreProvider } from "./provider-config";
+import { getExploreProvider, getSerpentMapsQuickEnabled } from "./provider-config";
 import { dispatchExploreProvider, exploreProviderConfigured } from "./providers";
 import { searchSerpentPlaces } from "./serpent-places";
+import { serpentDetailPolicy } from "./serpent-policy";
 import { searchSerperPlaces } from "./serper-places";
 
 const GOOGLE_TEXT_SEARCH_URL =
@@ -528,8 +529,9 @@ export async function searchExplorePlaces(input: ExplorePlacesSearchInput) {
   const alternatives = {
     serper,
     serpent: async () => {
-      const results = await searchSerpentPlaces(input);
-      return { results, source: "google_maps", detailsPending: input.detailMode === "list" && results.length > 0 };
+      const policy = serpentDetailPolicy(await getSerpentMapsQuickEnabled(), input.detailMode);
+      const results = await searchSerpentPlaces({ ...input, detailMode: policy.detailMode });
+      return { results, source: "google_maps", detailsPending: policy.detailsPending && results.length > 0 };
     },
     openstreetmap: async () => ({ results: await searchOverpass(input), source: "openstreetmap" }),
   };
