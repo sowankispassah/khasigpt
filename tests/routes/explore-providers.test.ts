@@ -141,10 +141,39 @@ test("Serpent sends server credentials and coordinates to its documented Maps en
   });
   const input = { categoryQuery: null, location, query: "restaurants", radiusKm: 5 };
   expect(await adapter.searchSerpentPlaces(input)).toEqual([]);
-  expect(String(requested)).toContain("https://apiserpent.com/api/maps/search/quick?");
+  expect(String(requested)).toContain("https://api.apiserpent.com/api/maps/search/quick?");
   expect(String(requested)).toContain("lat=25.57");
+  expect(new URL(String(requested)).searchParams.get("timeout")).toBe("15");
+  expect(new URL(String(requested)).searchParams.get("zoom")).toBe("9");
   expect(headers).toEqual({ "X-API-Key": "private-test-key" });
   expect(String(requested)).not.toContain("private-test-key");
   status = 402;
   await expect(adapter.searchSerpentPlaces(input)).rejects.toThrow("HTTP 402");
+});
+
+
+test("Serpent coalesces concurrent radius requests and keeps partial core results nearest first", async () => {
+  let calls = 0;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const adapter = load("lib/explore/serpent-places.ts", {
+    "server-only": {}, "next/cache": { unstable_cache: (fn: unknown) => fn },
+    "./serpent-results": { parseSerpentPlaces },
+  }, { SERPENT_API_KEY: "test" }, {
+    fetch: async () => {
+      calls++;
+      await gate;
+      return Response.json({ success: true, meta: { partial: true }, places: [
+        { place_id: "far", name: "Far", coordinates: { latitude:25.7, longitude:91.88 }, detail_status:"core_only" },
+        { place_id: "near", name: "Near", coordinates:location, detail_status:"core_only" },
+      ] });
+    },
+  });
+  const input = { categoryQuery: null, location, query:"rice", radiusKm:50 };
+  const broad = adapter.searchSerpentPlaces(input);
+  const narrow = adapter.searchSerpentPlaces({ ...input, radiusKm:1 });
+  release();
+  expect((await broad).map((p: any) => p.name)).toEqual(["Near", "Far"]);
+  expect((await narrow).map((p: any) => p.name)).toEqual(["Near"]);
+  expect(calls).toBe(1);
 });

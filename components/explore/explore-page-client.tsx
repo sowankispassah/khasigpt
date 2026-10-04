@@ -59,13 +59,7 @@ type SearchSelection = {
   subcategoryId: string | null;
 };
 
-type StoredExploreSession = {
-  categoryId: string | null;
-  location: ExploreLocationInput;
-  query: string;
-  radiusKm: number;
-  subcategoryId: string | null;
-};
+type StoredExploreSession = { location: ExploreLocationInput; };
 
 function DynamicIcon({
   name,
@@ -96,23 +90,8 @@ function parseStoredSession(value: string | null): StoredExploreSession | null {
   if (!value) return null;
   try {
     const parsed = JSON.parse(value) as Partial<StoredExploreSession>;
-    if (
-      !isExploreLocation(parsed.location) ||
-      !Number.isInteger(parsed.radiusKm) ||
-      (parsed.radiusKm ?? 0) < 1 ||
-      (parsed.radiusKm ?? 0) > 50
-    ) {
-      return null;
-    }
-    return {
-      categoryId:
-        typeof parsed.categoryId === "string" ? parsed.categoryId : null,
-      location: parsed.location,
-      query: typeof parsed.query === "string" ? parsed.query : "",
-      radiusKm: parsed.radiusKm as number,
-      subcategoryId:
-        typeof parsed.subcategoryId === "string" ? parsed.subcategoryId : null,
-    };
+    if (!isExploreLocation(parsed.location)) return null;
+    return { location: parsed.location };
   } catch {
     return null;
   }
@@ -160,7 +139,7 @@ export function ExplorePageClient({
   >("choose");
   const [sessionRestored, setSessionRestored] = useState(false);
   const [manualLocation, setManualLocation] = useState("");
-  const [radiusKm, setRadiusKm] = useState(10);
+  const [radiusKm, setRadiusKm] = useState(50);
   const [locationPending, setLocationPending] = useState(false);
   const [manualPending, setManualPending] = useState(false);
   const [searchPending, setSearchPending] = useState(false);
@@ -170,7 +149,15 @@ export function ExplorePageClient({
   >("search");
   const [error, setError] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
-  const [response, setResponse] = useState<ExploreSearchResponse | null>(null);
+  const [broadResponse, setResponse] = useState<ExploreSearchResponse | null>(null);
+  // Keep the full fetched radius; slider changes are local and never bill a search.
+  const response = useMemo(() => broadResponse ? {
+    ...broadResponse,
+    radiusKm,
+    answer: radiusKm === broadResponse.radiusKm ? broadResponse.answer : "",
+    results: broadResponse.results.filter((item) => item.distanceKm <= radiusKm + 0.05)
+      .sort((first, second) => first.distanceKm - second.distanceKm),
+  } : null, [broadResponse, radiusKm]);
   const [visibleResultCount, setVisibleResultCount] =
     useState(RESULTS_PAGE_SIZE);
   const [lastSearch, setLastSearch] = useState<SearchSelection | null>(null);
@@ -196,8 +183,7 @@ export function ExplorePageClient({
   const requestedSearchKeyRef = useRef<string | null>(null);
   const chatIdRef = useRef<string | null>(null);
   const locationContextKeyRef = useRef<string | null>(null);
-  const restoredSearchRef = useRef<SearchSelection | null>(null);
-  const previousRadiusRef = useRef(radiusKm);
+
 
   const selectedCategory = useMemo(
     () => categories.find((item) => item.id === selectedCategoryId) ?? null,
@@ -217,15 +203,7 @@ export function ExplorePageClient({
     );
     if (stored) {
       setLocation(stored.location);
-      setRadiusKm(stored.radiusKm);
-      setSelectedCategoryId(stored.categoryId);
-      setSelectedSubcategoryId(stored.subcategoryId);
-      setQuery(stored.query);
-      restoredSearchRef.current = {
-        categoryId: stored.categoryId,
-        query: stored.query || DISCOVERY_QUERY,
-        subcategoryId: stored.subcategoryId,
-      };
+
     }
     setSessionRestored(true);
   }, []);
@@ -245,22 +223,9 @@ export function ExplorePageClient({
     }
     window.sessionStorage.setItem(
       EXPLORE_SESSION_STORAGE_KEY,
-      JSON.stringify({
-        categoryId: selectedCategoryId,
-        location,
-        query,
-        radiusKm,
-        subcategoryId: selectedSubcategoryId,
-      } satisfies StoredExploreSession),
+      JSON.stringify({ location } satisfies StoredExploreSession),
     );
-  }, [
-    location,
-    query,
-    radiusKm,
-    selectedCategoryId,
-    selectedSubcategoryId,
-    sessionRestored,
-  ]);
+  }, [location, sessionRestored]);
 
   const refreshCategories = async () => {
     setError(null);
@@ -303,7 +268,7 @@ export function ExplorePageClient({
         locationId: location.id,
         longitude: location.longitude,
         query: normalized,
-        radiusKm: requestedRadius,
+        radiusKm: 50,
         subcategoryId: selection.subcategoryId,
       });
       if (
@@ -341,7 +306,7 @@ export function ExplorePageClient({
               previousResponse?.locationContextKey ??
               locationContextKeyRef.current,
             location,
-            radiusKm: requestedRadius,
+            radiusKm: 50,
             searchMode: mode === "search" ? "enriched" : "places_only",
           }),
           signal: controller.signal,
@@ -365,7 +330,7 @@ export function ExplorePageClient({
           currentRequestIdRef.current !== requestId ||
           body.clientRequestId !== requestId ||
           body.location.id !== location.id ||
-          body.radiusKm !== requestedRadius
+          body.radiusKm !== 50
         ) {
           return;
         }
@@ -398,18 +363,11 @@ export function ExplorePageClient({
     [location, radiusKm, response, searchPending, translate],
   );
 
-  const runSearchRef = useRef(runSearch);
-  useEffect(() => {
-    runSearchRef.current = runSearch;
-  }, [runSearch]);
+
 
   useEffect(() => {
     if (!(sessionRestored && location) || lastSearch || searchPending) return;
-    const restored = restoredSearchRef.current;
-    restoredSearchRef.current = null;
-    const selection =
-      restored ??
-      ({
+    const selection = ({
         categoryId: null,
         query: DISCOVERY_QUERY,
         subcategoryId: null,
@@ -417,42 +375,17 @@ export function ExplorePageClient({
     setLastSearch(selection);
     void runSearch({
       selection,
-      mode: restored ? "initial" : "location",
+      mode: "location",
     });
   }, [lastSearch, location, runSearch, searchPending, sessionRestored]);
 
+  // Reset pagination and selection when the visible radius changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: radius is the reset trigger.
   useEffect(() => {
-    if (previousRadiusRef.current === radiusKm) return;
-    previousRadiusRef.current = radiusKm;
-    if (!(location && lastSearch)) return;
-    const expectedKey = createExploreSearchKey({
-      categoryId: lastSearch.categoryId,
-      latitude: location.latitude,
-      locationId: location.id,
-      longitude: location.longitude,
-      query: lastSearch.query,
-      radiusKm,
-      subcategoryId: lastSearch.subcategoryId,
-    });
-    if (expectedKey === requestedSearchKeyRef.current) {
-      setRadiusDebouncing(false);
-      return;
-    }
-    abortRef.current?.abort();
-    currentRequestIdRef.current = null;
-    setResponse(null);
-    setError(null);
-    setRadiusDebouncing(true);
-    setLoadingMode("radius");
-    const timeout = window.setTimeout(() => {
-      void runSearchRef.current({
-        selection: lastSearch,
-        radiusOverride: radiusKm,
-        mode: "radius",
-      });
-    }, 650);
-    return () => window.clearTimeout(timeout);
-  }, [lastSearch, location, radiusKm]);
+    setVisibleResultCount(RESULTS_PAGE_SIZE);
+    setDetail(null);
+  }, [radiusKm]);
+
 
   useEffect(
     () => () => {
@@ -467,12 +400,13 @@ export function ExplorePageClient({
     requestedSearchKeyRef.current = null;
     chatIdRef.current = null;
     locationContextKeyRef.current = null;
-    restoredSearchRef.current = null;
     setResponse(null);
     setLastSearch(null);
     setSelectedCategoryId(null);
     setSelectedSubcategoryId(null);
     setQuery("");
+    setRadiusKm(50);
+    setSearchPending(false);
     setDetail(null);
     setError(null);
     setLocationError(null);

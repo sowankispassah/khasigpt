@@ -48,7 +48,7 @@ async function mountExplore(page: Page) {
       await route.fulfill({json:{
         answer:`Results for ${body.radiusKm} km`, category:null, chatId:"chat-test",
         clientRequestId:body.clientRequestId, location, locationContextKey:"test-context",
-        radiusKm:body.radiusKm, results:[], searchQueries:[], searchMode:body.searchMode,
+        radiusKm:body.radiusKm, results:[25,1,49].map(distanceKm => ({id:`place-${distanceKm}`,name:`Place ${distanceKm}`,distanceKm,distance:`${distanceKm} km`,sourceUrl:"https://example.com",attributions:[]})), searchQueries:[], searchMode:body.searchMode,
       }});
       return;
     }
@@ -57,29 +57,28 @@ async function mountExplore(page: Page) {
   await page.goto("https://explore.test/");
   await page.evaluate((selectedLocation) => sessionStorage.setItem("explore.locationSession.v2",JSON.stringify({location:selectedLocation,query:"restaurant",radiusKm:10,categoryId:null,subcategoryId:null})),location);
   await page.addScriptTag({content:bundle});
-  await expect(page.getByText("Results for 10 km", {exact:false})).toBeVisible();
+  await expect(page.getByText("Results for 50 km", {exact:false})).toBeVisible();
   expect(requests).toHaveLength(1);
   return requests;
 }
 
-test("radius refresh completes after results and state updates rerender the component", async ({page}) => {
-  const requests = await mountExplore(page);
-  const slider = page.getByRole("slider",{name:"Search radius",exact:true});
-  for (const radius of [9,8,7]) {
-    await slider.press("ArrowLeft");
-    await expect(page.getByText(`Results for ${radius} km`,{exact:false})).toBeVisible({timeout:3000});
-    await expect(page.getByText("Updating results...",{exact:true})).toHaveCount(0);
-  }
-  expect(requests.map(request => request.radiusKm)).toEqual([10,9,8,7]);
-  expect(requests.every(request => request.searchMode === "places_only")).toBe(true);
-});
 
-test("rapid slider changes send one request for the final radius", async ({page}) => {
+test("revisit ignores saved keyword and radius, and narrowing filters nearest first without a search", async ({page}) => {
   const requests = await mountExplore(page);
   const slider = page.getByRole("slider",{name:"Search radius",exact:true});
+  await expect(slider).toHaveValue("50");
+  await expect(page.getByPlaceholder("Search restaurants, shops, businesses, events, places...")).toHaveValue("");
+  const names = page.locator("h3");
+  expect(await names.allTextContents()).toEqual(["Place 1","Place 25","Place 49"]);
   await slider.press("ArrowLeft");
   await slider.press("ArrowLeft");
-  await slider.press("ArrowLeft");
-  await expect(page.getByText("Results for 7 km",{exact:false})).toBeVisible({timeout:3000});
-  expect(requests.map(request => request.radiusKm)).toEqual([10,7]);
+  await expect(page.getByText("Place 49",{exact:true})).toHaveCount(0);
+  await expect(page.getByText("Place 25",{exact:true})).toBeVisible();
+  expect(requests.map(request => request.radiusKm)).toEqual([50]);
+  await page.reload();
+  await page.addScriptTag({content:bundle});
+  await expect(slider).toHaveValue("50");
+  await expect(page.getByPlaceholder("Search restaurants, shops, businesses, events, places...")).toHaveValue("");
+  await expect(page.getByText("Place 49",{exact:true})).toBeVisible();
+  expect(requests.map(request => request.radiusKm)).toEqual([50,50]);
 });
