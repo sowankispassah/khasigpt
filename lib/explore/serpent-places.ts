@@ -23,13 +23,24 @@ const cachedSearch = unstable_cache(async (query: string, latitude: number, long
     location: { id: "center", label: "", latitude, longitude, accuracy: null, source: "manual" },
     radiusKm: 50,
   });
-  console.info("[explore/serpent] Maps completed", { elapsedMs: Date.now() - started, returned: results.length, partial: payload.meta?.partial === true || payload.meta?.partialResults === true });
+  const partial = payload.meta?.partial === true || payload.meta?.partialResults === true;
+  console.info("[explore/serpent] Maps completed", {
+    elapsedMs: Date.now() - started, returned: results.length, partial,
+    discovered: Number.isSafeInteger(payload.counts?.discovered) ? payload.counts.discovered : undefined,
+    delivered: Number.isSafeInteger(payload.counts?.returned) ? payload.counts.returned : undefined,
+  });
+  // An incomplete empty search is not evidence that there are no nearby places.
+  if (partial && results.length === 0) throw new Error("place_search_incomplete");
   return results;
 }, ["explore-serpent-quick-v2"], { revalidate: 600 });
 
 const inFlight = new Map<string, ReturnType<typeof cachedSearch>>();
 export async function searchSerpentPlaces(input: ExplorePlacesSearchInput) {
-  const query = [input.categoryQuery, input.query].filter(Boolean).join(" ").trim().toLocaleLowerCase() || "places to visit";
+  const searchTerm = input.query === "Nearby places, businesses, food, services, attractions and activities"
+    ? "places to visit" : input.query;
+  // Maps viewport bias is not a location restriction: anchor ambiguous words to the town.
+  const query = [input.categoryQuery, searchTerm, `near ${input.location.label}`]
+    .filter(Boolean).join(" ").trim().toLocaleLowerCase();
   const { latitude, longitude } = input.location;
   const identity = JSON.stringify([query, latitude, longitude]);
   let pending = inFlight.get(identity);

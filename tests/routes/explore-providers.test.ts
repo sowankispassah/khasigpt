@@ -145,10 +145,25 @@ test("Serpent sends server credentials and coordinates to its documented Maps en
   expect(String(requested)).toContain("lat=25.57");
   expect(new URL(String(requested)).searchParams.get("timeout")).toBe("15");
   expect(new URL(String(requested)).searchParams.get("zoom")).toBe("9");
+  expect(new URL(String(requested)).searchParams.get("q")).toBe("restaurants near shillong, meghalaya");
   expect(headers).toEqual({ "X-API-Key": "private-test-key" });
   expect(String(requested)).not.toContain("private-test-key");
   status = 402;
   await expect(adapter.searchSerpentPlaces(input)).rejects.toThrow("HTTP 402");
+});
+
+test("Serpent incomplete empty responses fail explicitly and remain retryable", async () => {
+  let calls = 0;
+  const adapter = load("lib/explore/serpent-places.ts", {
+    "server-only": {}, "next/cache": { unstable_cache: (fn: unknown) => fn },
+    "./serpent-results": { parseSerpentPlaces },
+  }, { SERPENT_API_KEY: "test" }, {
+    fetch: async () => { calls++; return Response.json({ success: true, meta: { partial: true }, places: [] }); },
+  });
+  const input = { categoryQuery: null, location, query: "rice", radiusKm: 50 };
+  await expect(adapter.searchSerpentPlaces(input)).rejects.toThrow("place_search_incomplete");
+  await expect(adapter.searchSerpentPlaces(input)).rejects.toThrow("place_search_incomplete");
+  expect(calls).toBe(2);
 });
 
 
