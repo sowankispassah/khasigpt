@@ -18,7 +18,6 @@ import {
 import {
   appSettingCacheTagForKey,
   createLiteAuditLogEntry,
-  setLiteAppSetting,
 } from "@/lib/db/app-settings-lite";
 import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 import { withTimeout } from "@/lib/utils/async";
@@ -26,6 +25,7 @@ import {
   WEB_SEARCH_CONFIG_CACHE_TAG,
   WEB_SEARCH_SETTING_KEYS,
 } from "@/lib/web-search/config";
+import { readGoogleSearchAllowance, saveGoogleSearchAllowance } from "@/lib/web-search/google-allowance";
 import {
   type BillableWebSearchProvider,
   hasValidWebSearchProviderCosts,
@@ -135,6 +135,12 @@ export async function POST(request: NextRequest) {
       parsedProviderPricing[providerKey]?.providerCostPerCallUsd ?? 0,
     ])
   ) as Record<BillableWebSearchProvider, number>;
+  let googleAllowance: Awaited<ReturnType<typeof readGoogleSearchAllowance>>;
+  try { googleAllowance = await readGoogleSearchAllowance(); }
+  catch { return NextResponse.json({ error: "configuration_unavailable" }, { status: 503, headers: { "Cache-Control": "no-store" } }); }
+  const googleAllowanceEnabled = googleAllowance.enabled && provider === "gemini_grounding";
+  const { used: _used, reserved: _reserved, ...googleAllowanceInput } = googleAllowance;
+  if (googleAllowanceEnabled && fallbackProvider !== "serper" && fallbackProvider !== "disabled") return NextResponse.json({ error: "invalid_value" }, { status: 400 });
   if (
     maxCalls === null ||
     !pricingRowsAreValid ||
@@ -142,6 +148,7 @@ export async function POST(request: NextRequest) {
       fallbackProvider: fallbackProvider as WebSearchProvider,
       provider: provider as WebSearchProvider,
       providerCostPerCallUsd,
+      googleAllowanceEnabled,
     })
   ) {
     return NextResponse.json(
@@ -191,11 +198,7 @@ export async function POST(request: NextRequest) {
 
   try {
     await withTimeout(
-      Promise.all(
-        Object.entries(values).map(([key, value]) =>
-          setLiteAppSetting({ key, value })
-        )
-      ),
+      saveGoogleSearchAllowance({ ...googleAllowanceInput, enabled: googleAllowanceEnabled, fallbackProvider: fallbackProvider === "serper" ? "serper" : "disabled" }, values),
       WRITE_TIMEOUT_MS
     );
 

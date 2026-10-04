@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { PricingPreviewContext } from "@/app/(admin)/admin/pricing/cost-plus-pricing-fields";
+import { GoogleSearchAllowanceSettings } from "@/components/admin/google-search-allowance-settings";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
 import { toast } from "@/components/toast";
@@ -93,6 +94,8 @@ export function WebSearchPricingForm({
 }) {
   const { translate } = useTranslation();
   const [provider, setProvider] = useState(config.provider);
+  const [googleAllowanceEnabled, setGoogleAllowanceEnabled] = useState(config.googleAllowanceEnabled ?? false);
+  const [allowanceRefresh, setAllowanceRefresh] = useState(0);
   const [fallbackProvider, setFallbackProvider] = useState(
     config.fallbackProvider
   );
@@ -165,6 +168,7 @@ export function WebSearchPricingForm({
       fallbackProvider,
       provider,
       providerCostPerCallUsd: numericProviderCosts,
+      googleAllowanceEnabled,
     }) &&
     BILLABLE_PROVIDER_ROWS.every(({ value }) => {
       const markup = Number(providerPricing[value].markupMultiplier);
@@ -255,6 +259,8 @@ export function WebSearchPricingForm({
           "Web Search settings saved."
         ),
       });
+      if (provider !== "gemini_grounding") setGoogleAllowanceEnabled(false);
+      setAllowanceRefresh((current) => current + 1);
     } catch (error) {
       toast({
         type: "error",
@@ -387,6 +393,7 @@ export function WebSearchPricingForm({
           </label>
         ))}
       </div>
+      <GoogleSearchAllowanceSettings refreshToken={allowanceRefresh} onSaved={(allowance) => { setGoogleAllowanceEnabled(allowance.enabled); if (allowance.enabled) { setProvider("gemini_grounding"); setFallbackProvider(allowance.fallbackProvider); } }} />
 
       <label className="flex max-w-xl flex-col gap-2 text-sm">
         <span className="font-medium">

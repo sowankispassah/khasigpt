@@ -180,6 +180,8 @@ import {
   resolveCurrentInfoDecision,
   resolveWebSearchQuery,
 } from "@/lib/web-search/detection";
+import { GoogleSearchAllowanceError } from "@/lib/web-search/google-allowance-policy";
+import type { GroundingAdmission } from "@/lib/web-search/google-allowance-runner";
 import { mergeSemanticWebSearchDecision } from "@/lib/web-search/semantic-routing";
 import { webSearchService } from "@/lib/web-search/service";
 import type {
@@ -3330,20 +3332,20 @@ export async function POST(request: Request) {
         ]
           .filter(Boolean)
           .join("\n\n");
-        const reserveSearch = (provider: typeof webSearchConfig.provider) => {
+        const reserveSearch = (provider: typeof webSearchConfig.provider, groundingAdmission?: GroundingAdmission) => {
           if (!generationPricing || !generationLease) return;
           if (provider === "disabled") throw new ChatSDKError("bad_request:configuration");
           const required = searchCreditAllowance({ provider, shopping: webSearchDecision.hasShoppingIntent,
             costPerCallUsd: webSearchConfig.providerCostPerCallUsd[provider],
-            markup: webSearchConfig.providerMarkupMultiplier[provider], pricing: generationPricing });
+            markup: webSearchConfig.providerMarkupMultiplier[provider], pricing: generationPricing, groundingAdmission });
           if (reservedSearchCredits + required >= generationLease.balance) throw new ChatSDKError("payment_required:credits");
           reservedSearchCredits += required;
         };
         let attemptedProvider = webSearchConfig.provider;
 
         try {
-          reserveSearch(attemptedProvider);
           webSearchAnswer = await webSearchService.answerWithSearch({
+            beforeProviderCall: (admission) => reserveSearch(attemptedProvider, admission),
             conversationContext,
             includeNews: newsSearchRequest,
             includeProducts: webSearchDecision.hasShoppingIntent,
@@ -3358,7 +3360,7 @@ export async function POST(request: Request) {
             primaryError instanceof Error
               ? primaryError.message.slice(0, 500)
               : "primary_provider_failed";
-          const fallbackProvider = webSearchConfig.fallbackProvider;
+          const fallbackProvider = primaryError instanceof GoogleSearchAllowanceError ? primaryError.fallbackProvider : webSearchConfig.fallbackProvider;
           if (
             fallbackProvider !== "disabled" &&
             fallbackProvider !== attemptedProvider &&
@@ -3366,8 +3368,8 @@ export async function POST(request: Request) {
           ) {
             attemptedProvider = fallbackProvider;
             try {
-              reserveSearch(fallbackProvider);
               webSearchAnswer = await webSearchService.answerWithSearch({
+                beforeProviderCall: (admission) => reserveSearch(fallbackProvider, admission),
                 conversationContext,
                 includeNews: newsSearchRequest,
                 includeProducts: webSearchDecision.hasShoppingIntent,
@@ -3730,7 +3732,7 @@ export async function POST(request: Request) {
                     {
                       category: "web_search",
                       providerKey: searchProvider,
-                      providerCostPerUnitUsd: searchCostPerCallUsd,
+                      providerCostPerUnitUsd: webSearchAnswer.billableProviderCostUsd ?? webSearchAnswer.providerCostUsd ?? searchCostPerCallUsd,
                       unitCount: webSearchAnswer.providerBillingUnitCount,
                       markupMultiplier:
                         webSearchConfig.providerMarkupMultiplier[
@@ -3741,6 +3743,8 @@ export async function POST(request: Request) {
                           webSearchAnswer.providerBillingUnitCount,
                         searchCallCount: webSearchAnswer.searchCallCount,
                         sourceCount: webSearchAnswer.sources.length,
+                        actualProviderCostUsd: webSearchAnswer.providerCostUsd,
+                        billableProviderCostUsd: webSearchAnswer.billableProviderCostUsd,
                       },
                     },
                   ]

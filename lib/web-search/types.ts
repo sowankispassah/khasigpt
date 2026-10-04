@@ -71,6 +71,10 @@ export type WebSearchAnswer = {
   citations: WebSearchCitation[];
   searchCallCount: number;
   providerBillingUnitCount: number;
+  /** Server-only aggregate: Google generation plus any paid grounding queries. */
+  providerCostUsd?: number;
+  /** Customer charges cannot exceed the amount admitted before the search. */
+  billableProviderCostUsd?: number;
   usage: WebSearchUsageMetadata;
 };
 
@@ -78,6 +82,7 @@ export type WebSearchConfig = {
   accessMode: "disabled" | "admin_only" | "enabled";
   provider: WebSearchProvider;
   fallbackProvider: WebSearchProvider;
+  googleAllowanceEnabled?: boolean;
   enabledWeb: boolean;
   enabledNative: boolean;
   freeUsersEnabled: boolean;

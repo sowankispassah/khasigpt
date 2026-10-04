@@ -46,6 +46,7 @@ import {
   isWebSearchAllowedForUser,
   loadWebSearchConfig,
 } from "@/lib/web-search/config";
+import { GoogleSearchAllowanceError } from "@/lib/web-search/google-allowance-policy";
 import { webSearchService } from "@/lib/web-search/service";
 import type { WebSearchAnswer } from "@/lib/web-search/types";
 
@@ -347,19 +348,19 @@ export async function POST(request: Request) {
       generationLease = hasCredits ? await acquirePaidGenerationForUser(auth.user.id) : null;
       const generationPricing = generationLease ? await getTextGenerationPricing(model.id) : undefined;
       let reservedCredits = 0;
-      const reserveSearch = (provider: typeof config.provider) => {
+      const reserveSearch = (provider: typeof config.provider, groundingAdmission?: import("@/lib/web-search/google-allowance-runner").GroundingAdmission) => {
         if (!generationLease || !generationPricing) return;
         if (provider === "disabled") throw new ChatSDKError("bad_request:configuration");
         const required = searchCreditAllowance({ provider, costPerCallUsd: config.providerCostPerCallUsd[provider],
-          markup: config.providerMarkupMultiplier[provider], pricing: generationPricing });
+          markup: config.providerMarkupMultiplier[provider], pricing: generationPricing, groundingAdmission });
         if (reservedCredits + required > generationLease.balance) throw new ChatSDKError("payment_required:credits");
         reservedCredits += required;
       };
       let attemptedProvider = config.provider;
       let providerError: unknown = null;
       try {
-        reserveSearch(config.provider);
         answer = await webSearchService.answerWithSearch({
+          beforeProviderCall: (admission) => reserveSearch(config.provider, admission),
           conversationContext,
           maxSearches: config.maxCalls,
           model: model.providerModelId,
@@ -368,19 +369,20 @@ export async function POST(request: Request) {
         });
       } catch (primaryError) {
         providerError = primaryError;
+        const fallbackProvider = primaryError instanceof GoogleSearchAllowanceError ? primaryError.fallbackProvider : config.fallbackProvider;
         if (
-          config.fallbackProvider !== "disabled" &&
-          config.fallbackProvider !== config.provider &&
-          hasWebSearchProviderPricing(config, config.fallbackProvider)
+          fallbackProvider !== "disabled" &&
+          fallbackProvider !== config.provider &&
+          hasWebSearchProviderPricing(config, fallbackProvider)
         ) {
-          attemptedProvider = config.fallbackProvider;
+          attemptedProvider = fallbackProvider;
           try {
-            reserveSearch(config.fallbackProvider);
             answer = await webSearchService.answerWithSearch({
+              beforeProviderCall: (admission) => reserveSearch(fallbackProvider, admission),
               conversationContext,
               maxSearches: config.maxCalls,
               model: model.providerModelId,
-              provider: config.fallbackProvider,
+              provider: fallbackProvider,
               userMessage: providerQuery,
             });
             providerError = null;
@@ -415,7 +417,7 @@ export async function POST(request: Request) {
                     {
                       category: "web_search",
                       providerKey: searchProvider,
-                      providerCostPerUnitUsd,
+                      providerCostPerUnitUsd: answer.billableProviderCostUsd ?? answer.providerCostUsd ?? providerCostPerUnitUsd,
                       unitCount: answer.providerBillingUnitCount,
                       markupMultiplier:
                         config.providerMarkupMultiplier[searchProvider],
@@ -424,6 +426,8 @@ export async function POST(request: Request) {
                           answer.providerBillingUnitCount,
                         searchCallCount: answer.searchCallCount,
                         sourceCount: answer.sources.length,
+                        actualProviderCostUsd: answer.providerCostUsd,
+                        billableProviderCostUsd: answer.billableProviderCostUsd,
                       },
                     },
                   ]

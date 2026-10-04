@@ -1,6 +1,8 @@
 import "server-only";
 
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
+import { GOOGLE_SEARCH_OUTPUT_LIMIT } from "./google-allowance-policy";
+import { finishGoogleGrounding, type GroundingAdmission, prepareGoogleGrounding } from "./google-allowance-runner";
 import { enrichNewsStories } from "./news-enrichment";
 import { buildSerperNewsGrounding, parseSerperNewsResults } from "./news-results";
 import { getWebSearchProviderBillingUnitCount } from "./pricing";
@@ -162,6 +164,7 @@ async function answerWithGeminiGrounding({
   maxSearches,
   model,
   userMessage,
+  beforeProviderCall,
 }: {
   conversationContext?: string;
   includeVideos: boolean;
@@ -169,6 +172,7 @@ async function answerWithGeminiGrounding({
   maxSearches: number;
   model: string;
   userMessage: string;
+  beforeProviderCall?: (admission?: GroundingAdmission) => void;
 }): Promise<WebSearchAnswer> {
   const apiKey = process.env.GOOGLE_API_KEY?.trim();
   if (!apiKey) {
@@ -202,13 +206,22 @@ async function answerWithGeminiGrounding({
     .filter(Boolean)
     .join("\n\n");
 
+  const allowanceAttempt = await prepareGoogleGrounding(prompt, beforeProviderCall);
   const response = await ai.models.generateContent({
-    model: resolveGeminiModel(model),
+    model: allowanceAttempt?.policy.model ?? resolveGeminiModel(model),
     contents: prompt,
     config: {
       tools: [{ googleSearch: {} }],
+      httpOptions: { timeout: 20_000, retryOptions: { attempts: 1 } },
+      ...(allowanceAttempt ? { maxOutputTokens: GOOGLE_SEARCH_OUTPUT_LIMIT, thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } : {}),
     },
   });
+  const metadata = getGroundingMetadata(response);
+  const searchQueries = Array.from(new Set((metadata?.webSearchQueries ?? []).filter((query): query is string => typeof query === "string" && query.trim().length > 0).map((query) => query.trim())));
+  const usageMetadata = response.usageMetadata;
+  const inputTokens = usageMetadata?.promptTokenCount ?? 0;
+  const outputTokens = (usageMetadata?.candidatesTokenCount ?? 0) + (usageMetadata?.thoughtsTokenCount ?? 0);
+  const providerCostUsd = allowanceAttempt ? await finishGoogleGrounding(allowanceAttempt, Array.isArray(metadata?.webSearchQueries) ? searchQueries.length : null, inputTokens, outputTokens) : undefined;
   const rawAnswer = response.text?.trim() ?? "";
   if (!rawAnswer) {
     throw new Error("Gemini web search returned an empty answer.");
@@ -221,7 +234,6 @@ async function answerWithGeminiGrounding({
     ? rawAnswer.search(/<khasigpt_products>/i)
     : -1;
 
-  const metadata = getGroundingMetadata(response);
   const sourceMap = new Map<string, number>();
   const sourceIndexesByGroundingChunk = new Map<number, number>();
   const sources: WebSearchSource[] = [];
@@ -246,13 +258,6 @@ async function answerWithGeminiGrounding({
     sourceMap.set(source.url, displayIndex);
     sourceIndexesByGroundingChunk.set(groundingIndex, displayIndex);
   }
-  const searchQueries = Array.from(
-    new Set(
-      (metadata?.webSearchQueries ?? []).filter(
-        (query): query is string => typeof query === "string" && query.trim().length > 0
-      )
-    )
-  ).slice(0, Math.max(1, maxSearches));
   const citations: WebSearchCitation[] = (metadata?.groundingSupports ?? [])
     .map((support) => {
       const text = support.segment?.text?.trim();
@@ -329,9 +334,6 @@ async function answerWithGeminiGrounding({
         ).values()
       ).slice(0, 8)
     : [];
-  const usageMetadata = response.usageMetadata;
-  const inputTokens = usageMetadata?.promptTokenCount ?? 0;
-  const outputTokens = usageMetadata?.candidatesTokenCount ?? 0;
 
   return {
     answer,
@@ -343,7 +345,9 @@ async function answerWithGeminiGrounding({
     searchQueries,
     citations,
     searchCallCount: searchQueries.length,
-    providerBillingUnitCount: getWebSearchProviderBillingUnitCount({
+    ...(providerCostUsd !== undefined ? { providerCostUsd } : {}),
+    ...(providerCostUsd !== undefined && allowanceAttempt ? { billableProviderCostUsd: Math.min(providerCostUsd, allowanceAttempt.maximumBillableCostUsd) } : {}),
+    providerBillingUnitCount: providerCostUsd !== undefined ? (providerCostUsd > 0 ? 1 : 0) : getWebSearchProviderBillingUnitCount({
       isShoppingSearch: false,
       provider: "gemini_grounding",
       searchCallCount: searchQueries.length,
@@ -470,6 +474,7 @@ export type WebSearchAnswerInput = {
   includeProducts?: boolean;
   model: string;
   maxSearches: number;
+  beforeProviderCall?: (admission?: GroundingAdmission) => void;
 };
 
 export const webSearchService = {
@@ -482,6 +487,7 @@ export const webSearchService = {
     model,
     provider,
     userMessage,
+    beforeProviderCall,
   }: WebSearchAnswerInput): Promise<WebSearchAnswer> {
     switch (provider) {
       case "gemini_grounding":
@@ -492,10 +498,12 @@ export const webSearchService = {
           maxSearches,
           model,
           userMessage,
+          beforeProviderCall,
         });
       case "openai_web_search":
         throw new Error("OpenAI web search is not implemented yet.");
       case "serper":
+        beforeProviderCall?.();
         return answerWithSerper({
           includeNews,
           includeProducts,

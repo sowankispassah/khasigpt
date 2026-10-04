@@ -47,15 +47,18 @@ export function hasValidWebSearchProviderCosts({
   fallbackProvider,
   provider,
   providerCostPerCallUsd,
+  googleAllowanceEnabled = false,
 }: {
   fallbackProvider: WebSearchProvider;
   provider: WebSearchProvider;
   providerCostPerCallUsd: Record<BillableWebSearchProvider, number>;
+  googleAllowanceEnabled?: boolean;
 }) {
   return getRequiredWebSearchCostProviders({
     fallbackProvider,
     provider,
   }).every((requiredProvider) => {
+    if (requiredProvider === "gemini_grounding" && googleAllowanceEnabled) return true;
     const cost = providerCostPerCallUsd[requiredProvider];
     return Number.isFinite(cost) && cost > 0;
   });

@@ -22,6 +22,7 @@ import { getLiteAppSettingsByKeysUncached } from "@/lib/db/app-settings-lite";
 import type { UserRole } from "@/lib/db/schema";
 import { isFeatureEnabledForRole, parseFeatureAccessMode } from "@/lib/feature-access";
 import { withTimeout } from "@/lib/utils/async";
+import { GOOGLE_SEARCH_ALLOWANCE_KEY, googleSearchAllowanceSchema } from "./google-allowance-policy";
 import type {
   WebSearchConfig,
   WebSearchPlatform,
@@ -30,6 +31,7 @@ import type {
 
 export const WEB_SEARCH_CONFIG_CACHE_TAG = "web-search-config";
 export const WEB_SEARCH_SETTING_KEYS = [
+  GOOGLE_SEARCH_ALLOWANCE_KEY,
   WEB_SEARCH_ENABLED_SETTING_KEY,
   WEB_SEARCH_PROVIDER_SETTING_KEY,
   WEB_SEARCH_FALLBACK_PROVIDER_SETTING_KEY,
@@ -114,6 +116,7 @@ export function resolveWebSearchConfig(
   );
 
   return {
+    googleAllowanceEnabled: googleSearchAllowanceSchema.safeParse(values.get(GOOGLE_SEARCH_ALLOWANCE_KEY)).data?.enabled ?? false,
     accessMode: parseFeatureAccessMode(accessMode, "admin_only"),
     provider: parseProvider(values.get(WEB_SEARCH_PROVIDER_SETTING_KEY), DEFAULT_PROVIDER),
     fallbackProvider: parseProvider(
@@ -179,9 +182,12 @@ export function hasWebSearchProviderPricing(
   provider: WebSearchProvider
 ) {
   return (
+    (provider === "gemini_grounding" && config.googleAllowanceEnabled) ||
+    (
     provider !== "disabled" &&
     parseConfiguredPositiveNumber(config.providerCostPerCallUsd[provider], 100) >
       0
+    )
   );
 }
 

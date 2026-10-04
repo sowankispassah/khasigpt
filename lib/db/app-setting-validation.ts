@@ -31,6 +31,7 @@ import { BILLING_COUPONS_ACCESS_KEY,
 import { GOOGLE_BUDGET_SETTING_KEY, googleBudgetSchema } from "@/lib/explore/google-budget-policy";
 import { EXPLORE_PROVIDER_SETTING_KEY, parseExploreProvider } from "@/lib/explore/providers";
 import { parseFeatureAccessModeStrict } from "@/lib/feature-access";
+import { GOOGLE_SEARCH_ALLOWANCE_KEY, googleSearchAllowanceSchema } from "@/lib/web-search/google-allowance-policy";
 
 export const APP_SETTING_MAX_VALUE_BYTES = 1_048_576;
 
@@ -99,6 +100,7 @@ export function normalizeAppSettingValueForWrite<T>(key: string, value: T): T {
   const normalizedKey = key.trim();
 
   if (normalizedKey === GOOGLE_BUDGET_SETTING_KEY) return googleBudgetSchema.parse(value) as T;
+  if (normalizedKey === GOOGLE_SEARCH_ALLOWANCE_KEY) return googleSearchAllowanceSchema.parse(value) as T;
 
   if (normalizedKey === EXPLORE_PROVIDER_SETTING_KEY) {
     if (value === null || value === undefined) throw new Error("invalid_explore_provider");
