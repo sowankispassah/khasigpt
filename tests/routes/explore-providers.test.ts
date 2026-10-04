@@ -10,6 +10,11 @@ import * as budgetPolicy from "@/lib/explore/google-budget-policy";
 import * as providers from "@/lib/explore/providers";
 import { parseSerpentPlaces } from "@/lib/explore/serpent-results";
 
+
+const mapsStatus = () => Response.json({ success: true, data: { limits: {
+  timeout_param: { min: 5 }, endpoints: { "/api/maps/search/quick": { max_seconds: 150 } },
+} } });
+
 const location = { id: "test", label: "Shillong, Meghalaya", latitude: 25.57, longitude: 91.88, source: "manual" as const, accuracy: null };
 function load(file: string, mocks: Record<string, unknown>, env: Record<string, string> = {}, globals: Record<string, unknown> = {}) {
   const exports: Record<string, any> = {};
@@ -137,13 +142,13 @@ test("Serpent sends server credentials and coordinates to its documented Maps en
     "server-only": {}, "next/cache": { unstable_cache: (fn: unknown) => fn },
     "./serpent-results": { parseSerpentPlaces },
   }, { SERPENT_API_KEY: "private-test-key" }, {
-    fetch: async (url: URL, init: { headers: Record<string, string> }) => { requested = url; headers = init.headers; return Response.json({ success: true, places: [] }, { status }); },
+    fetch: async (url: URL, init: { headers: Record<string, string> }) => { if (String(url).endsWith("/api/status")) return mapsStatus(); requested = url; headers = init.headers; return Response.json({ success: true, places: [] }, { status }); },
   });
   const input = { categoryQuery: null, location, query: "restaurants", radiusKm: 5 };
   expect(await adapter.searchSerpentPlaces(input)).toEqual([]);
   expect(String(requested)).toContain("https://api.apiserpent.com/api/maps/search/quick?");
   expect(String(requested)).toContain("lat=25.57");
-  expect(new URL(String(requested)).searchParams.get("timeout")).toBe("15");
+  expect(new URL(String(requested)).searchParams.get("timeout")).toBe("38");
   expect(new URL(String(requested)).searchParams.get("zoom")).toBe("9");
   expect(new URL(String(requested)).searchParams.get("q")).toBe("restaurants near shillong, meghalaya");
   expect(headers).toEqual({ "X-API-Key": "private-test-key" });
@@ -158,7 +163,7 @@ test("Serpent incomplete empty responses fail explicitly and remain retryable", 
     "server-only": {}, "next/cache": { unstable_cache: (fn: unknown) => fn },
     "./serpent-results": { parseSerpentPlaces },
   }, { SERPENT_API_KEY: "test" }, {
-    fetch: async () => { calls++; return Response.json({ success: true, meta: { partial: true }, places: [] }); },
+    fetch: async (url: URL) => { if (String(url).endsWith("/api/status")) return mapsStatus(); calls++; return Response.json({ success: true, meta: { partial: true }, places: [] }); },
   });
   const input = { categoryQuery: null, location, query: "rice", radiusKm: 50 };
   await expect(adapter.searchSerpentPlaces(input)).rejects.toThrow("place_search_incomplete");
@@ -175,7 +180,8 @@ test("Serpent coalesces concurrent radius requests and keeps partial core result
     "server-only": {}, "next/cache": { unstable_cache: (fn: unknown) => fn },
     "./serpent-results": { parseSerpentPlaces },
   }, { SERPENT_API_KEY: "test" }, {
-    fetch: async () => {
+    fetch: async (url: URL) => {
+      if (String(url).endsWith("/api/status")) return mapsStatus();
       calls++;
       await gate;
       return Response.json({ success: true, meta: { partial: true }, places: [
@@ -191,4 +197,21 @@ test("Serpent coalesces concurrent radius requests and keeps partial core result
   expect((await broad).map((p: any) => p.name)).toEqual(["Near", "Far"]);
   expect((await narrow).map((p: any) => p.name)).toEqual(["Near"]);
   expect(calls).toBe(1);
+});
+
+
+test("unavailable Maps limits do not block searches and preserve a bounded request", async () => {
+  let budget: string | null = null;
+  const adapter = load("lib/explore/serpent-places.ts", {
+    "server-only": {}, "next/cache": { unstable_cache: (fn: unknown) => fn },
+    "./serpent-results": { parseSerpentPlaces },
+  }, { SERPENT_API_KEY: "test" }, {
+    fetch: async (url: URL) => {
+      if (String(url).endsWith("/api/status")) return new Response("Unavailable", { status: 503 });
+      budget = new URL(String(url)).searchParams.get("timeout");
+      return Response.json({ success: true, places: [] });
+    },
+  });
+  expect(await adapter.searchSerpentPlaces({ categoryQuery:null, location, query:"rice", radiusKm:50 })).toEqual([]);
+  expect(budget).toBe("40");
 });
