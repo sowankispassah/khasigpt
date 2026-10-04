@@ -44,6 +44,37 @@ function load(file: string, mocks: Record<string, unknown>, env: Record<string, 
   return exports;
 }
 
+test("visible photo lookups leave capacity for category search and release slots on failure", async () => {
+  const started: string[] = [];
+  const releases: Array<(response: Response) => void> = [];
+  const client = load("lib/explore/photo-client.ts", {}, {}, {
+    fetch: async (_url: string, init: { body: string }) => {
+      started.push(JSON.parse(init.body).token);
+      return new Promise<Response>((resolve) => releases.push(resolve));
+    },
+  });
+  const first = client.loadExplorePhoto("first");
+  const failed = client.loadExplorePhoto("failed");
+  const queued = client.loadExplorePhoto("queued");
+  expect(client.loadExplorePhoto("first")).toBe(first);
+  await Promise.resolve();
+  // A three-slot account can accept a category search during photo loading.
+  expect(started).toEqual(["first", "failed"]);
+  expect(started.length + 1).toBeLessThanOrEqual(3);
+  const rejection = expect(failed).rejects.toThrow("photo_unavailable");
+  releases[1](new Response(null, { status: 503 }));
+  await rejection;
+  expect(started).toEqual(["first", "failed", "queued"]);
+  releases[0](Response.json({ photo: null }));
+  releases[2](Response.json({ photo: null }));
+  expect(await Promise.all([first, queued])).toEqual([null, null]);
+  const retry = client.loadExplorePhoto("failed");
+  await Promise.resolve();
+  expect(started).toEqual(["first", "failed", "queued", "failed"]);
+  releases[3](Response.json({ photo: null }));
+  expect(await retry).toBeNull();
+});
+
 function discoveryHarness() {
   const calls: string[] = [];
   const failures = new Set<string>();

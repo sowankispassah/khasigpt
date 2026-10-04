@@ -5,7 +5,9 @@ const photos = new Map<string, Promise<PlaceImage | null>>();
 const waiters: Array<() => void> = [];
 let active = 0;
 async function slot() {
-  if (active >= 3) await new Promise<void>((resolve) => waiters.push(resolve));
+  // The current provider account has three slots; leave one for a new search.
+  // This is a per-session bound, not an account-wide concurrency guarantee.
+  if (active >= 2) await new Promise<void>((resolve) => waiters.push(resolve));
   else active++;
 }
 function release() { const next = waiters.shift(); if (next) next(); else active--; }
