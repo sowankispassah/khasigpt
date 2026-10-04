@@ -30,7 +30,7 @@ import { BILLING_COUPONS_ACCESS_KEY,
   WEB_SEARCH_ENABLED_SETTING_KEY,} from "@/lib/constants";
 import { GOOGLE_BUDGET_SETTING_KEY, googleBudgetSchema } from "@/lib/explore/google-budget-policy";
 import { EXPLORE_PROVIDER_SETTING_KEY, parseExploreProvider } from "@/lib/explore/providers";
-import { parseSerpentMapsQuickEnabled, SERPENT_MAPS_QUICK_SETTING_KEY } from "@/lib/explore/serpent-policy";
+import { parseSerpentMapsQuickEnabled, parseSerpentPhotoSource, SERPENT_MAPS_QUICK_SETTING_KEY, SERPENT_PHOTO_SOURCE_SETTING_KEY } from "@/lib/explore/serpent-policy";
 import { parseFeatureAccessModeStrict } from "@/lib/feature-access";
 import { GOOGLE_SEARCH_ALLOWANCE_KEY, googleSearchAllowanceSchema } from "@/lib/web-search/google-allowance-policy";
 
@@ -101,6 +101,10 @@ export function normalizeAppSettingValueForWrite<T>(key: string, value: T): T {
   const normalizedKey = key.trim();
 
   if (normalizedKey === GOOGLE_BUDGET_SETTING_KEY) return googleBudgetSchema.parse(value) as T;
+  if (normalizedKey === SERPENT_PHOTO_SOURCE_SETTING_KEY) {
+    if (value === undefined) throw new Error("invalid_photo_source");
+    return parseSerpentPhotoSource(value) as T;
+  }
   if (normalizedKey === SERPENT_MAPS_QUICK_SETTING_KEY) {
     if (value === undefined) throw new Error("invalid_serpent_maps_quick_setting");
     return parseSerpentMapsQuickEnabled(value) as T;

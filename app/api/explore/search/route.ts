@@ -25,6 +25,7 @@ import {
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { isExploreMeghalayaEnabledForRole } from "@/lib/explore/config";
+import { createPhotoLookupToken } from "@/lib/explore/photo-token";
 import { searchExplorePlaces } from "@/lib/explore/places-service";
 import { getEnabledExploreSelection } from "@/lib/explore/service";
 import type {
@@ -237,7 +238,16 @@ export async function POST(request: Request) {
       radiusKm: parsed.data.radiusKm,
       detailMode: parsed.data.detailMode,
     });
-    const results = placeSearch.results;
+    const results = placeSearch.results.map((result) => {
+      if (!placeSearch.imageSearch || result.imageUrl) return result;
+      const { id, name, address, latitude, longitude, website } = result;
+      try {
+        return { ...result, photoLookupToken: createPhotoLookupToken({ id, name, address, latitude, longitude, website }, auth.user.id) };
+      } catch {
+        console.warn("[explore/photos] Unable to prepare optional photo");
+        return result;
+      }
+    });
     const detailsPending = placeSearch.detailsPending === true;
     let answer: WebSearchAnswer | null = null;
     if (shouldEnrichExploreSearch(parsed.data.searchMode) && !detailsPending) {

@@ -1,5 +1,6 @@
 "use client";
 
+
 import {
   Compass,
   ExternalLink,
@@ -30,6 +31,7 @@ import {
   useEditableTranslation,
 } from "@/components/translation-edit-provider";
 import { mergeExploreDetails } from "@/lib/explore/details";
+import { loadExplorePhoto } from "@/lib/explore/photo-client";
 import {
   createExploreSearchKey,
   extractExploreRadiusKm,
@@ -164,6 +166,15 @@ export function ExplorePageClient({
     useState(RESULTS_PAGE_SIZE);
   const [lastSearch, setLastSearch] = useState<SearchSelection | null>(null);
   const [detail, setDetail] = useState<ExploreResult | null>(null);
+  const applyPhoto = useCallback((id: string, token: string, photo: import("@/lib/explore/image-matching").PlaceImage | null) => {
+    const update = (item: ExploreResult): ExploreResult => item.id === id && item.photoLookupToken === token
+      ? { ...item, imageUrl: photo?.imageUrl ?? null, photoLookupToken: undefined,
+          attributions: photo ? [...item.attributions, { displayName: photo.title, uri: photo.sourceUrl }] : item.attributions }
+      : item;
+    setResponse((current) => current ? { ...current, results: current.results.map(update) } : current);
+    setDetail((current) => current ? update(current) : null);
+  }, []);
+
   const [savedIds, setSavedIds] = useState<Set<string>>(() => {
     if (typeof window === "undefined") return new Set();
     try {
@@ -1188,6 +1199,7 @@ export function ExplorePageClient({
                   .slice(0, visibleResultCount)
                   .map((result) => (
                     <ResultCard
+                      onPhoto={applyPhoto}
                       photosPending={response.detailsPending === true}
                       key={result.id}
                       onOpen={() => setDetail(result)}
@@ -1228,7 +1240,7 @@ export function ExplorePageClient({
       {detail ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-xl border bg-background shadow-xl">
-            <PlacePhoto result={detail} photosPending={response?.detailsPending === true} hero />
+            <PlacePhoto result={detail} photosPending={response?.detailsPending === true} hero onPhoto={applyPhoto} />
             <div className="space-y-4 p-5">
               <div>
                 <h2 className="font-semibold text-2xl">{detail.name}</h2>
@@ -1380,7 +1392,9 @@ function ResultCard({
   result,
   onOpen,
   photosPending,
+  onPhoto,
 }: {
+  onPhoto: (id: string, token: string, photo: import("@/lib/explore/image-matching").PlaceImage | null) => void;
   result: ExploreResult;
   onOpen: () => void;
   photosPending: boolean;
@@ -1392,7 +1406,7 @@ function ResultCard({
         onClick={onOpen}
         type="button"
       >
-        <PlacePhoto result={result} photosPending={photosPending} />
+        <PlacePhoto result={result} photosPending={photosPending} onPhoto={onPhoto} />
         <div className="space-y-2 p-4 pb-2">
           <h3 className="line-clamp-2 font-semibold">{result.name}</h3>
           {result.address ? (
@@ -1411,18 +1425,41 @@ function ResultCard({
   );
 }
 
-function PlacePhoto({ result, photosPending, hero = false }: {
+function PlacePhoto({ result, photosPending, hero = false, onPhoto }: {
+  onPhoto?: (id: string, token: string, photo: import("@/lib/explore/image-matching").PlaceImage | null) => void;
   result: ExploreResult;
   photosPending: boolean;
   hero?: boolean;
 }) {
   const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  const imageUrl = result.imageUrl;
+  const photoRef = useRef<HTMLDivElement>(null);
+  const [lookup, setLookup] = useState<{ token: string; photo: import("@/lib/explore/image-matching").PlaceImage | null } | null>(null);
+  const [lookupPending, setLookupPending] = useState(false);
+  const callback = useRef(onPhoto); callback.current = onPhoto;
+  useEffect(() => {
+    const token = result.photoLookupToken;
+    if (!token || result.imageUrl) return;
+    let cancelled = false;
+    let started = false;
+    const run = () => {
+      if (started) return; started = true; setLookupPending(true);
+      void loadExplorePhoto(token).then((photo) => {
+        if (cancelled) return;
+        setLookupPending(false); setLookup({ token, photo }); callback.current?.(result.id, token, photo);
+      }).catch(() => { if (!cancelled) setLookup({ token, photo: null }); })
+        .finally(() => { if (!cancelled) setLookupPending(false); });
+    };
+    if (hero) run();
+    const observer = new IntersectionObserver((entries) => { if (entries.some((entry) => entry.isIntersecting)) { run(); observer.disconnect(); } });
+    if (photoRef.current) observer.observe(photoRef.current);
+    return () => { cancelled = true; observer.disconnect(); };
+  }, [result.photoLookupToken, result.imageUrl, result.id, hero]);
+  const imageUrl = result.imageUrl ?? (lookup?.token === result.photoLookupToken ? lookup?.photo?.imageUrl : null);
   const showImage = Boolean(imageUrl && imageUrl !== failedUrl);
-  const loading = imageUrl ? showImage && loadedUrl !== imageUrl : photosPending;
+  const loading = imageUrl ? showImage && loadedUrl !== imageUrl : photosPending || lookupPending;
   return (
-    <div aria-busy={loading} className={`relative flex aspect-video items-center justify-center overflow-hidden bg-muted ${hero ? "rounded-t-xl" : ""}`}>
+    <div ref={photoRef} aria-busy={loading} className={`relative flex aspect-video items-center justify-center overflow-hidden bg-muted ${hero ? "rounded-t-xl" : ""}`}>
       {showImage && imageUrl ? (
         <Image
           alt={result.name}

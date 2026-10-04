@@ -3,7 +3,7 @@ import { unstable_cache } from "next/cache";
 import { getAppSettingsByKeysUncached } from "@/lib/db/queries";
 import { withTimeout } from "@/lib/utils/async";
 import { EXPLORE_PROVIDER_SETTING_KEY, parseExploreProvider } from "./providers";
-import { parseSerpentMapsQuickEnabled, SERPENT_MAPS_QUICK_SETTING_KEY } from "./serpent-policy";
+import { parseSerpentMapsQuickEnabled, parseSerpentPhotoSource, SERPENT_MAPS_QUICK_SETTING_KEY, SERPENT_PHOTO_SOURCE_SETTING_KEY } from "./serpent-policy";
 
 export const EXPLORE_PROVIDER_CACHE_TAG = "explore-provider";
 export async function readExploreProvider() {
@@ -19,5 +19,12 @@ export async function readSerpentMapsQuickEnabled() {
   return parseSerpentMapsQuickEnabled(settings.find((row) => row.key === SERPENT_MAPS_QUICK_SETTING_KEY)?.value);
 }
 export const getSerpentMapsQuickEnabled = unstable_cache(readSerpentMapsQuickEnabled, ["explore-serpent-maps-quick-v1"], {
+  revalidate: 60, tags: [EXPLORE_PROVIDER_CACHE_TAG],
+});
+export async function readSerpentPhotoSource() {
+  const settings = await withTimeout(getAppSettingsByKeysUncached([SERPENT_PHOTO_SOURCE_SETTING_KEY]), 2_000);
+  return parseSerpentPhotoSource(settings.find((row) => row.key === SERPENT_PHOTO_SOURCE_SETTING_KEY)?.value);
+}
+export const getSerpentPhotoSource = unstable_cache(readSerpentPhotoSource, ["explore-serpent-photo-source-v1"], {
   revalidate: 60, tags: [EXPLORE_PROVIDER_CACHE_TAG],
 });

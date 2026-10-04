@@ -5,7 +5,7 @@ import { db } from "@/lib/db/queries";
 import { appSetting } from "@/lib/db/schema";
 import { GOOGLE_BUDGET_SETTING_KEY, GOOGLE_PHOTO_RESERVATION, type GoogleBudgetInput, googleBillingMonth, parseGoogleBudget } from "./google-budget-policy";
 import { EXPLORE_PROVIDER_SETTING_KEY, type ExploreProvider } from "./providers";
-import { SERPENT_MAPS_QUICK_SETTING_KEY } from "./serpent-policy";
+import { SERPENT_MAPS_QUICK_SETTING_KEY, SERPENT_PHOTO_SOURCE_SETTING_KEY, type SerpentPhotoSource } from "./serpent-policy";
 
 export async function readGoogleBudget() {
   return withAdminDatabase("explore.google-budget.read", async (database) => {
@@ -42,7 +42,7 @@ export async function releaseUnusedGooglePhotos(month: string, unused: number) {
   await db.execute(sql`UPDATE "AppSetting" SET value = jsonb_set(value, '{photoUsed}', to_jsonb(greatest(0, (value->>'photoUsed')::integer - ${unused}::integer))), "updatedAt" = now() WHERE key = ${GOOGLE_BUDGET_SETTING_KEY} AND value->>'month' = ${month}`);
 }
 
-export async function saveGoogleBudgetAndProvider(provider: ExploreProvider, input?: GoogleBudgetInput, serpentMapsQuickEnabled?: boolean) {
+export async function saveGoogleBudgetAndProvider(provider: ExploreProvider, input?: GoogleBudgetInput, serpentMapsQuickEnabled?: boolean, serpentPhotoSource?: SerpentPhotoSource) {
   const month = googleBillingMonth();
   if (input && input.month !== month) throw new Error("stale_billing_month");
   return withAdminDatabase("explore.google-budget.save", (database) => database.transaction(async (tx) => {
@@ -56,6 +56,9 @@ export async function saveGoogleBudgetAndProvider(provider: ExploreProvider, inp
     }
     if (serpentMapsQuickEnabled !== undefined) {
       await tx.insert(appSetting).values({ key: SERPENT_MAPS_QUICK_SETTING_KEY, value: serpentMapsQuickEnabled }).onConflictDoUpdate({ target: appSetting.key, set: { value: serpentMapsQuickEnabled, updatedAt: new Date() } });
+    }
+    if (serpentPhotoSource !== undefined) {
+      await tx.insert(appSetting).values({ key: SERPENT_PHOTO_SOURCE_SETTING_KEY, value: serpentPhotoSource }).onConflictDoUpdate({ target: appSetting.key, set: { value: serpentPhotoSource, updatedAt: new Date() } });
     }
     await tx.insert(appSetting).values({ key: EXPLORE_PROVIDER_SETTING_KEY, value: provider }).onConflictDoUpdate({ target: appSetting.key, set: { value: provider, updatedAt: new Date() } });
     return budget;

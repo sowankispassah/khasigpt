@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { expect, test } from "@playwright/test";
@@ -8,6 +8,7 @@ import { normalizeAppSettingValueForWrite } from "@/lib/db/app-setting-validatio
 import { mergeExploreDetails } from "@/lib/explore/details";
 import * as geo from "@/lib/explore/geo";
 import * as budgetPolicy from "@/lib/explore/google-budget-policy";
+import * as imageMatching from "@/lib/explore/image-matching";
 import * as providers from "@/lib/explore/providers";
 import * as serpentPolicy from "@/lib/explore/serpent-policy";
 import { parseSerpentPlaces } from "@/lib/explore/serpent-results";
@@ -53,7 +54,7 @@ for (const fallback of [false, true]) {
       const service = load("lib/explore/places-service.ts", {
         "server-only": {}, "node:crypto": { createHash }, "@/lib/explore/geo": geo,
         "@/lib/explore/wikimedia-images": {}, "./google-budget-policy": budgetPolicy,
-        "./provider-config": { getExploreProvider: async () => fallback ? "google" : "serpent", getSerpentMapsQuickEnabled: async () => enabled },
+        "./provider-config": { getExploreProvider: async () => fallback ? "google" : "serpent", getSerpentMapsQuickEnabled: async () => enabled, getSerpentPhotoSource: async () => "maps_quick" },
         "./providers": providers, "./serpent-policy": serpentPolicy,
         "./google-fallback": { runGoogleWithFallback: (_google: unknown, alternatives: any) => alternatives.serpent() },
         "./serpent-places": { searchSerpentPlaces: async (input: any) => { calls.push(input.detailMode); return [{ id: "nearby" }]; } },
@@ -93,8 +94,9 @@ function adminHarness(admin: boolean, env: Record<string, string> = {}) {
     "next/cache": { revalidateTag: (...args: unknown[]) => invalidations.push(args) },
     "next/server": { NextResponse: Response }, zod: { z },
     "@/lib/db/queries": { setAppSetting: async () => { writes++; } },
-    "@/lib/explore/provider-config": { EXPLORE_PROVIDER_CACHE_TAG: "explore-provider", readExploreProvider: async () => { reads++; return "openstreetmap"; }, readSerpentMapsQuickEnabled: async () => true },
+    "@/lib/explore/provider-config": { EXPLORE_PROVIDER_CACHE_TAG: "explore-provider", readExploreProvider: async () => { reads++; return "openstreetmap"; }, readSerpentMapsQuickEnabled: async () => true, readSerpentPhotoSource: async () => "maps_quick" },
     "@/lib/explore/providers": providers,
+    "@/lib/explore/serpent-policy": serpentPolicy,
     "@/lib/explore/google-budget-policy": budgetPolicy,
     "@/lib/explore/google-budget": { readGoogleBudget: async () => budgetPolicy.parseGoogleBudget(undefined), saveGoogleBudgetAndProvider: async (_provider: unknown, _budget: unknown, quick: unknown) => { writes++; savedQuick.push(quick); return budgetPolicy.parseGoogleBudget(undefined); } },
     "@/lib/security/admin-api-auth": { requireAdminApiUser: async () => admin ? { id: "admin" } : null },
@@ -348,6 +350,7 @@ test("fast list API response preserves auth and returns before summaries, billin
     },
     "@/lib/errors": { ChatSDKError: class extends Error {} },
     "@/lib/explore/config": { isExploreMeghalayaEnabledForRole: async () => true },
+    "@/lib/explore/photo-token": { createPhotoLookupToken: forbiddenOptionalCall },
     "@/lib/explore/places-service": { searchExplorePlaces: async (input: { detailMode: string }) => {
       calls.push(input.detailMode);
       return { results: [{ id: "a", name: "Cafe", distanceKm: 1 }], detailsPending: input.detailMode === "list" };
@@ -377,4 +380,74 @@ test("fast list API response preserves auth and returns before summaries, billin
   authenticated = false;
   expect((await route.POST(post(input))).status).toBe(401);
   expect(calls).toEqual(["list", "full"]);
+});
+
+
+test("image mode clamps full requests to list for primary and Google fallback", async () => {
+  for (const fallback of [false, true]) {
+    const calls: string[] = [];
+    const service = load("lib/explore/places-service.ts", {
+      "server-only": {}, "node:crypto": { createHash }, "@/lib/explore/geo": geo,
+      "@/lib/explore/wikimedia-images": {}, "./google-budget-policy": budgetPolicy,
+      "./provider-config": { getExploreProvider: async () => fallback ? "google" : "serpent", getSerpentMapsQuickEnabled: async () => true, getSerpentPhotoSource: async () => "image_search" },
+      "./providers": providers, "./serpent-policy": serpentPolicy,
+      "./google-fallback": { runGoogleWithFallback: (_google: unknown, alternatives: any) => alternatives.serpent() },
+      "./serpent-places": { searchSerpentPlaces: async (input: any) => { calls.push(input.detailMode); return [{ id: "nearby" }]; } },
+      "./serper-places": {}, "./place-images": {},
+    }, { SERPENT_API_KEY: "test", GOOGLE_MAPS_API_KEY: "test" });
+    const result = await service.searchExplorePlaces({ location, radiusKm: 50, query: "restaurant", categoryQuery: null, detailMode: "full" });
+    expect(result).toMatchObject({ detailsPending: false, imageSearch: true }); expect(calls).toEqual(["list"]);
+  }
+  expect(normalizeAppSettingValueForWrite(serpentPolicy.SERPENT_PHOTO_SOURCE_SETTING_KEY, "image_search")).toBe("image_search");
+  expect(() => normalizeAppSettingValueForWrite(serpentPolicy.SERPENT_PHOTO_SOURCE_SETTING_KEY, "other")).toThrow();
+  expect(serpentPolicy.parseSerpentPhotoSource(undefined)).toBe("maps_quick");
+});
+
+const samplePhotoPlace = { id: "serpent-1", name: "Langbang Cafe", address: "Shangpung, Meghalaya", latitude: 25.48, longitude: 92.36, website: null };
+function photoTokens() {
+  return load("lib/explore/photo-token.ts", { "server-only": {}, "node:crypto": { createHmac, timingSafeEqual }, zod: { z } }, { AUTH_SECRET: "test-secret" }, { Buffer });
+}
+test("photo tickets reject tampering, expired tickets and another user's ticket", () => {
+  const tokens = photoTokens();
+  const token = tokens.createPhotoLookupToken(samplePhotoPlace, "owner", 1000);
+  expect(tokens.readPhotoLookupToken(token, "owner", 1001)).toEqual(samplePhotoPlace);
+  expect(tokens.readPhotoLookupToken(token, "other", 1001)).toBeNull();
+  expect(tokens.readPhotoLookupToken(token, "owner", 1000 + 7200000)).toBeNull();
+  expect(tokens.readPhotoLookupToken(`X${token}`, "owner", 1001)).toBeNull();
+});
+
+test("image lookups coalesce, cache matches and no matches, and reject unverified images", async () => {
+  let calls = 0;
+  const cache = new Map();
+  const service = load("lib/explore/serpent-images.ts", {
+    "server-only": {}, "node:crypto": { createHash }, "./image-matching": imageMatching,
+    "next/cache": { unstable_cache: (fn: any) => (place: any) => { const key = JSON.stringify(place); if (!cache.has(key)) cache.set(key, fn(place).catch((error: unknown) => { cache.delete(key); throw error; })); return cache.get(key); } },
+  }, { SERPENT_API_KEY: "private" }, { fetch: async () => { calls++; return Response.json({ success: true, results: { images: [{ title: "Langbang Cafe Shangpung Meghalaya", pageUrl: "https://example.com/langbang-cafe-shangpung", original: "https://images.example.com/photo.jpg", thumbnail: "https://encrypted-tbn0.gstatic.com/photo" }] } }); } });
+  const photos = await Promise.all([service.lookupSerpentPlacePhoto(samplePhotoPlace), service.lookupSerpentPlacePhoto(samplePhotoPlace)]);
+  expect(calls).toBe(1); expect(photos[0]?.imageUrl).toBe("https://encrypted-tbn0.gstatic.com/photo");
+  await service.lookupSerpentPlacePhoto(samplePhotoPlace); expect(calls).toBe(1);
+  expect(await service.lookupSerpentPlacePhoto({ ...samplePhotoPlace, name: "Another Business" })).toBeNull();
+  await service.lookupSerpentPlacePhoto({ ...samplePhotoPlace, name: "Another Business" }); expect(calls).toBe(2);
+});
+
+test("photo API enforces auth, access, signed scope and saved mode before a paid call", async () => {
+  const tokens = photoTokens(); let calls = 0; let authenticated = true; let access = true; let source = "image_search";
+  const route = load("app/api/explore/photo/route.ts", {
+    "next/server": { NextResponse: Response }, zod: { z },
+    "@/lib/api/auth": { getAuthenticatedUser: async () => authenticated ? { user: { id: "owner", role: "admin" } } : null },
+    "@/lib/api/cache": { noStoreHeaders: () => ({ "Cache-Control": "private, no-store" }) },
+    "@/lib/explore/config": { isExploreMeghalayaEnabledForRole: async () => access },
+    "@/lib/explore/photo-token": tokens,
+    "@/lib/explore/provider-config": { getSerpentMapsQuickEnabled: async () => true, getSerpentPhotoSource: async () => source },
+    "@/lib/explore/serpent-images": { lookupSerpentPlacePhoto: async () => { calls++; return null; } },
+    "@/lib/security/rate-limit": { incrementRateLimit: async () => ({ allowed: true }) },
+  });
+  const post = (token: string) => new Request("https://example.com/api/explore/photo", { method: "POST", body: JSON.stringify({ token }) });
+  const token = tokens.createPhotoLookupToken(samplePhotoPlace, "owner");
+  authenticated = false; expect((await route.POST(post(token))).status).toBe(401);
+  authenticated = true; access = false; expect((await route.POST(post(token))).status).toBe(404);
+  access = true; expect((await route.POST(post("tampered"))).status).toBe(400);
+  source = "maps_quick"; expect((await route.POST(post(token))).status).toBe(409); expect(calls).toBe(0);
+  source = "image_search"; const response = await route.POST(post(token)); expect(response.status).toBe(200); expect(calls).toBe(1);
+  expect(response.headers.get("Cache-Control")).toContain("no-store");
 });

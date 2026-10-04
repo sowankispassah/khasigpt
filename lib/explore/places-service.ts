@@ -19,7 +19,7 @@ import {
 import { GoogleQuotaError } from "./google-budget-policy";
 import { runGoogleWithFallback } from "./google-fallback";
 import { addExplorePlaceImages } from "./place-images";
-import { getExploreProvider, getSerpentMapsQuickEnabled } from "./provider-config";
+import { getExploreProvider, getSerpentMapsQuickEnabled, getSerpentPhotoSource } from "./provider-config";
 import { dispatchExploreProvider, exploreProviderConfigured } from "./providers";
 import { searchSerpentPlaces } from "./serpent-places";
 import { serpentDetailPolicy } from "./serpent-policy";
@@ -529,13 +529,14 @@ export async function searchExplorePlaces(input: ExplorePlacesSearchInput) {
   const alternatives = {
     serper,
     serpent: async () => {
-      const policy = serpentDetailPolicy(await getSerpentMapsQuickEnabled(), input.detailMode);
+      const [enabled, source] = await Promise.all([getSerpentMapsQuickEnabled(), getSerpentPhotoSource()]);
+      const policy = serpentDetailPolicy(enabled, input.detailMode, source);
       const results = await searchSerpentPlaces({ ...input, detailMode: policy.detailMode });
-      return { results, source: "google_maps", detailsPending: policy.detailsPending && results.length > 0 };
+      return { results, source: "google_maps", detailsPending: policy.detailsPending && results.length > 0, imageSearch: policy.imageSearch };
     },
     openstreetmap: async () => ({ results: await searchOverpass(input), source: "openstreetmap" }),
   };
-  return dispatchExploreProvider<{ results: ExploreResult[]; source: string; detailsPending?: boolean }>(provider, {
+  return dispatchExploreProvider<{ results: ExploreResult[]; source: string; detailsPending?: boolean; imageSearch?: boolean }>(provider, {
     google: () => runGoogleWithFallback(async (beforePhoto) => {
       const results = await searchGooglePlaces(input, beforePhoto);
       if (!results) throw new Error("place_provider_not_configured");

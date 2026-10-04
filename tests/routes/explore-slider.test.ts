@@ -38,7 +38,7 @@ test.beforeAll(async () => {
   bundle = output.outputFiles[0].text;
 });
 
-async function mountExplore(page: Page, options: { progressive?: boolean; failDetails?: boolean; photos?: boolean; imageGate?: Promise<void>; failImage?: boolean; detailsGate?: (query: string) => Promise<void> } = {}) {
+async function mountExplore(page: Page, options: { imageSearch?: boolean; photoRequests?: string[]; progressive?: boolean; failDetails?: boolean; photos?: boolean; imageGate?: Promise<void>; failImage?: boolean; detailsGate?: (query: string) => Promise<void> } = {}) {
   const requests: Array<{radiusKm: number; searchMode: string; detailMode: string}> = [];
   const location = {id:"test",label:"Shangpung, Meghalaya",latitude:25.48,longitude:92.36,source:"manual",accuracy:null};
   await page.route("https://images.explore.test/**", async (route) => {
@@ -46,6 +46,10 @@ async function mountExplore(page: Page, options: { progressive?: boolean; failDe
     await route.fulfill(options.failImage ? {status:503,body:"Unavailable"} : {contentType:"image/png",body:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6pQAAAAASUVORK5CYII=","base64")}).catch(() => {});
   });
   await page.route("https://explore.test/**", async (route) => {
+    if (route.request().url().endsWith("/api/explore/photo")) {
+      options.photoRequests?.push(route.request().postDataJSON().token);
+      await route.fulfill({ json: { photo: null } }); return;
+    }
     if (route.request().url().endsWith("/api/explore/search")) {
       const body = route.request().postDataJSON();
       requests.push(body);
@@ -59,7 +63,7 @@ async function mountExplore(page: Page, options: { progressive?: boolean; failDe
       await route.fulfill({json:{
         answer:body.detailMode === "full" ? `Details ${body.query}` : `Results for ${body.radiusKm} km`, category:null, chatId:"chat-test",
         clientRequestId:body.clientRequestId, location, locationContextKey:"test-context",
-        radiusKm:body.radiusKm, results:(body.detailMode === "full" ? [25,1,49,999] : [25,1,49]).map(distanceKm => ({id:`place-${distanceKm}`,name:`Place ${distanceKm}`,distanceKm,distance:`${distanceKm} km`,imageUrl:options.photos && body.detailMode === "full" ? "https://images.explore.test/photo.png" : null,sourceUrl:"https://example.com",attributions:[]})), searchQueries:[], searchMode:body.searchMode,
+        radiusKm:body.radiusKm, results:(body.detailMode === "full" ? [25,1,49,999] : options.imageSearch ? Array.from({ length: 20 }, (_, i) => i + 1) : [25,1,49]).map(distanceKm => ({id:`place-${distanceKm}`,name:`Place ${distanceKm}`,distanceKm,distance:`${distanceKm} km`,photoLookupToken: options.imageSearch ? `ticket-${distanceKm}` : undefined,imageUrl:options.photos && body.detailMode === "full" ? "https://images.explore.test/photo.png" : null,sourceUrl:"https://example.com",attributions:[]})), searchQueries:[], searchMode:body.searchMode,
         detailsPending: options.progressive && body.detailMode === "list",
       }}).catch(() => {});
       return;
@@ -170,4 +174,23 @@ test("a new search remains available while the previous search hydrates", async 
   await expect(page.getByText("Details cafe", { exact: false })).toBeVisible();
   release();
   await expect(page.getByText("Details cafe", { exact: false })).toBeVisible();
+});
+
+
+test("image mode looks up visible cards only, stops empty-photo loading and reuses slider results", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 700 });
+  const photos: string[] = [];
+  const requests = await mountExplore(page, { imageSearch: true, photoRequests: photos });
+  await expect.poll(() => photos.length).toBeGreaterThan(0);
+  await expect(page.getByText("Loading photo…")).toHaveCount(0);
+  expect(photos.length).toBeLessThan(12); expect(requests).toHaveLength(1);
+  await page.getByRole("heading", { name: "Place 10", exact: true }).scrollIntoViewIfNeeded();
+  await expect.poll(() => photos.length).toBeGreaterThan(3);
+  const slider = page.getByRole("slider", { name: "Search radius", exact: true });
+  await slider.fill("5"); await slider.fill("50");
+  await page.getByRole("heading", { name: "Place 10", exact: true }).scrollIntoViewIfNeeded();
+  await expect(page.getByText("Loading photo…")).toHaveCount(0);
+  expect(new Set(photos).size).toBe(photos.length);
+  expect(photos.length).toBeLessThanOrEqual(12);
+  expect(requests).toHaveLength(1);
 });

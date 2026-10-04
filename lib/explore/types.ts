@@ -80,6 +80,7 @@ export type ExploreResult = {
   website: string | null;
   directionsUrl: string | null;
   imageUrl: string | null;
+  photoLookupToken?: string;
   sourceTitle: string;
   sourceUrl: string;
   latitude: number;
