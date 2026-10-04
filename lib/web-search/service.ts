@@ -11,6 +11,7 @@ import {
   buildGroundedShoppingFallbacks,
   extractShoppingProducts,
 } from "./products";
+import { answerWithSerpent } from "./serpent-search";
 import { parseSerperSearchResponse } from "./serper";
 import type {
   WebSearchAnswer,
@@ -510,6 +511,9 @@ export const webSearchService = {
           includeVideos,
           userMessage,
         });
+      case "serpent":
+        beforeProviderCall?.();
+        return answerWithSerpent({ includeNews, includeProducts, includeVideos, userMessage });
       case "disabled":
         throw new Error("Web search is disabled.");
       default:

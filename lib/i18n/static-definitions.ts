@@ -5408,6 +5408,10 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     defaultText: "Customer markup",
     description: "Web Search admin setting for the provider-cost markup.",
   },
+  { key: "admin.web_search.provider.serpent", defaultText: "Serpent Web Search", description: "Admin search provider option." },
+  { key: "admin.web_search.provider_not_configured", defaultText: "Add the selected provider’s server API key before activating it.", description: "Missing selected search-provider key." },
+  { key: "admin.web_search.serpent_not_configured", defaultText: "Add SERPENT_API_KEY to the server environment before activating Serpent.", description: "Missing Serpent key warning." },
+  { key: "admin.web_search.serpent_note", defaultText: "Serpent uses one Google Web SERP page per search, localized to India. Shopping cards appear when listings are returned; otherwise retailer browse links are shown. Its dedicated Shopping endpoint has not launched. Provider cost is per page: Default $0.0006, Growth $0.00006, Scale $0.00003. Enter your account rate below. News and videos also use this Web SERP request, with inline video cards when available. No paid AI add-ons are requested.", description: "Serpent coverage and pricing." },
   {
     key: "admin.web_search.provider.serper",
     defaultText: "Serper Google Search",

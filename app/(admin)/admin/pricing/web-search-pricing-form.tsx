@@ -6,6 +6,7 @@ import { GoogleSearchAllowanceSettings } from "@/components/admin/google-search-
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
 import { toast } from "@/components/toast";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 import { calculateCostPlusPreview } from "@/lib/billing/cost-plus";
 import { TOKENS_PER_CREDIT } from "@/lib/constants";
@@ -36,6 +37,7 @@ const PROVIDERS: Array<{
     labelKey: "admin.web_search.provider.serper",
     defaultLabel: "Serper Google Search",
   },
+  { value: "serpent", labelKey: "admin.web_search.provider.serpent", defaultLabel: "Serpent Web Search" },
   {
     value: "disabled",
     labelKey: "admin.web_search.provider.disabled",
@@ -79,6 +81,7 @@ function initialProviderPricing(config: WebSearchConfig): ProviderPricingState {
         config.providerCostPerCallUsd.openai_web_search
       ),
     },
+    serpent: { markupMultiplier: String(config.providerMarkupMultiplier.serpent), providerCostPerCallUsd: String(config.providerCostPerCallUsd.serpent) },
     serper: {
       markupMultiplier: String(config.providerMarkupMultiplier.serper),
       providerCostPerCallUsd: String(config.providerCostPerCallUsd.serper),
@@ -89,9 +92,11 @@ function initialProviderPricing(config: WebSearchConfig): ProviderPricingState {
 export function WebSearchPricingForm({
   config,
   serperConfigured,
+  serpentConfigured,
 }: {
   config: WebSearchConfig;
   serperConfigured: boolean;
+  serpentConfigured: boolean;
 }) {
   const { translate } = useTranslation();
   const [provider, setProvider] = useState(config.provider);
@@ -115,7 +120,7 @@ export function WebSearchPricingForm({
   const [isSaving, setIsSaving] = useState(false);
   const [pricingContext, setPricingContext] =
     useState<PricingPreviewContext | null>(null);
-  const maxCallsApplies = provider !== "serper";
+  const maxCallsApplies = provider !== "serper" && provider !== "serpent";
   const allowanceMode = googleAllowanceEnabled && provider === "gemini_grounding";
 
   useEffect(() => {
@@ -150,6 +155,7 @@ export function WebSearchPricingForm({
         providerPricing.openai_web_search.providerCostPerCallUsd
       ),
       serper: Number(providerPricing.serper.providerCostPerCallUsd),
+      serpent: Number(providerPricing.serpent.providerCostPerCallUsd),
     }),
     [providerPricing]
   );
@@ -275,8 +281,8 @@ export function WebSearchPricingForm({
             : error instanceof Error &&
                 error.message === "provider_not_configured"
               ? translate(
-                  "admin.web_search.serper_not_configured",
-                  "Add SERPER_API_KEY to the server environment before activating Serper."
+                  "admin.web_search.provider_not_configured",
+                  "Add the selected provider’s server API key before activating it."
                 )
               : translate(
                   "admin.web_search.save_failed",
@@ -322,7 +328,7 @@ export function WebSearchPricingForm({
           >
             {PROVIDERS.map((option) => (
               <option
-                disabled={option.value === "serper" && !serperConfigured}
+                disabled={(option.value === "serper" && !serperConfigured) || (option.value === "serpent" && !serpentConfigured)}
                 key={option.value}
                 value={option.value}
               >
@@ -345,7 +351,7 @@ export function WebSearchPricingForm({
           >
             {PROVIDERS.map((option) => (
               <option
-                disabled={option.value === "serper" && !serperConfigured}
+                disabled={(option.value === "serper" && !serperConfigured) || (option.value === "serpent" && !serpentConfigured)}
                 key={option.value}
                 value={option.value}
               >
@@ -450,6 +456,8 @@ export function WebSearchPricingForm({
           </p>
         </div>
       ) : null}
+      {provider === "serpent" && <p className="rounded-md border p-3 text-muted-foreground text-xs"><EditableTranslation translationKey="admin.web_search.serpent_note" defaultText="Serpent uses one Google Web SERP page per search, localized to India. Shopping cards appear when listings are returned; otherwise retailer browse links are shown. Its dedicated Shopping endpoint has not launched. Provider cost is per page: Default $0.0006, Growth $0.00006, Scale $0.00003. Enter your account rate below. News and videos also use this Web SERP request, with inline video cards when available. No paid AI add-ons are requested." description="Serpent search coverage and billing explanation." /></p>}
+      {!serpentConfigured && <p className="text-muted-foreground text-xs"><EditableTranslation translationKey="admin.web_search.serpent_not_configured" defaultText="Add SERPENT_API_KEY to the server environment before activating Serpent." description="Missing Serpent server credential." /></p>}
       {!serperConfigured ? (
         <p className="rounded-md border border-amber-300/60 bg-amber-50/50 p-3 text-amber-900 text-xs dark:bg-amber-950/20 dark:text-amber-100">
           {translate(
@@ -528,7 +536,7 @@ export function WebSearchPricingForm({
                     })
                   : null;
                 const providerUnavailable =
-                  providerKey === "serper" && !serperConfigured;
+                  (providerKey === "serper" && !serperConfigured) || (providerKey === "serpent" && !serpentConfigured);
 
                 return (
                   <tr

@@ -15,6 +15,8 @@ import {
   WEB_SEARCH_OPENAI_MARKUP_MULTIPLIER_SETTING_KEY,
   WEB_SEARCH_PAID_USERS_ENABLED_SETTING_KEY,
   WEB_SEARCH_PROVIDER_SETTING_KEY,
+  WEB_SEARCH_SERPENT_COST_PER_CALL_USD_SETTING_KEY,
+  WEB_SEARCH_SERPENT_MARKUP_MULTIPLIER_SETTING_KEY,
   WEB_SEARCH_SERPER_COST_PER_CALL_USD_SETTING_KEY,
   WEB_SEARCH_SERPER_MARKUP_MULTIPLIER_SETTING_KEY,
 } from "@/lib/constants";
@@ -47,6 +49,8 @@ export const WEB_SEARCH_SETTING_KEYS = [
   WEB_SEARCH_GEMINI_COST_PER_CALL_USD_SETTING_KEY,
   WEB_SEARCH_OPENAI_COST_PER_CALL_USD_SETTING_KEY,
   WEB_SEARCH_SERPER_COST_PER_CALL_USD_SETTING_KEY,
+  WEB_SEARCH_SERPENT_COST_PER_CALL_USD_SETTING_KEY,
+  WEB_SEARCH_SERPENT_MARKUP_MULTIPLIER_SETTING_KEY,
 ] as const;
 
 const DEFAULT_PROVIDER: WebSearchProvider = "gemini_grounding";
@@ -92,6 +96,7 @@ function parseProvider(value: unknown, fallback: WebSearchProvider) {
   return value === "gemini_grounding" ||
     value === "openai_web_search" ||
     value === "serper" ||
+    value === "serpent" ||
     value === "disabled"
     ? value
     : fallback;
@@ -158,6 +163,7 @@ export function resolveWebSearchConfig(
         legacyMarkupMultiplier,
         20
       ),
+      serpent: parsePositiveNumber(values.get(WEB_SEARCH_SERPENT_MARKUP_MULTIPLIER_SETTING_KEY), legacyMarkupMultiplier, 20),
     },
     providerCostPerCallUsd: {
       gemini_grounding: parseConfiguredPositiveNumber(
@@ -172,6 +178,7 @@ export function resolveWebSearchConfig(
         values.get(WEB_SEARCH_SERPER_COST_PER_CALL_USD_SETTING_KEY),
         100
       ),
+      serpent: parseConfiguredPositiveNumber(values.get(WEB_SEARCH_SERPENT_COST_PER_CALL_USD_SETTING_KEY), 100),
     },
     readState,
   };

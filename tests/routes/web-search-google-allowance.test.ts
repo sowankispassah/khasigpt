@@ -80,7 +80,7 @@ test("Google service counts every unique executed query rather than truncating t
   const service = load("lib/web-search/service.ts", {
     "server-only": {}, "@google/genai": { ThinkingLevel: { LOW: "LOW" }, GoogleGenAI: class { models = { generateContent: async (request: any) => { requests.push(request); return { text: "Grounded answer", candidates: [{ groundingMetadata: { webSearchQueries: [...queries, queries[0]], groundingChunks: [{ web: { uri: "https://example.com/source", title: "Source" } }] } }], usageMetadata: { promptTokenCount: 1000, candidatesTokenCount: 1000, thoughtsTokenCount: 1000 } }; } }; } },
     "./google-allowance-runner": runner, "./google-allowance-policy": policy,
-    "./news-enrichment": {}, "./news-results": {}, "./pricing": { getWebSearchProviderBillingUnitCount: () => 1 }, "./product-enrichment": {}, "./products": {}, "./serper": {}, "./youtube": {},
+    "./news-enrichment": {}, "./news-results": {}, "./pricing": { getWebSearchProviderBillingUnitCount: () => 1 }, "./product-enrichment": {}, "./products": {}, "./serpent-search": {}, "./serper": {}, "./youtube": {},
   });
   let admissions = 0;
   const answer = await service.webSearchService.answerWithSearch({ provider: "gemini_grounding", model: "gemini-2.5-flash", maxSearches: 2, userMessage: "query", beforeProviderCall: () => admissions++ });

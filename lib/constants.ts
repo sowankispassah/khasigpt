@@ -60,6 +60,8 @@ export const WEB_SEARCH_OPENAI_COST_PER_CALL_USD_SETTING_KEY =
   "web_search_openai_cost_per_call_usd";
 export const WEB_SEARCH_SERPER_COST_PER_CALL_USD_SETTING_KEY =
   "web_search_serper_cost_per_call_usd";
+export const WEB_SEARCH_SERPENT_COST_PER_CALL_USD_SETTING_KEY = "web_search_serpent_cost_per_call_usd";
+export const WEB_SEARCH_SERPENT_MARKUP_MULTIPLIER_SETTING_KEY = "web_search_serpent_markup_multiplier";
 export const DOCUMENT_UPLOADS_FEATURE_FLAG_KEY = "chat.documentUploads.enabled";
 export const SITE_WEB_LAUNCHED_SETTING_KEY = "site.publicLaunched";
 export const SITE_MOBILE_APP_LAUNCHED_SETTING_KEY = "site.mobileAppLaunched";

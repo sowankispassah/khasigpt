@@ -97,6 +97,7 @@ test.describe("web search grounding", () => {
         providerCostPerCallUsd: {
           gemini_grounding: 0.014,
           openai_web_search: 0,
+          serpent: 0,
           serper: 0,
         },
       })
@@ -108,6 +109,7 @@ test.describe("web search grounding", () => {
         providerCostPerCallUsd: {
           gemini_grounding: 0,
           openai_web_search: 0,
+          serpent: 0,
           serper: 0.001,
         },
       })
@@ -119,6 +121,7 @@ test.describe("web search grounding", () => {
         providerCostPerCallUsd: {
           gemini_grounding: 0.014,
           openai_web_search: 0,
+          serpent: 0,
           serper: 0,
         },
       })
@@ -130,6 +133,7 @@ test.describe("web search grounding", () => {
         providerCostPerCallUsd: {
           gemini_grounding: 0,
           openai_web_search: 0,
+          serpent: 0,
           serper: 0,
         },
       })

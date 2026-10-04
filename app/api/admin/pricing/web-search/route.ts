@@ -12,6 +12,8 @@ import {
   WEB_SEARCH_OPENAI_MARKUP_MULTIPLIER_SETTING_KEY,
   WEB_SEARCH_PAID_USERS_ENABLED_SETTING_KEY,
   WEB_SEARCH_PROVIDER_SETTING_KEY,
+  WEB_SEARCH_SERPENT_COST_PER_CALL_USD_SETTING_KEY,
+  WEB_SEARCH_SERPENT_MARKUP_MULTIPLIER_SETTING_KEY,
   WEB_SEARCH_SERPER_COST_PER_CALL_USD_SETTING_KEY,
   WEB_SEARCH_SERPER_MARKUP_MULTIPLIER_SETTING_KEY,
 } from "@/lib/constants";
@@ -38,11 +40,13 @@ const PROVIDERS = new Set<WebSearchProvider>([
   "gemini_grounding",
   "openai_web_search",
   "serper",
+  "serpent",
   "disabled",
 ]);
 const BILLABLE_PROVIDERS: BillableWebSearchProvider[] = [
   "gemini_grounding",
   "serper",
+  "serpent",
   "openai_web_search",
 ];
 const WRITE_TIMEOUT_MS = 15_000;
@@ -102,6 +106,7 @@ export async function POST(request: NextRequest) {
   const parsedProviderPricing = Object.fromEntries(
     BILLABLE_PROVIDERS.map((providerKey) => {
       const row = providerPricing[providerKey];
+      if (providerKey === "serpent" && row === undefined && provider !== "serpent" && fallbackProvider !== "serpent") return [providerKey, { markupMultiplier: 3, providerCostPerCallUsd: 0 }];
       if (!isRecord(row)) {
         return [providerKey, null];
       }
@@ -140,7 +145,7 @@ export async function POST(request: NextRequest) {
   catch { return NextResponse.json({ error: "configuration_unavailable" }, { status: 503, headers: { "Cache-Control": "no-store" } }); }
   const googleAllowanceEnabled = googleAllowance.enabled && provider === "gemini_grounding";
   const { used: _used, reserved: _reserved, ...googleAllowanceInput } = googleAllowance;
-  if (googleAllowanceEnabled && fallbackProvider !== "serper" && fallbackProvider !== "disabled") return NextResponse.json({ error: "invalid_value" }, { status: 400 });
+  if (googleAllowanceEnabled && fallbackProvider !== "serper" && fallbackProvider !== "serpent" && fallbackProvider !== "disabled") return NextResponse.json({ error: "invalid_value" }, { status: 400 });
   if (
     maxCalls === null ||
     !pricingRowsAreValid ||
@@ -174,7 +179,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if ((provider === "serpent" || fallbackProvider === "serpent") && !process.env.SERPENT_API_KEY?.trim()) return NextResponse.json({ error: "provider_not_configured", message: "Add SERPENT_API_KEY to activate Serpent." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+
   const values: Record<string, unknown> = {
+    ...(providerPricing.serpent === undefined ? {} : {
+      [WEB_SEARCH_SERPENT_COST_PER_CALL_USD_SETTING_KEY]: providerCostPerCallUsd.serpent,
+      [WEB_SEARCH_SERPENT_MARKUP_MULTIPLIER_SETTING_KEY]: parsedProviderPricing.serpent?.markupMultiplier,
+    }),
     [WEB_SEARCH_PROVIDER_SETTING_KEY]: provider,
     [WEB_SEARCH_FALLBACK_PROVIDER_SETTING_KEY]: fallbackProvider,
     [WEB_SEARCH_ENABLED_WEB_SETTING_KEY]: parsedBooleans.enabledWeb,
@@ -198,7 +209,7 @@ export async function POST(request: NextRequest) {
 
   try {
     await withTimeout(
-      saveGoogleSearchAllowance({ ...googleAllowanceInput, enabled: googleAllowanceEnabled, fallbackProvider: fallbackProvider === "serper" ? "serper" : "disabled" }, values),
+      saveGoogleSearchAllowance({ ...googleAllowanceInput, enabled: googleAllowanceEnabled, fallbackProvider: fallbackProvider === "serper" || fallbackProvider === "serpent" ? fallbackProvider : "disabled" }, values),
       WRITE_TIMEOUT_MS
     );
 

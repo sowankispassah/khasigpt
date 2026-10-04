@@ -18,7 +18,7 @@ type Configuration = {
 		inputUsdPerMillion: number;
 		outputUsdPerMillion: number;
 	}[];
-	configured: { google: boolean; serper: boolean };
+	configured: { google: boolean; serper: boolean; serpent: boolean };
 };
 function Copy({ name, values }: { name: keyof typeof GOOGLE_ALLOWANCE_COPY; values?: Record<string, string | number> }) {
 	return (
@@ -216,7 +216,8 @@ export function GoogleSearchAllowanceSettings({
 												GOOGLE_ALLOWANCE_COPY.serper,
 											)}
 										</option>
-										<option value="disabled">
+										<option value="serpent" disabled={!configuration.configured.serpent}>{translate("admin.web_search.allowance.serpent", GOOGLE_ALLOWANCE_COPY.serpent)}</option>
+                                        <option value="disabled">
 											{translate(
 												"admin.web_search.allowance.disabled",
 												GOOGLE_ALLOWANCE_COPY.disabled,
@@ -286,7 +287,7 @@ export function GoogleSearchAllowanceSettings({
 							(policy.enabled &&
 								(!configuration.configured.google ||
 									(policy.fallbackProvider === "serper" &&
-										!configuration.configured.serper)))
+										!configuration.configured.serper) || (policy.fallbackProvider === "serpent" && !configuration.configured.serpent)))
 						}
 						onClick={() => void save()}
 					>

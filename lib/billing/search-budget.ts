@@ -17,7 +17,7 @@ export function searchCreditAllowance({ provider, shopping = false, costPerCallU
     if ([groundingAdmission.maximumProviderCostUsd, markup, pricing.usdToInr, pricing.walletUnitsPerInr].some(value => !Number.isFinite(value) || value <= 0)) throw new ChatSDKError("bad_request:configuration");
     return Math.ceil(groundingAdmission.maximumProviderCostUsd * markup * pricing.usdToInr * pricing.walletUnitsPerInr);
   }
-  if (provider !== "serper") throw new ChatSDKError("bad_request:configuration");
+  if (provider !== "serper" && provider !== "serpent") throw new ChatSDKError("bad_request:configuration");
   if ([costPerCallUsd, markup, pricing.usdToInr, pricing.walletUnitsPerInr].some(value => !Number.isFinite(value) || value <= 0)) throw new ChatSDKError("bad_request:configuration");
-  return Math.ceil(costPerCallUsd * (shopping ? 2 : 1) * markup * pricing.usdToInr * pricing.walletUnitsPerInr);
+  return Math.ceil(costPerCallUsd * (shopping && provider === "serper" ? 2 : 1) * markup * pricing.usdToInr * pricing.walletUnitsPerInr);
 }

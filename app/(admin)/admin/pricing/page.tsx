@@ -976,6 +976,7 @@ async function WebSearchPricingContent() {
           accessMode: accessState.mode ?? config.accessMode,
         }}
         serperConfigured={Boolean(process.env.SERPER_API_KEY?.trim())}
+        serpentConfigured={Boolean(process.env.SERPENT_API_KEY?.trim())}
       />
     </WebSearchPricingSection>
   );

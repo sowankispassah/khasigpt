@@ -311,7 +311,7 @@ test.describe("admin pricing loading isolation", () => {
     expect(searchSource).toContain("providerPricing[providerKey]");
     expect(searchSource).toContain("providerCostPerCallUsd");
     expect(searchSource).toContain("markupMultiplier");
-    expect(searchSource).toContain("const maxCallsApplies = provider !== \"serper\";");
+    expect(searchSource).toContain("const maxCallsApplies = provider !== \"serper\" && provider !== \"serpent\";");
     expect(searchSource).toContain("disabled={isSaving || !maxCallsApplies}");
     expect(searchSource).toContain("admin.web_search.max_calls_gemini_only");
     expect(searchSource).toContain("admin.web_search.not_applicable");

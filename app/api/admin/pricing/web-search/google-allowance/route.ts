@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
 				configured: {
 					google: Boolean(process.env.GOOGLE_API_KEY?.trim()),
 					serper: Boolean(process.env.SERPER_API_KEY?.trim()),
+                    serpent: Boolean(process.env.SERPENT_API_KEY?.trim()),
 				},
 			},
 			{ headers },
@@ -73,16 +74,17 @@ export async function POST(request: NextRequest) {
 		parsed.data.enabled &&
 		(!process.env.GOOGLE_API_KEY?.trim() ||
 			(parsed.data.fallbackProvider === "serper" &&
-				!process.env.SERPER_API_KEY?.trim()))
+				!process.env.SERPER_API_KEY?.trim()) ||
+            (parsed.data.fallbackProvider === "serpent" && !process.env.SERPENT_API_KEY?.trim()))
 	)
 		return NextResponse.json(
 			{ error: "provider_not_configured" },
 			{ status: 409, headers },
 		);
 	try {
-		if (parsed.data.enabled && parsed.data.fallbackProvider === "serper") {
+		if (parsed.data.enabled && parsed.data.fallbackProvider !== "disabled") {
 			const config = await loadWebSearchConfig();
-			if (config.readState !== "confirmed" || !hasWebSearchProviderPricing(config, "serper")) return NextResponse.json({ error: "fallback_pricing_missing" }, { status: 409, headers });
+			if (config.readState !== "confirmed" || !hasWebSearchProviderPricing(config, parsed.data.fallbackProvider)) return NextResponse.json({ error: "fallback_pricing_missing" }, { status: 409, headers });
 		}
 		const allowance = await saveGoogleSearchAllowance(parsed.data);
 		revalidateTag(GOOGLE_SEARCH_ALLOWANCE_TAG, { expire: 0 });

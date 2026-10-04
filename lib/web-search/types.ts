@@ -2,6 +2,7 @@ export type WebSearchProvider =
   | "gemini_grounding"
   | "openai_web_search"
   | "serper"
+  | "serpent"
   | "disabled";
 
 export type WebSearchPlatform = "web" | "native";

@@ -18,7 +18,7 @@ const count = z.number().int().min(0).max(10_000_000);
 export const googleSearchAllowanceSchema = z
 	.object({
 		enabled: z.boolean(),
-		fallbackProvider: z.enum(["serper", "disabled"]),
+		fallbackProvider: z.enum(["serper", "serpent", "disabled"]),
 		model: z.string().regex(/^gemini-3(?:\.|-)[a-z0-9.-]+$/),
 		limit: count.max(5000),
 		safetyBuffer: count.max(5000),
@@ -87,7 +87,7 @@ export function groundingTokenCost(
 }
 
 export class GoogleSearchAllowanceError extends Error {
-	constructor(public readonly fallbackProvider: "serper" | "disabled") {
+	constructor(public readonly fallbackProvider: "serper" | "serpent" | "disabled") {
 		super("google_search_allowance_unavailable");
 	}
 }
