@@ -242,7 +242,8 @@ export async function POST(request: Request) {
       if (!placeSearch.imageSearch || result.imageUrl) return result;
       const { id, name, address, latitude, longitude, website } = result;
       try {
-        return { ...result, photoLookupToken: createPhotoLookupToken({ id, name, address, latitude, longitude, website }, auth.user.id) };
+        const listing = placeSearch.photoLookupSource === "maps_place";
+        return { ...result, photoLookupToken: createPhotoLookupToken({ id, name, address, latitude, longitude, website, ...(listing ? { mapsUrl: result.sourceUrl, lookupMode: "listing" as const } : {}) }, auth.user.id) };
       } catch {
         console.warn("[explore/photos] Unable to prepare optional photo");
         return result;

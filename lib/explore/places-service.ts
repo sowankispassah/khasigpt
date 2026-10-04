@@ -532,11 +532,11 @@ export async function searchExplorePlaces(input: ExplorePlacesSearchInput) {
       const [enabled, source] = await Promise.all([getSerpentMapsQuickEnabled(), getSerpentPhotoSource()]);
       const policy = serpentDetailPolicy(enabled, input.detailMode, source);
       const results = await searchSerpentPlaces({ ...input, detailMode: policy.detailMode });
-      return { results, source: "google_maps", detailsPending: policy.detailsPending && results.length > 0, imageSearch: policy.imageSearch };
+      return { results, source: "google_maps", detailsPending: policy.detailsPending && results.length > 0, imageSearch: policy.imageSearch, photoLookupSource: policy.photoLookupSource };
     },
     openstreetmap: async () => ({ results: await searchOverpass(input), source: "openstreetmap" }),
   };
-  return dispatchExploreProvider<{ results: ExploreResult[]; source: string; detailsPending?: boolean; imageSearch?: boolean }>(provider, {
+  return dispatchExploreProvider<{ results: ExploreResult[]; source: string; detailsPending?: boolean; imageSearch?: boolean; photoLookupSource?: "image_search" | "maps_place" }>(provider, {
     google: () => runGoogleWithFallback(async (beforePhoto) => {
       const results = await searchGooglePlaces(input, beforePhoto);
       if (!results) throw new Error("place_provider_not_configured");

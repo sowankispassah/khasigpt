@@ -1,10 +1,10 @@
 export const SERPENT_MAPS_QUICK_SETTING_KEY = "explore_serpent_maps_quick_enabled";
 export const SERPENT_PHOTO_SOURCE_SETTING_KEY = "explore_serpent_photo_source";
-export const SERPENT_PHOTO_SOURCES = ["maps_quick", "image_search"] as const;
+export const SERPENT_PHOTO_SOURCES = ["maps_quick", "image_search", "maps_place"] as const;
 export type SerpentPhotoSource = (typeof SERPENT_PHOTO_SOURCES)[number];
 export function parseSerpentPhotoSource(value: unknown): SerpentPhotoSource {
   if (value === undefined) return "maps_quick";
-  if (value === "maps_quick" || value === "image_search") return value;
+  if (value === "maps_quick" || value === "image_search" || value === "maps_place") return value;
   throw new Error("invalid_photo_source");
 }
 
@@ -19,6 +19,8 @@ export function serpentDetailPolicy(enabled: boolean, requested?: "list" | "full
   return {
     detailMode: enabled && source === "maps_quick" ? requested ?? "full" : "list",
     detailsPending: enabled && source === "maps_quick" && requested === "list",
-    imageSearch: enabled && source === "image_search",
+    // Existing web/native consumers use the same scoped lazy-photo contract.
+    imageSearch: enabled && source !== "maps_quick",
+    photoLookupSource: enabled && source !== "maps_quick" ? source : undefined,
   } as const;
 }

@@ -7,7 +7,7 @@ function record(value: unknown): Record<string, unknown> {
 }
 function text(value: unknown) { return typeof value === "string" ? value.trim().slice(0, 1000) : ""; }
 function url(value: unknown) { return safePlaceImageUrl(text(value)); }
-function placePhoto(value: unknown) {
+export function placePhoto(value: unknown) {
   const candidate = url(value);
   if (!candidate) return null;
   const parsed = new URL(candidate);

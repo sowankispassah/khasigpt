@@ -11,7 +11,7 @@ import * as budgetPolicy from "@/lib/explore/google-budget-policy";
 import * as imageMatching from "@/lib/explore/image-matching";
 import * as providers from "@/lib/explore/providers";
 import * as serpentPolicy from "@/lib/explore/serpent-policy";
-import { parseSerpentPlaces } from "@/lib/explore/serpent-results";
+import { parseSerpentPlaces, placePhoto } from "@/lib/explore/serpent-results";
 import { exploreSearchInputSchema } from "@/lib/explore/validation";
 
 
@@ -440,6 +440,7 @@ test("photo API enforces auth, access, signed scope and saved mode before a paid
     "@/lib/explore/photo-token": tokens,
     "@/lib/explore/provider-config": { getSerpentMapsQuickEnabled: async () => true, getSerpentPhotoSource: async () => source },
     "@/lib/explore/serpent-images": { lookupSerpentPlacePhoto: async () => { calls++; return null; } },
+    "@/lib/explore/serpent-place-photo": { lookupSerpentListingPhoto: async () => { calls++; return null; } },
     "@/lib/security/rate-limit": { incrementRateLimit: async () => ({ allowed: true }) },
   });
   const post = (token: string) => new Request("https://example.com/api/explore/photo", { method: "POST", body: JSON.stringify({ token }) });
@@ -450,4 +451,76 @@ test("photo API enforces auth, access, signed scope and saved mode before a paid
   source = "maps_quick"; expect((await route.POST(post(token))).status).toBe(409); expect(calls).toBe(0);
   source = "image_search"; const response = await route.POST(post(token)); expect(response.status).toBe(200); expect(calls).toBe(1);
   expect(response.headers.get("Cache-Control")).toContain("no-store");
+  source = "maps_place";
+  expect((await route.POST(post(token))).status).toBe(409); expect(calls).toBe(1);
+  const listingToken = tokens.createPhotoLookupToken({ ...samplePhotoPlace, lookupMode: "listing", mapsUrl: "https://www.google.com/maps?cid=123" }, "owner");
+  expect((await route.POST(post(listingToken))).status).toBe(200); expect(calls).toBe(2);
+  source = "image_search";
+  expect((await route.POST(post(listingToken))).status).toBe(409); expect(calls).toBe(2);
+});
+
+test("listing mode preserves Maps List for primary and fallback, and photos disabled prevents lazy lookups", async () => {
+  expect(normalizeAppSettingValueForWrite(serpentPolicy.SERPENT_PHOTO_SOURCE_SETTING_KEY, "maps_place")).toBe("maps_place");
+  for (const fallback of [false, true]) {
+    const calls: string[] = [];
+    const service = load("lib/explore/places-service.ts", {
+      "server-only": {}, "node:crypto": { createHash }, "@/lib/explore/geo": geo,
+      "@/lib/explore/wikimedia-images": {}, "./google-budget-policy": budgetPolicy,
+      "./provider-config": { getExploreProvider: async () => fallback ? "google" : "serpent", getSerpentMapsQuickEnabled: async () => true, getSerpentPhotoSource: async () => "maps_place" },
+      "./providers": providers, "./serpent-policy": serpentPolicy,
+      "./google-fallback": { runGoogleWithFallback: (_google: unknown, alternatives: any) => alternatives.serpent() },
+      "./serpent-places": { searchSerpentPlaces: async (input: any) => { calls.push(input.detailMode); return [{ id: "nearby" }]; } },
+      "./serper-places": {}, "./place-images": {},
+    }, { SERPENT_API_KEY: "test", GOOGLE_MAPS_API_KEY: "test" });
+    expect(await service.searchExplorePlaces({ location, radiusKm: 50, query: "restaurant", categoryQuery: null, detailMode: "full" })).toMatchObject({ detailsPending: false, imageSearch: true, photoLookupSource: "maps_place" });
+    expect(calls).toEqual(["list"]);
+  }
+  expect(serpentPolicy.serpentDetailPolicy(false, "full", "maps_place")).toMatchObject({ detailMode: "list", imageSearch: false, photoLookupSource: undefined });
+});
+
+function listingHarness() {
+  let calls = 0; let fail = false; let incomplete = false; let noPhoto = false;
+  const requests: URL[] = []; const cache = new Map();
+  const module = load("lib/explore/serpent-place-photo.ts", {
+    "server-only": {}, "./serpent-results": { placePhoto },
+    "next/cache": { unstable_cache: (fn: any) => (reference: any) => { const key = JSON.stringify(reference); if (!cache.has(key)) cache.set(key, fn(reference).catch((error: unknown) => { cache.delete(key); throw error; })); return cache.get(key); } },
+  }, { SERPENT_API_KEY: "private" }, { URL, AbortSignal, Map, Promise, fetch: async (url: URL, options: RequestInit) => {
+    calls++; requests.push(url); expect(options.headers).toEqual({ "X-API-Key": "private" });
+    if (fail) return Response.json({}, { status: 503 });
+    return Response.json({ success: true, place: { name: "Langbang Cafe", place_id: url.searchParams.get("place_id"), detail_status: incomplete ? "core_only" : "complete", cover_image: noPhoto ? null : "https://lh3.googleusercontent.com/business-photo" } });
+  } });
+  return { module, requests, calls: () => calls, failure: (value: boolean) => { fail = value; }, incomplete: (value: boolean) => { incomplete = value; }, noPhoto: (value: boolean) => { noPhoto = value; } };
+}
+const listingPlace = { ...samplePhotoPlace, id: "serpent-ChIJ123456789", lookupMode: "listing" as const };
+
+test("listing photos reuse exact identity across names, distance changes and concurrent users", async () => {
+  const h = listingHarness();
+  const [first, second] = await Promise.all([h.module.lookupSerpentListingPhoto(listingPlace), h.module.lookupSerpentListingPhoto({ ...listingPlace, name: "Langbang Cafe (updated name)", address: "Updated address" })]);
+  expect(first).toEqual(second); expect(first?.imageUrl).toBe("https://lh3.googleusercontent.com/business-photo"); expect(h.calls()).toBe(1);
+  await h.module.lookupSerpentListingPhoto(listingPlace); expect(h.calls()).toBe(1);
+  expect(h.requests[0].pathname).toBe("/api/maps/place"); expect(h.requests[0].searchParams.toString()).toBe("place_id=ChIJ123456789");
+  await h.module.lookupSerpentListingPhoto({ ...listingPlace, id: "serpent-ChIJ987654321" }); expect(h.calls()).toBe(2);
+});
+
+test("listing photos cache a complete no-photo result but retry failures and incomplete reads", async () => {
+  const h = listingHarness(); h.failure(true);
+  await expect(h.module.lookupSerpentListingPhoto(listingPlace)).rejects.toThrow();
+  h.failure(false); h.noPhoto(true); h.incomplete(true);
+  await expect(h.module.lookupSerpentListingPhoto(listingPlace)).rejects.toThrow("listing_photo_incomplete");
+  h.incomplete(false);
+  expect(await h.module.lookupSerpentListingPhoto(listingPlace)).toBeNull();
+  expect(await h.module.lookupSerpentListingPhoto(listingPlace)).toBeNull(); expect(h.calls()).toBe(3);
+});
+
+test("listing lookup rejects unrelated sources, coordinate-only URLs, avatar images and identity mismatch", async () => {
+  const h = listingHarness();
+  for (const mapsUrl of ["https://attacker.test/maps/place/cafe", "https://www.google.com/maps/search/?api=1&query=25.48,92.36", "https://www.google.com.attacker.test/maps?cid=123", "https://user:pass@www.google.com/maps?cid=123"]) {
+    expect(await h.module.lookupSerpentListingPhoto({ ...listingPlace, id: "serpent-unknown", mapsUrl })).toBeNull();
+  }
+  expect(h.calls()).toBe(0);
+  expect(h.module.listingPhotoReference({ ...listingPlace, id: "serpent-0x123:0x456" })).toEqual({ parameter: "data_id", value: "0x123:0x456" });
+  expect(h.module.listingPhotoReference({ ...listingPlace, id: "serpent-unknown", mapsUrl: "https://www.google.com/maps?cid=123" })).toEqual({ parameter: "url", value: "https://www.google.com/maps?cid=123" });
+  const payload = { success: true, place: { name: "Cafe", place_id: "ChIJ123456789", detail_status: "complete", cover_image: "https://lh3.googleusercontent.com/a/AAAAAAAAAA/photo.jpg", images: [{ url: "https://lh3.googleusercontent.com/real-photo" }] } };
+  expect(h.module.selectSerpentListingPhoto(payload, { parameter: "place_id", value: "ChIJ123456789" })?.imageUrl).toBe("https://lh3.googleusercontent.com/real-photo");
+  expect(() => h.module.selectSerpentListingPhoto(payload, { parameter: "place_id", value: "ChIJwrong" })).toThrow("listing_identity_mismatch");
 });

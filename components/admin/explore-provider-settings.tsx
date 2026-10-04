@@ -93,6 +93,7 @@ export function ExploreProviderSettings() {
         <select id="explore-photo-source" className="h-10 cursor-pointer rounded-md border bg-background px-3 text-sm" value={serpentPhotoSource} disabled={saving || !serpentMapsQuickEnabled} onChange={(event) => { setSerpentPhotoSource(event.target.value as SerpentPhotoSource); setSaved(false); }}>
           <option value="maps_quick">{translate("admin.explore.provider.photo_maps_quick", EXPLORE_PROVIDER_COPY.photo_maps_quick)}</option>
           <option value="image_search">{translate("admin.explore.provider.photo_image_search", EXPLORE_PROVIDER_COPY.photo_image_search)}</option>
+          <option value="maps_place">{translate("admin.explore.provider.photo_maps_place", EXPLORE_PROVIDER_COPY.photo_maps_place)}</option>
         </select>
         <p className="text-muted-foreground text-xs"><Copy name="serpent_maps_quick_description" text={EXPLORE_PROVIDER_COPY.serpent_maps_quick_description} /></p>
       </div>}

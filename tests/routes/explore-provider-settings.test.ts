@@ -15,7 +15,7 @@ test.beforeAll(async () => {
   bundle = output.outputFiles[0].text;
 });
 
-test("Serpent option survives a failed save and can be retried without blocking other controls", async ({ page }) => {
+test("Serpent listing photo option survives a failed save and persists after reload", async ({ page }) => {
   let fail = true;
   const configuration = { provider: "serpent", configured: { google: true, serper: true, serpent: true, openstreetmap: true }, googleBudget: parseGoogleBudget(undefined), serpentMapsQuickEnabled: true, serpentPhotoSource: "maps_quick" };
   await page.route("https://settings.test/**", async (route) => {
@@ -29,17 +29,20 @@ test("Serpent option survives a failed save and can be retried without blocking 
   });
   await page.goto("https://settings.test/"); await page.addScriptTag({ content: bundle });
   const quick = page.getByRole("checkbox", { name: "Enable photos", exact: true });
-  await page.getByRole("combobox", { name: "Photo source", exact: true }).selectOption("image_search");
+  await expect(page.getByRole("combobox", { name: "Photo source", exact: true }).getByRole("option", { name: "Maps Place Details", exact: true })).toHaveCount(1);
+  await page.getByRole("combobox", { name: "Photo source", exact: true }).selectOption("maps_place");
   await quick.uncheck();
   await page.getByRole("button", { name: "Save provider", exact: true }).click();
   await expect(page.getByRole("alert")).toBeVisible();
   await expect(quick).toBeEnabled(); await expect(quick).not.toBeChecked();
   await expect(page.getByRole("combobox", { name: "Provider", exact: true })).toBeEnabled();
   await quick.check();
-  await expect(page.getByRole("combobox", { name: "Photo source", exact: true })).toHaveValue("image_search");
+  await expect(page.getByRole("combobox", { name: "Photo source", exact: true })).toHaveValue("maps_place");
   fail = false;
   await page.getByRole("button", { name: "Save provider", exact: true }).click();
   await expect(page.getByText("Provider saved. New searches will use this selection.")).toBeVisible();
+  await page.reload(); await page.addScriptTag({ content: bundle });
+  await expect(page.getByRole("combobox", { name: "Photo source", exact: true })).toHaveValue("maps_place");
 });
 test("admin chooses Google with a separate fallback and saves both without exposing keys", async ({page}) => {
   let configuration = { provider: "serpent", configured: { google:true,serper:true,serpent:true,openstreetmap:true }, googleBudget: parseGoogleBudget(undefined), serpentMapsQuickEnabled: true, serpentPhotoSource: "maps_quick" };
