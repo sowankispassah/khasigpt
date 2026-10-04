@@ -514,6 +514,7 @@ export type ExplorePlacesSearchInput = {
   location: ExploreLocationInput;
   query: string;
   radiusKm: number;
+  detailMode?: "list" | "full";
 };
 
 export async function searchExplorePlaces(input: ExplorePlacesSearchInput) {
@@ -526,10 +527,13 @@ export async function searchExplorePlaces(input: ExplorePlacesSearchInput) {
   };
   const alternatives = {
     serper,
-    serpent: async () => ({ results: await searchSerpentPlaces(input), source: "google_maps" }),
+    serpent: async () => {
+      const results = await searchSerpentPlaces(input);
+      return { results, source: "google_maps", detailsPending: input.detailMode === "list" && results.length > 0 };
+    },
     openstreetmap: async () => ({ results: await searchOverpass(input), source: "openstreetmap" }),
   };
-  return dispatchExploreProvider<{ results: ExploreResult[]; source: string }>(provider, {
+  return dispatchExploreProvider<{ results: ExploreResult[]; source: string; detailsPending?: boolean }>(provider, {
     google: () => runGoogleWithFallback(async (beforePhoto) => {
       const results = await searchGooglePlaces(input, beforePhoto);
       if (!results) throw new Error("place_provider_not_configured");

@@ -23,6 +23,8 @@ export const exploreSearchInputSchema = z.object({
   radiusKm: z.number().int().min(1).max(50),
   location: exploreLocationSchema,
   searchMode: z.enum(EXPLORE_REQUEST_MODES).default("places_only"),
+  // Older clients keep the complete response; new clients request the fast list first.
+  detailMode: z.enum(["list", "full"]).default("full"),
 });
 
 export const exploreLocationRequestSchema = z.discriminatedUnion("mode", [

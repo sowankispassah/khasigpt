@@ -5,10 +5,12 @@ import { expect, test } from "@playwright/test";
 import ts from "typescript";
 import { z } from "zod";
 import { normalizeAppSettingValueForWrite } from "@/lib/db/app-setting-validation";
+import { mergeExploreDetails } from "@/lib/explore/details";
 import * as geo from "@/lib/explore/geo";
 import * as budgetPolicy from "@/lib/explore/google-budget-policy";
 import * as providers from "@/lib/explore/providers";
 import { parseSerpentPlaces } from "@/lib/explore/serpent-results";
+import { exploreSearchInputSchema } from "@/lib/explore/validation";
 
 
 const mapsStatus = () => Response.json({ success: true, data: { limits: {
@@ -235,3 +237,88 @@ for (const [maximum, expected] of [[45, "40"], [20, "20"]] as const) {
     expect(new URL(String(requested)).searchParams.get("timeout")).toBe(expected);
   });
 }
+
+test("fast Maps list requests skip all detail pages and preserve safe list thumbnails", async () => {
+  const urls: URL[] = [];
+  const adapter = load("lib/explore/serpent-places.ts", {
+    "server-only": {}, "next/cache": { unstable_cache: (fn: unknown) => fn },
+    "./serpent-results": { parseSerpentPlaces },
+  }, { SERPENT_API_KEY: "test" }, {
+    fetch: async (url: URL) => {
+      if (String(url).endsWith("/api/status")) return mapsStatus();
+      urls.push(url);
+      return Response.json({ success: true, places: [{
+        place_id: "near", name: "Cafe", coordinates: location,
+        thumbnail: { url: "https://lh3.googleusercontent.com/photo" }, detail_status: "core_only",
+      }] });
+    },
+  });
+  const input = { categoryQuery: null, location, query: "restaurant", radiusKm: 50 };
+  const list = await adapter.searchSerpentPlaces({ ...input, detailMode: "list" });
+  expect(urls[0].pathname).toBe("/api/maps/search");
+  expect(urls[0].searchParams.get("detail")).toBe("0");
+  expect(urls[0].searchParams.get("limit")).toBe("20");
+  expect(list[0].imageUrl).toBe("https://lh3.googleusercontent.com/photo");
+  await adapter.searchSerpentPlaces(input);
+  expect(urls[1].pathname).toBe("/api/maps/search/quick");
+});
+
+test("legacy clients retain full detail mode; background details preserve list membership and distance", () => {
+  const input = { query: "rice", location, radiusKm: 50, clientRequestId: "test" };
+  expect(exploreSearchInputSchema.parse(input).detailMode).toBe("full");
+  expect(exploreSearchInputSchema.parse({ ...input, detailMode: "list" }).detailMode).toBe("list");
+  const list = parseSerpentPlaces({ success: true, places: [{ place_id: "a", name: "Cafe", coordinates: location }] }, { location, radiusKm: 50 });
+  const full = [{ ...list[0], distanceKm: 200, name: "Changed", imageUrl: "https://lh3.googleusercontent.com/photo" }, { ...list[0], id: "extra" }];
+  const merged = mergeExploreDetails(list, full);
+  expect(merged).toHaveLength(1);
+  expect(merged[0]).toMatchObject({ id: list[0].id, name: "Cafe", distanceKm: 0, imageUrl: full[0].imageUrl });
+});
+
+test("fast list API response preserves auth and returns before summaries, billing or detail hydration", async () => {
+  let authenticated = true;
+  let chats = 0;
+  const calls: string[] = [];
+  const forbiddenOptionalCall = () => { throw new Error("Optional work blocked the list"); };
+  const route = load("app/api/explore/search/route.ts", {
+    "node:crypto": { createHash }, "next/server": { NextResponse: Response }, zod: { z },
+    "@/lib/ai/model-registry": { getModelRegistry: forbiddenOptionalCall },
+    "@/lib/api/auth": { getAuthenticatedUser: async () => authenticated ? { user: { id: "user", role: "admin" } } : null },
+    "@/lib/api/cache": { noStoreHeaders: () => ({ "Cache-Control": "no-store" }) },
+    "@/lib/billing/search-budget": {}, "@/lib/chat/free-daily-limit": {}, "@/lib/constants": {},
+    "@/lib/db/queries": {
+      saveChat: async () => { chats++; },
+      getChatById: async ({ id }: { id: string }) => ({ id, userId: "user" }),
+      saveMessages: forbiddenOptionalCall, recordTokenUsage: forbiddenOptionalCall,
+    },
+    "@/lib/errors": { ChatSDKError: class extends Error {} },
+    "@/lib/explore/config": { isExploreMeghalayaEnabledForRole: async () => true },
+    "@/lib/explore/places-service": { searchExplorePlaces: async (input: { detailMode: string }) => {
+      calls.push(input.detailMode);
+      return { results: [{ id: "a", name: "Cafe", distanceKm: 1 }], detailsPending: input.detailMode === "list" };
+    } },
+    "@/lib/explore/service": { getEnabledExploreSelection: async () => ({ category: null, subcategory: null }) },
+    "@/lib/explore/types": { shouldEnrichExploreSearch: (mode: string) => mode === "enriched" },
+    "@/lib/explore/validation": { exploreSearchInputSchema },
+    "@/lib/free-messages": {},
+    "@/lib/security/rate-limit": { incrementRateLimit: async () => ({ allowed: true }) },
+    "@/lib/security/request-helpers": { getClientKeyFromHeaders: () => "client" },
+    "@/lib/settings/user-feature-access": {},
+    "@/lib/utils": { generateUUID: () => "1ae3affc-d65e-44c9-a5de-fb9570945740" },
+    "@/lib/web-search/config": { loadWebSearchConfig: forbiddenOptionalCall },
+    "@/lib/web-search/google-allowance-policy": {}, "@/lib/web-search/service": {},
+  });
+  const input = { query: "restaurant", location, radiusKm: 50, clientRequestId: "test", detailMode: "list", searchMode: "enriched" };
+  const post = (body: unknown) => new Request("https://example.com/api/explore/search", { method: "POST", body: JSON.stringify(body) });
+  const response = await route.POST(post(input));
+  expect(response.status).toBe(200);
+  const list = await response.json();
+  expect(list.detailsPending).toBe(true);
+  expect(list.results[0].name).toBe("Cafe");
+  expect(response.headers.get("Cache-Control")).toBe("no-store");
+  const full = await route.POST(post({ ...input, searchMode: "places_only", detailMode: "full", chatId: list.chatId, locationContextKey: list.locationContextKey }));
+  expect(full.status).toBe(200);
+  expect(chats).toBe(1);
+  authenticated = false;
+  expect((await route.POST(post(input))).status).toBe(401);
+  expect(calls).toEqual(["list", "full"]);
+});

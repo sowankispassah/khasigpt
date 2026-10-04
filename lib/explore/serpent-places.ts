@@ -32,10 +32,17 @@ const requestBudget = unstable_cache(async () => {
   }
 }, ["explore-serpent-limits-v2"], { revalidate: 3600 });
 
-const cachedSearch = unstable_cache(async (query: string, latitude: number, longitude: number) => {
+const cachedSearch = unstable_cache(async (query: string, latitude: number, longitude: number, detailMode: "list" | "full") => {
   const key = process.env.SERPENT_API_KEY?.trim();
   if (!key) throw new Error("place_provider_not_configured");
-  const endpoint = new URL("https://api.apiserpent.com/api/maps/search/quick");
+  const endpoint = new URL(detailMode === "list"
+    ? "https://api.apiserpent.com/api/maps/search"
+    : "https://api.apiserpent.com/api/maps/search/quick");
+  if (detailMode === "list") {
+    // Avoid opening every business detail page before delivering the ranked list.
+    endpoint.searchParams.set("detail", "0");
+    endpoint.searchParams.set("limit", "20");
+  }
   endpoint.searchParams.set("q", query);
   endpoint.searchParams.set("lat", String(latitude));
   endpoint.searchParams.set("lng", String(longitude));
@@ -51,7 +58,7 @@ const cachedSearch = unstable_cache(async (query: string, latitude: number, long
     // Log only published machine codes, never provider messages or request data.
     const knownCodes = ["temporarily_unavailable", "request_timeout", "rate_limit_exceeded", "insufficient_credits", "invalid_parameter", "invalid_api_key", "internal_error"];
     console.info("[explore/serpent] Maps failed", {
-      elapsedMs: Date.now() - started, status: response.status,
+      elapsedMs: Date.now() - started, status: response.status, detailMode,
       code: knownCodes.includes(failure?.code) ? failure.code : "unknown",
     });
     throw new Error(`Place search returned HTTP ${response.status}.`);
@@ -63,14 +70,14 @@ const cachedSearch = unstable_cache(async (query: string, latitude: number, long
   });
   const partial = payload.meta?.partial === true || payload.meta?.partialResults === true;
   console.info("[explore/serpent] Maps completed", {
-    elapsedMs: Date.now() - started, returned: results.length, partial,
+    elapsedMs: Date.now() - started, returned: results.length, partial, detailMode,
     discovered: Number.isSafeInteger(payload.counts?.discovered) ? payload.counts.discovered : undefined,
     delivered: Number.isSafeInteger(payload.counts?.returned) ? payload.counts.returned : undefined,
   });
   // An incomplete empty search is not evidence that there are no nearby places.
   if (partial && results.length === 0) throw new Error("place_search_incomplete");
   return results;
-}, ["explore-serpent-quick-v4"], { revalidate: 600 });
+}, ["explore-serpent-progressive-v1"], { revalidate: 600 });
 
 const inFlight = new Map<string, ReturnType<typeof cachedSearch>>();
 export async function searchSerpentPlaces(input: ExplorePlacesSearchInput) {
@@ -80,10 +87,11 @@ export async function searchSerpentPlaces(input: ExplorePlacesSearchInput) {
   const query = [input.categoryQuery, searchTerm, `near ${input.location.label}`]
     .filter(Boolean).join(" ").trim().toLocaleLowerCase();
   const { latitude, longitude } = input.location;
-  const identity = JSON.stringify([query, latitude, longitude]);
+  const detailMode = input.detailMode ?? "full";
+  const identity = JSON.stringify([query, latitude, longitude, detailMode]);
   let pending = inFlight.get(identity);
   if (!pending) {
-    pending = cachedSearch(query, latitude, longitude).finally(() => inFlight.delete(identity));
+    pending = cachedSearch(query, latitude, longitude, detailMode).finally(() => inFlight.delete(identity));
     inFlight.set(identity, pending);
   }
   const results = await pending;

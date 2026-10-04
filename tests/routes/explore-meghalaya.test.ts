@@ -276,7 +276,7 @@ test.describe("Explore Meghalaya", () => {
     expect(placesService).toContain("resolveWikimediaImages");
     expect(searchRoute).toContain("searchExplorePlaces");
     expect(searchRoute).toContain(
-      "if (shouldEnrichExploreSearch(parsed.data.searchMode))",
+      "if (shouldEnrichExploreSearch(parsed.data.searchMode) && !detailsPending)",
     );
     expect(searchRoute).toContain("locationContextKey");
     expect(searchRoute).not.toContain("recentConversation");

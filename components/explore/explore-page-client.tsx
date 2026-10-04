@@ -28,6 +28,7 @@ import {
   EditableTranslation,
   useEditableTranslation,
 } from "@/components/translation-edit-provider";
+import { mergeExploreDetails } from "@/lib/explore/details";
 import {
   createExploreSearchKey,
   extractExploreRadiusKm,
@@ -308,6 +309,7 @@ export function ExplorePageClient({
             location,
             radiusKm: 50,
             searchMode: mode === "search" ? "enriched" : "places_only",
+            detailMode: "list",
           }),
           signal: controller.signal,
         });
@@ -338,6 +340,33 @@ export function ExplorePageClient({
         locationContextKeyRef.current = body.locationContextKey;
         setVisibleResultCount(RESULTS_PAGE_SIZE);
         setResponse(body);
+        // Deliver core results now; photos and optional summaries are independent.
+        if (body.detailsPending) {
+          void fetch("/api/explore/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: controller.signal,
+            body: JSON.stringify({
+              query: normalized, categoryId: selection.categoryId,
+              subcategoryId: selection.subcategoryId, chatId: body.chatId,
+              clientRequestId: requestId, locationContextKey: body.locationContextKey,
+              location, radiusKm: 50, searchMode: body.searchMode, detailMode: "full",
+            }),
+          }).then(async (res) => {
+            if (!res.ok) throw new Error("details_unavailable");
+            const full = await res.json() as ExploreSearchResponse;
+            if (currentRequestIdRef.current !== requestId || full.clientRequestId !== requestId ||
+              full.chatId !== body.chatId || full.location.id !== location.id || full.radiusKm !== 50) return;
+            setResponse((current) => current?.clientRequestId === requestId ? {
+              ...current, answer: full.answer, detailsPending: false,
+              results: mergeExploreDetails(current.results, full.results),
+            } : current);
+            setDetail((current) => current ? mergeExploreDetails([current], full.results)[0] : null);
+          }).catch(() => {
+            // The confirmed core list stays usable even when optional enrichment fails.
+            if (!controller.signal.aborted) console.info("[explore] Optional details unavailable.");
+          });
+        }
       } catch (searchError) {
         if (
           searchError instanceof DOMException &&
@@ -1111,7 +1140,7 @@ export function ExplorePageClient({
                 "explore.location.within_km",
                 "Within {distance} km",
               ).replace("{distance}", String(response.radiusKm))}
-              {" · "}
+              {response.answer ? " · " : null}
               {response.answer}
             </p>
           </div>

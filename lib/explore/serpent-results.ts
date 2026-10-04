@@ -21,7 +21,8 @@ export function parseSerpentPlaces(payload: unknown, input: { location: ExploreL
     const distanceKm = calculateDistanceKm(input.location, { latitude, longitude });
     if (distanceKm > input.radiusKm + 0.05) return [];
     const sourceUrl = url(place.maps_url) ?? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
-    const photoUrl = url(place.cover_image) ?? (Array.isArray(place.images) ? place.images.map((image) => url(record(image).url)).find(Boolean) ?? null : null);
+    const photoUrl = url(place.cover_image) ?? (Array.isArray(place.images) ? place.images.map((image) => url(record(image).url)).find(Boolean) ?? null : null)
+      ?? url(record(place.thumbnail).url);
     // Maps photos are served directly by Google; keep web/native image hosts aligned with CSP.
     const imageUrl = photoUrl && /(?:^|\.)(?:googleusercontent\.com|gstatic\.com)$/.test(new URL(photoUrl).hostname) ? photoUrl : null;
     const category = Array.isArray(place.categories) ? text(place.categories[0]) || null : null;

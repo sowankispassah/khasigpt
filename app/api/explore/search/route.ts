@@ -235,10 +235,12 @@ export async function POST(request: Request) {
       location: parsed.data.location,
       query: parsed.data.query,
       radiusKm: parsed.data.radiusKm,
+      detailMode: parsed.data.detailMode,
     });
     const results = placeSearch.results;
+    const detailsPending = placeSearch.detailsPending === true;
     let answer: WebSearchAnswer | null = null;
-    if (shouldEnrichExploreSearch(parsed.data.searchMode)) {
+    if (shouldEnrichExploreSearch(parsed.data.searchMode) && !detailsPending) {
       const [config, registry, subscription, freeSettings, messageCount, webSearchOverride] =
         await Promise.all([
           loadWebSearchConfig(),
@@ -491,7 +493,7 @@ export async function POST(request: Request) {
         radiusKm: parsed.data.radiusKm,
         results,
       });
-    if (shouldEnrichExploreSearch(parsed.data.searchMode)) {
+    if (shouldEnrichExploreSearch(parsed.data.searchMode) && !detailsPending) {
       const now = new Date();
       const assistantParts: ChatMessage["parts"] = [
         {
@@ -556,6 +558,7 @@ export async function POST(request: Request) {
       results,
       searchQueries: answer?.searchQueries ?? [],
       searchMode: parsed.data.searchMode,
+      detailsPending,
     };
     return NextResponse.json(response, { headers: noStoreHeaders() });
   } catch (error) {
