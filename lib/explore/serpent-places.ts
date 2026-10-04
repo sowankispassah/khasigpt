@@ -77,7 +77,7 @@ const cachedSearch = unstable_cache(async (query: string, latitude: number, long
   // An incomplete empty search is not evidence that there are no nearby places.
   if (partial && results.length === 0) throw new Error("place_search_incomplete");
   return results;
-}, ["explore-serpent-progressive-v1"], { revalidate: 600 });
+}, ["explore-serpent-progressive-v2"], { revalidate: 600 });
 
 const inFlight = new Map<string, ReturnType<typeof cachedSearch>>();
 export async function searchSerpentPlaces(input: ExplorePlacesSearchInput) {

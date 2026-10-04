@@ -7,6 +7,16 @@ function record(value: unknown): Record<string, unknown> {
 }
 function text(value: unknown) { return typeof value === "string" ? value.trim().slice(0, 1000) : ""; }
 function url(value: unknown) { return safePlaceImageUrl(text(value)); }
+function placePhoto(value: unknown) {
+  const candidate = url(value);
+  if (!candidate) return null;
+  const parsed = new URL(candidate);
+  if (!/(?:^|\.)(?:googleusercontent\.com|gstatic\.com)$/.test(parsed.hostname)) return null;
+  // Maps can return a legacy profile avatar instead of a business photo.
+  // These empty-avatar URLs can be broken and are not a place image.
+  if (parsed.pathname.includes("/AAAAAAAAAA") && parsed.pathname.endsWith("/photo.jpg")) return null;
+  return candidate;
+}
 
 export function parseSerpentPlaces(payload: unknown, input: { location: ExploreLocationInput; radiusKm: number }): ExploreResult[] {
   const data = record(payload);
@@ -21,10 +31,10 @@ export function parseSerpentPlaces(payload: unknown, input: { location: ExploreL
     const distanceKm = calculateDistanceKm(input.location, { latitude, longitude });
     if (distanceKm > input.radiusKm + 0.05) return [];
     const sourceUrl = url(place.maps_url) ?? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
-    const photoUrl = url(place.cover_image) ?? (Array.isArray(place.images) ? place.images.map((image) => url(record(image).url)).find(Boolean) ?? null : null)
-      ?? url(record(place.thumbnail).url);
+    const photoUrl = placePhoto(place.cover_image) ?? (Array.isArray(place.images) ? place.images.map((image) => placePhoto(record(image).url)).find(Boolean) ?? null : null)
+      ?? placePhoto(record(place.thumbnail).url);
     // Maps photos are served directly by Google; keep web/native image hosts aligned with CSP.
-    const imageUrl = photoUrl && /(?:^|\.)(?:googleusercontent\.com|gstatic\.com)$/.test(new URL(photoUrl).hostname) ? photoUrl : null;
+    const imageUrl = photoUrl;
     const category = Array.isArray(place.categories) ? text(place.categories[0]) || null : null;
     return [{
       id: `serpent-${text(place.place_id) || `${name}:${latitude}:${longitude}`}`,

@@ -218,6 +218,18 @@ test("unavailable Maps limits do not block searches and preserve a bounded reque
   expect(budget).toBe("40");
 });
 
+test("Maps list ignores broken profile avatars and retains business photo fallbacks", () => {
+  const avatar = "https://lh3.googleusercontent.com/-Fj79CJkpzFU/AAAAAAAAAAI/AAAAAAAAAAA/yFkYUQ_-dSU/s44-p-k-no-ns-nd/photo.jpg";
+  const businessPhoto = "https://lh3.googleusercontent.com/gps-cs-s/business=w86-h114-k-no";
+  const core = { name: "Restaurant", coordinates: location, thumbnail: { url: avatar } };
+  const results = parseSerpentPlaces({ success: true, places: [
+    { ...core, place_id: "avatar" },
+    { ...core, place_id: "business", cover_image: avatar, images: [{ url: businessPhoto }] },
+  ] }, { location, radiusKm: 50 });
+  expect(results[0].imageUrl).toBeNull();
+  expect(results[1].imageUrl).toBe(businessPhoto);
+});
+
 for (const [maximum, expected] of [[45, "40"], [20, "20"]] as const) {
   test(`Maps discovery budget respects the published ${maximum}s ceiling`, async () => {
     let requested: URL | null = null;
