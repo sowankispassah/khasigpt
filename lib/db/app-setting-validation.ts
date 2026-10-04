@@ -29,6 +29,7 @@ import { BILLING_COUPONS_ACCESS_KEY,
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
   WEB_SEARCH_ENABLED_SETTING_KEY,} from "@/lib/constants";
 import { GOOGLE_BUDGET_SETTING_KEY, googleBudgetSchema } from "@/lib/explore/google-budget-policy";
+import { PHOTO_CACHE_SETTING_KEY, photoCachePolicySchema } from "@/lib/explore/photo-cache-policy";
 import { EXPLORE_PROVIDER_SETTING_KEY, parseExploreProvider } from "@/lib/explore/providers";
 import { parseSerpentMapsQuickEnabled, parseSerpentPhotoSource, SERPENT_MAPS_QUICK_SETTING_KEY, SERPENT_PHOTO_SOURCE_SETTING_KEY } from "@/lib/explore/serpent-policy";
 import { parseFeatureAccessModeStrict } from "@/lib/feature-access";
@@ -99,6 +100,8 @@ function getJsonByteLength(value: unknown) {
 
 export function normalizeAppSettingValueForWrite<T>(key: string, value: T): T {
   const normalizedKey = key.trim();
+
+  if (normalizedKey === PHOTO_CACHE_SETTING_KEY) return photoCachePolicySchema.parse(value) as T;
 
   if (normalizedKey === GOOGLE_BUDGET_SETTING_KEY) return googleBudgetSchema.parse(value) as T;
   if (normalizedKey === SERPENT_PHOTO_SOURCE_SETTING_KEY) {

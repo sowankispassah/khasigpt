@@ -1,6 +1,6 @@
 import "server-only";
-import { unstable_cache } from "next/cache";
 import type { PlaceImage } from "./image-matching";
+import { createSharedPhotoLookup } from "./photo-cache";
 import type { PhotoLookupPlace } from "./photo-token";
 import { placePhoto } from "./serpent-results";
 
@@ -46,7 +46,7 @@ export function selectSerpentListingPhoto(payload: unknown, reference: Reference
   return { imageUrl, title: place.name.trim().slice(0, 240), sourceUrl };
 }
 
-const cachedPhoto = unstable_cache(async (reference: Reference): Promise<PlaceImage | null> => {
+const cachedPhoto = createSharedPhotoLookup("listing", async (reference: Reference): Promise<PlaceImage | null> => {
   const key = process.env.SERPENT_API_KEY?.trim();
   if (!key) throw new Error("photo_credentials_unavailable");
   const endpoint = new URL("https://api.apiserpent.com/api/maps/place");
@@ -57,17 +57,9 @@ const cachedPhoto = unstable_cache(async (reference: Reference): Promise<PlaceIm
   const photo = selectSerpentListingPhoto(await response.json(), reference);
   console.info("[explore/photos] Listing lookup completed", { elapsedMs: Date.now() - started, matched: Boolean(photo) });
   return photo;
-}, ["explore-serpent-listing-photo-v1"], { revalidate: 86_400 });
-
-const inFlight = new Map<string, Promise<PlaceImage | null>>();
+});
 export function lookupSerpentListingPhoto(place: PhotoLookupPlace): Promise<PlaceImage | null> {
   const reference = listingPhotoReference(place);
   if (!reference) return Promise.resolve(null);
-  const identity = JSON.stringify(reference);
-  let pending = inFlight.get(identity);
-  if (!pending) {
-    pending = cachedPhoto(reference).finally(() => inFlight.delete(identity));
-    inFlight.set(identity, pending);
-  }
-  return pending;
+  return cachedPhoto(reference);
 }

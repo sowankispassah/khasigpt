@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { unstable_cache } from "next/cache";
 import { buildPlaceImageQuery, type ExploreImagePlace, type PlaceImage, selectPlaceImage } from "./image-matching";
+import { createSharedPhotoLookup } from "./photo-cache";
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -15,7 +15,7 @@ export function normalizeSerpentImages(payload: unknown) {
     return { title: image.title, link: image.pageUrl, imageUrl: image.original, thumbnailUrl: image.thumbnail };
   }) };
 }
-const cachedPhoto = unstable_cache(async (place: ExploreImagePlace): Promise<PlaceImage | null> => {
+const cachedPhoto = createSharedPhotoLookup("images", async (place: ExploreImagePlace): Promise<PlaceImage | null> => {
   const query = buildPlaceImageQuery(place);
   if (!query) return null;
   const key = process.env.SERPENT_API_KEY?.trim();
@@ -31,14 +31,7 @@ const cachedPhoto = unstable_cache(async (place: ExploreImagePlace): Promise<Pla
   if (!image && record(record(payload).meta).partialResults === true) throw new Error("image_lookup_incomplete");
   console.info("[explore/photos] lookup completed", { queryHash: createHash("sha256").update(query).digest("hex").slice(0, 16), matched: Boolean(image) });
   return image;
-}, ["explore-serpent-images-v1"], { revalidate: 86_400 });
-const inFlight = new Map<string, Promise<PlaceImage | null>>();
+});
 export function lookupSerpentPlacePhoto(place: ExploreImagePlace) {
-  const identity = JSON.stringify(place);
-  let pending = inFlight.get(identity);
-  if (!pending) {
-    pending = cachedPhoto(place).finally(() => inFlight.delete(identity));
-    inFlight.set(identity, pending);
-  }
-  return pending;
+  return cachedPhoto(place);
 }

@@ -9,6 +9,7 @@ import { EXPLORE_FALLBACK_PROVIDERS, type GoogleBudget, googleBillingMonth, pars
 import { EXPLORE_PROVIDER_COPY } from "@/lib/explore/provider-copy";
 import { EXPLORE_PROVIDERS, type ExploreProvider } from "@/lib/explore/providers";
 import { parseSerpentMapsQuickEnabled, parseSerpentPhotoSource, type SerpentPhotoSource } from "@/lib/explore/serpent-policy";
+import { ExplorePhotoCacheSettings } from "./explore-photo-cache-settings";
 
 const names: Record<ExploreProvider, string> = EXPLORE_PROVIDER_COPY;
 type Configuration = { provider: ExploreProvider; configured: Record<ExploreProvider, boolean>; googleBudget: GoogleBudget; serpentMapsQuickEnabled?: boolean; serpentPhotoSource?: SerpentPhotoSource };
@@ -96,6 +97,7 @@ export function ExploreProviderSettings() {
           <option value="maps_place">{translate("admin.explore.provider.photo_maps_place", EXPLORE_PROVIDER_COPY.photo_maps_place)}</option>
         </select>
         <p className="text-muted-foreground text-xs"><Copy name="serpent_maps_quick_description" text={EXPLORE_PROVIDER_COPY.serpent_maps_quick_description} /></p>
+        <ExplorePhotoCacheSettings />
       </div>}
       <p className="mt-3 text-muted-foreground text-xs"><Copy name="credentials" text="Services without a configured server API key are unavailable. A configured key still requires an active account, sufficient credits, and the appropriate API enabled." /></p>
       <ul className="mt-3 flex flex-wrap gap-3 text-xs">{(["google", "serper", "serpent"] as const).map((provider) => <li key={provider}><Copy name={provider} text={names[provider]} />: <Copy name={configuration.configured[provider] ? "configured" : "missing"} text={configuration.configured[provider] ? "Key configured" : "Key missing"} /></li>)}</ul>

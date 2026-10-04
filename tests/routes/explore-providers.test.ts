@@ -20,6 +20,16 @@ const mapsStatus = () => Response.json({ success: true, data: { limits: {
 } } });
 
 const location = { id: "test", label: "Shillong, Meghalaya", latitude: 25.57, longitude: 91.88, source: "manual" as const, accuracy: null };
+function photoCacheMock() {
+  return { createSharedPhotoLookup: (_namespace: string, fn: any) => {
+    const cache = new Map();
+    return (input: any) => {
+      const key = JSON.stringify(input);
+      if (!cache.has(key)) cache.set(key, fn(input).catch((error: unknown) => { cache.delete(key); throw error; }));
+      return cache.get(key);
+    };
+  } };
+}
 function load(file: string, mocks: Record<string, unknown>, env: Record<string, string> = {}, globals: Record<string, unknown> = {}) {
   const exports: Record<string, any> = {};
   const code = ts.transpileModule(readFileSync(file, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
@@ -421,6 +431,7 @@ test("image lookups coalesce, cache matches and no matches, and reject unverifie
   const cache = new Map();
   const service = load("lib/explore/serpent-images.ts", {
     "server-only": {}, "node:crypto": { createHash }, "./image-matching": imageMatching,
+    "./photo-cache": photoCacheMock(),
     "next/cache": { unstable_cache: (fn: any) => (place: any) => { const key = JSON.stringify(place); if (!cache.has(key)) cache.set(key, fn(place).catch((error: unknown) => { cache.delete(key); throw error; })); return cache.get(key); } },
   }, { SERPENT_API_KEY: "private" }, { fetch: async () => { calls++; return Response.json({ success: true, results: { images: [{ title: "Langbang Cafe Shangpung Meghalaya", pageUrl: "https://example.com/langbang-cafe-shangpung", original: "https://images.example.com/photo.jpg", thumbnail: "https://encrypted-tbn0.gstatic.com/photo" }] } }); } });
   const photos = await Promise.all([service.lookupSerpentPlacePhoto(samplePhotoPlace), service.lookupSerpentPlacePhoto(samplePhotoPlace)]);
@@ -483,6 +494,7 @@ function listingHarness() {
   const requests: URL[] = []; const cache = new Map();
   const module = load("lib/explore/serpent-place-photo.ts", {
     "server-only": {}, "./serpent-results": { placePhoto },
+    "./photo-cache": photoCacheMock(),
     "next/cache": { unstable_cache: (fn: any) => (reference: any) => { const key = JSON.stringify(reference); if (!cache.has(key)) cache.set(key, fn(reference).catch((error: unknown) => { cache.delete(key); throw error; })); return cache.get(key); } },
   }, { SERPENT_API_KEY: "private" }, { URL, AbortSignal, Map, Promise, fetch: async (url: URL, options: RequestInit) => {
     calls++; requests.push(url); expect(options.headers).toEqual({ "X-API-Key": "private" });
