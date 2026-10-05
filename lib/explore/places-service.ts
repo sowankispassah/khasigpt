@@ -30,6 +30,14 @@ const GOOGLE_TEXT_SEARCH_URL =
   "https://places.googleapis.com/v1/places:searchText";
 const GOOGLE_NEARBY_SEARCH_URL =
   "https://places.googleapis.com/v1/places:searchNearby";
+// Google caps each Nearby Search at 20 places. An all-type query alone can be
+// filled by very close shops, leaving nearby cafes and attractions invisible.
+// Keep the previous three-search ceiling, but anchor every group to the center.
+const GOOGLE_DISCOVERY_TYPES = [
+  ["restaurant", "cafe"],
+  undefined,
+  ["tourist_attraction", "park", "hotel"],
+] as const;
 const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
@@ -165,7 +173,7 @@ async function searchGooglePlaces({
   location,
   query,
   radiusKm,
-}: ExplorePlacesSearchInput, beforePhoto?: () => void) {
+}: ExplorePlacesSearchInput, beforePhoto?: () => void, nearbyTypes?: readonly string[]) {
   const key = process.env.GOOGLE_MAPS_API_KEY?.trim();
   if (!key) return null;
   const nearby = isGeneralDiscovery({ categoryQuery, query });
@@ -174,6 +182,7 @@ async function searchGooglePlaces({
   const body = nearby ? {
     maxResultCount: 20,
     rankPreference: "DISTANCE",
+    ...(nearbyTypes ? { includedTypes: nearbyTypes } : {}),
     locationRestriction: { circle: {
       center: { latitude: location.latitude, longitude: location.longitude },
       radius: Math.min(radiusKm * 1000, 50_000),
@@ -533,10 +542,11 @@ export type ExplorePlacesSearchInput = {
 
 type PlaceSearchResult = { results: ExploreResult[]; source: string; detailsPending?: boolean; imageSearch?: boolean; photoLookupSource?: "image_search" | "maps_place"; partial?: boolean };
 
-async function searchSingleIntent(input: ExplorePlacesSearchInput, provider: Awaited<ReturnType<typeof getExploreProvider>>): Promise<PlaceSearchResult> {
+async function searchSingleIntent(input: ExplorePlacesSearchInput, provider: Awaited<ReturnType<typeof getExploreProvider>>, googleDiscovery?: { types: readonly string[] | undefined; fallbackQuery: string }): Promise<PlaceSearchResult> {
   if (!exploreProviderConfigured(provider, process.env)) throw new Error("place_provider_not_configured");
+  const fallbackInput = googleDiscovery ? { ...input, query: googleDiscovery.fallbackQuery } : input;
   const serper = async () => {
-    const results = await searchSerperPlaces(input);
+    const results = await searchSerperPlaces(fallbackInput);
     if (!results) throw new Error("place_provider_not_configured");
     return { results: await addExplorePlaceImages(results), source: "google_maps" };
   };
@@ -545,33 +555,31 @@ async function searchSingleIntent(input: ExplorePlacesSearchInput, provider: Awa
     serpent: async () => {
       const [enabled, source] = await Promise.all([getSerpentMapsQuickEnabled(), getSerpentPhotoSource()]);
       const policy = serpentDetailPolicy(enabled, input.detailMode, source);
-      const results = await searchSerpentPlaces({ ...input, detailMode: policy.detailMode });
+      const results = await searchSerpentPlaces({ ...fallbackInput, detailMode: policy.detailMode });
       return { results, source: "google_maps", detailsPending: policy.detailsPending && results.length > 0, imageSearch: policy.imageSearch, photoLookupSource: policy.photoLookupSource };
     },
-    openstreetmap: async () => ({ results: await searchOverpass(input), source: "openstreetmap" }),
+    openstreetmap: async () => ({ results: await searchOverpass(fallbackInput), source: "openstreetmap" }),
   };
   return dispatchExploreProvider<PlaceSearchResult>(provider, {
     google: () => runGoogleWithFallback(async (beforePhoto) => {
-      const results = await searchGooglePlaces(input, beforePhoto);
+      const results = await searchGooglePlaces(input, beforePhoto, googleDiscovery?.types);
       if (!results) throw new Error("place_provider_not_configured");
       return { results, source: "google_places" };
-    }, isGeneralDiscovery(input) ? {
-      // The selected fallback retains its own broad discovery behavior; a
-      // Google allowance rollover must not reduce it to one sentinel query.
-      serper: () => searchProviderPlaces(input, "serper"),
-      serpent: () => searchProviderPlaces(input, "serpent"),
-      openstreetmap: () => searchProviderPlaces(input, "openstreetmap"),
-    } : alternatives),
+    }, alternatives),
     ...alternatives,
   });
 }
 
 async function searchProviderPlaces(input: ExplorePlacesSearchInput, provider: Awaited<ReturnType<typeof getExploreProvider>>): Promise<PlaceSearchResult> {
-  // Google queries all nearby types directly; OSM reads the union of tags.
-  if (!isGeneralDiscovery(input) || provider === "openstreetmap" || provider === "google") return searchSingleIntent(input, provider);
+  // OSM already reads the union of tags in one request.
+  if (!isGeneralDiscovery(input) || provider === "openstreetmap") return searchSingleIntent(input, provider);
   // Each intent keeps the selected provider, cache, photo policy and Google quota
   // reservation. No enrichment/search-provider switch is caused by an empty list.
-  const settled = await Promise.allSettled(DISCOVERY_TERMS.map((query) => searchSingleIntent({ ...input, query }, provider)));
+  const settled = await Promise.allSettled(DISCOVERY_TERMS.map((query, index) =>
+    provider === "google"
+      ? searchSingleIntent(input, provider, { types: GOOGLE_DISCOVERY_TYPES[index], fallbackQuery: query })
+      : searchSingleIntent({ ...input, query }, provider),
+  ));
   const available = settled.flatMap((value) => value.status === "fulfilled" ? [value.value] : []);
   if (!available.length) {
     const failure = settled.find((value) => value.status === "rejected");

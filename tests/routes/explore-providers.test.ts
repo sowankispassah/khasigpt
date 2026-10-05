@@ -123,7 +123,7 @@ test("discovery deduplicates names and coordinates without collapsing separate b
   expect(discovery.isGeneralDiscovery({ query: discovery.DISCOVERY_QUERY, categoryQuery: "hotels" })).toBe(false);
 });
 
-test("Google initial discovery uses one all-type coordinate search and one allowance admission; names and presets stay textual", async () => {
+test("Google initial discovery merges all-type, food and attraction coordinate searches with separate admissions; names and presets stay textual", async () => {
   let admissions = 0;
   const calls: Array<{ url: string; body: any }> = [];
   const service = load("lib/explore/places-service.ts", {
@@ -146,20 +146,21 @@ test("Google initial discovery uses one all-type coordinate search and one allow
   });
   const input = { location, radiusKm: 50, query: discovery.DISCOVERY_QUERY, categoryQuery: null };
   const result = await service.searchExplorePlaces(input);
-  expect(admissions).toBe(1);
-  expect(calls).toEqual([{ url: "https://places.googleapis.com/v1/places:searchNearby", body: {
+  expect(admissions).toBe(3);
+  expect(calls).toEqual([["restaurant", "cafe"], undefined, ["tourist_attraction", "park", "hotel"]].map((types) => ({ url: "https://places.googleapis.com/v1/places:searchNearby", body: {
     maxResultCount: 20, rankPreference: "DISTANCE",
+    ...(types ? { includedTypes: types } : {}),
     locationRestriction: { circle: { center: { latitude: location.latitude, longitude: location.longitude }, radius: 50_000 } },
-  } }]);
+  } })));
   expect(result.results.map((place: any) => place.name)).toEqual(["NXGS Gaming Studio", "Langbang Cafe"]);
   await service.searchExplorePlaces({ ...input, query: "nxgs" });
   await service.searchExplorePlaces({ ...input, query: "restaurant, food, drinks", categoryQuery: "restaurant" });
-  expect(admissions).toBe(3);
-  expect(calls.slice(1).map((call) => [call.url, call.body.textQuery])).toEqual([
+  expect(admissions).toBe(5);
+  expect(calls.slice(3).map((call) => [call.url, call.body.textQuery])).toEqual([
     ["https://places.googleapis.com/v1/places:searchText", "nxgs"],
     ["https://places.googleapis.com/v1/places:searchText", "restaurant restaurant, food, drinks"],
   ]);
-  expect(calls[1].body.locationRestriction.rectangle).toEqual(geo.getRadiusBoundingBox(location, 50));
+  expect(calls[3].body.locationRestriction.rectangle).toEqual(geo.getRadiusBoundingBox(location, 50));
 });
 
 test("Google initial discovery preserves the admin-selected fallback's full discovery and photo policy", async () => {
