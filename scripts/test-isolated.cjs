@@ -54,7 +54,7 @@ async function main() {
     NEXT_DIST_DIR: '.next-isolated-tests', SKIP_APP_SETTING_CACHE: '1', SKIP_TRANSLATION_CACHE: '1',
     BYPASS_SITE_STATUS_GATE_IN_DEV: 'true', SUPABASE_URL: jobs.url, SUPABASE_SERVICE_ROLE_KEY: fixtureKey,
     ISOLATED_TEST_SERVER: productionBuild ? 'production' : 'development',
-    ENABLE_GUEST_LOGIN: 'true',
+    ENABLE_GUEST_LOGIN: process.env.AUDIT_GUEST_LOGIN_ENABLED ?? 'true',
   });
   try {
     await sql`insert into "PricingPlan" (id,name,"priceInPaise","tokenAllowance","billingCycleDays")

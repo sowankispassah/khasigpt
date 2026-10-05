@@ -1,15 +1,10 @@
 import { NextResponse } from "next/server";
 import { auth, signIn } from "@/app/(auth)/auth";
 import { ChatSDKError } from "@/lib/errors";
+import { GUEST_SIGNIN_RATE_LIMIT, isGuestLoginEnabled } from "@/lib/security/guest-login";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { sanitizeRedirectPath } from "@/lib/security/safe-redirect";
-
-const isProduction = process.env.NODE_ENV === "production";
-const GUEST_SIGNIN_RATE_LIMIT = {
-  limit: process.env.PLAYWRIGHT === "true" ? 500 : 10,
-  windowMs: 10 * 60 * 1000,
-};
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -19,10 +14,7 @@ export async function GET(request: Request) {
     "/chat"
   );
 
-  if (
-    isProduction &&
-    (process.env.ENABLE_GUEST_LOGIN ?? "false").toLowerCase() !== "true"
-  ) {
+  if (!isGuestLoginEnabled()) {
     return new ChatSDKError(
       "forbidden:auth",
       "Guest login is disabled in production. Ask an admin to enable ENABLE_GUEST_LOGIN if this should be available."
@@ -31,7 +23,9 @@ export async function GET(request: Request) {
 
   const clientKey = getClientKeyFromHeaders(request.headers);
   const { allowed, resetAt } = await incrementRateLimit(
-    `guest:${clientKey}`,
+    // Entry throttling protects the session lookup; the provider separately
+    // enforces guest creation across both this route and direct callbacks.
+    `guest-entry:${clientKey}`,
     GUEST_SIGNIN_RATE_LIMIT
   );
 

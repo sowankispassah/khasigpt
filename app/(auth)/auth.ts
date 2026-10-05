@@ -23,7 +23,9 @@ import {
 import { ChatSDKError } from "@/lib/errors";
 import { verifyMobileAuthToken } from "@/lib/mobile-auth-token";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
+import { GUEST_SIGNIN_RATE_LIMIT, isGuestLoginEnabled } from "@/lib/security/guest-login";
 import { incrementRateLimit, resetRateLimit } from "@/lib/security/rate-limit";
+import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { withTimeout } from "@/lib/utils/async";
 import { authConfig } from "./auth.config";
 
@@ -184,12 +186,21 @@ providers.push(
   })
 );
 
-providers.push(
+if (isGuestLoginEnabled()) providers.push(
   Credentials({
     id: "guest",
     name: "Guest",
     credentials: {},
-    async authorize() {
+    async authorize(_credentials, request) {
+      // Enforce at the account-creation boundary as well as the friendly route.
+      // Direct Auth.js callbacks must not bypass the gate or shared quota.
+      if (!isGuestLoginEnabled()) return null;
+      const { allowed } = await incrementRateLimit(
+        `guest:${getClientKeyFromHeaders(request.headers)}`,
+        GUEST_SIGNIN_RATE_LIMIT
+      );
+      if (!allowed) return null;
+
       const record = await runAuthDb("guest.create_user", createAuthGuestUser());
 
       return {
