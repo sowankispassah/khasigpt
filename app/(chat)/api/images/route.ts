@@ -1,13 +1,10 @@
 import { createHash } from "node:crypto";
-import { isIP } from "node:net";
-import { put } from "@vercel/blob";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { resolveEnvironmentReferences } from "@/lib/ai/environment-reference";
 import { isEnvironmentReferenceEnabledForRole } from "@/lib/ai/environment-reference-config";
 import {
-  ALLOWED_IMAGE_MEDIA_TYPES,
   MAX_IMAGE_UPLOAD_BYTES,
 } from "@/lib/ai/image-constants";
 import {
@@ -30,6 +27,7 @@ import {
   IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
   WEB_SEARCH_ENABLED_SETTING_KEY,
 } from "@/lib/constants";
+import { getAuthUserById } from "@/lib/db/auth-queries";
 import {
   acquirePaidGenerationForUser,
   deductImageCredits,
@@ -49,7 +47,11 @@ import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { loadUserFeatureAccessOverride } from "@/lib/settings/user-feature-access";
 import type { ChatMessage } from "@/lib/types";
+import { buildDocumentDownloadUrl } from "@/lib/uploads/document-access";
+import { putPrivateFile } from "@/lib/uploads/private-documents";
+import { readOwnedImage, resolveOwnedImage } from "@/lib/uploads/private-images";
 import { generateUUID } from "@/lib/utils";
+import { withTimeout } from "@/lib/utils/async";
 import {
   getWebSearchPlatform,
   isWebSearchAllowedForUser,
@@ -73,16 +75,12 @@ const imageRequestSchema = z.object({
   displayPrompt: z.string().trim().min(1).max(2000).optional(),
   userMessageId: z.string().uuid().optional(),
   imageUrl: z.string().url().nullable().optional(),
-  imageUrls: z.array(z.string().url()).optional(),
+  imageUrls: z.array(z.string().url()).max(4).optional(),
   intent: z.enum(["image_generate", "image_edit"]).optional(),
   decisionToken: z.string().min(1).optional(),
 });
 
 const DEFAULT_IMAGE_FILENAME_PREFIX = "khasigpt-image";
-const ALLOWED_IMAGE_HOST_SUFFIXES = [
-  "blob.vercel-storage.com",
-  "public.blob.vercel-storage.com",
-];
 const environmentReferenceContextSchema = z.object({
   entity: z.string().trim().min(1).max(180),
   entityType: z.enum([
@@ -114,103 +112,6 @@ const environmentReferenceContextSchema = z.object({
 });
 type ImageGenerationStatus = "pending" | "completed" | "failed" | "cancelled";
 
-function hostMatchesSuffix(hostname: string, suffix: string) {
-  return hostname === suffix || hostname.endsWith(`.${suffix}`);
-}
-
-function isPrivateIpv4(address: string) {
-  const parts = address.split(".");
-  if (parts.length !== 4) {
-    return false;
-  }
-  const octets = parts.map((part) => Number.parseInt(part, 10));
-  if (octets.some((octet) => Number.isNaN(octet) || octet < 0 || octet > 255)) {
-    return false;
-  }
-
-  const [first, second, third] = octets;
-  if (first === 10) return true;
-  if (first === 127) return true;
-  if (first === 0) return true;
-  if (first === 169 && second === 254) return true;
-  if (first === 172 && second >= 16 && second <= 31) return true;
-  if (first === 192 && second === 168) return true;
-  if (first === 100 && second >= 64 && second <= 127) return true;
-  if (first === 192 && second === 0 && third === 0) return true;
-  if (first === 198 && (second === 18 || second === 19)) return true;
-  if (first >= 224) return true;
-  return false;
-}
-
-function isPrivateIpv6(address: string) {
-  const normalized = address.toLowerCase();
-  if (normalized === "::1" || normalized === "::") {
-    return true;
-  }
-  if (normalized.startsWith("fc") || normalized.startsWith("fd")) {
-    return true;
-  }
-  if (
-    normalized.startsWith("fe8") ||
-    normalized.startsWith("fe9") ||
-    normalized.startsWith("fea") ||
-    normalized.startsWith("feb")
-  ) {
-    return true;
-  }
-  if (
-    normalized.startsWith("fec") ||
-    normalized.startsWith("fed") ||
-    normalized.startsWith("fee") ||
-    normalized.startsWith("fef")
-  ) {
-    return true;
-  }
-  if (normalized.startsWith("2001:db8:")) {
-    return true;
-  }
-  if (normalized.startsWith("::ffff:")) {
-    return isPrivateIpv4(normalized.slice("::ffff:".length));
-  }
-  return false;
-}
-
-function isPrivateIp(address: string) {
-  const ipVersion = isIP(address);
-  if (ipVersion === 4) {
-    return isPrivateIpv4(address);
-  }
-  if (ipVersion === 6) {
-    return isPrivateIpv6(address);
-  }
-  return false;
-}
-
-function isAllowedImageUrl(value: string) {
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
-    return false;
-  }
-
-  if (parsed.protocol !== "https:") {
-    return false;
-  }
-
-  const hostname = parsed.hostname.toLowerCase();
-  if (!hostname) {
-    return false;
-  }
-  if (isPrivateIp(hostname)) {
-    return false;
-  }
-
-  return ALLOWED_IMAGE_HOST_SUFFIXES.some((suffix) =>
-    hostMatchesSuffix(hostname, suffix)
-  );
-}
-
 function normalizeImageFilenamePrefix(value: unknown) {
   if (typeof value !== "string") {
     return DEFAULT_IMAGE_FILENAME_PREFIX;
@@ -226,34 +127,6 @@ function normalizeImageFilenamePrefix(value: unknown) {
     .replace(/^[-_]+|[-_]+$/g, "");
 
   return sanitized || DEFAULT_IMAGE_FILENAME_PREFIX;
-}
-
-function detectImageMime(buffer: ArrayBuffer, declaredType?: string | null) {
-  const bytes = new Uint8Array(buffer);
-  const isPng =
-    bytes.length >= 8 &&
-    bytes[0] === 0x89 &&
-    bytes[1] === 0x50 &&
-    bytes[2] === 0x4e &&
-    bytes[3] === 0x47 &&
-    bytes[4] === 0x0d &&
-    bytes[5] === 0x0a &&
-    bytes[6] === 0x1a &&
-    bytes[7] === 0x0a;
-  const isJpeg =
-    bytes.length >= 3 &&
-    bytes[0] === 0xff &&
-    bytes[1] === 0xd8 &&
-    bytes[2] === 0xff;
-
-  const detected = isPng ? "image/png" : isJpeg ? "image/jpeg" : null;
-  if (detected) {
-    return detected;
-  }
-  if (declaredType && ALLOWED_IMAGE_MEDIA_TYPES.has(declaredType)) {
-    return declaredType;
-  }
-  return null;
 }
 
 function buildFallbackTitle(prompt: string) {
@@ -463,7 +336,7 @@ export async function POST(request: Request) {
     new Set([...(imageUrls ?? []), ...(imageUrl ? [imageUrl] : [])])
   ).filter(Boolean);
   const invalidImageUrl = resolvedImageUrls.find(
-    (candidate) => !isAllowedImageUrl(candidate)
+    (candidate) => !resolveOwnedImage(candidate, session.user.id, request.url)
   );
   if (invalidImageUrl) {
     return Response.json(
@@ -482,24 +355,16 @@ export async function POST(request: Request) {
     mediaType: string;
   }> = [];
 
+  if (resolvedImageUrls.length > 4) return new ChatSDKError("bad_request:api").toResponse();
+  let activeImageUser: Awaited<ReturnType<typeof getAuthUserById>>;
+  try { activeImageUser = await withTimeout(getAuthUserById(session.user.id), 2500); }
+  catch { return new ChatSDKError("offline:api").toResponse(); }
+  if (!activeImageUser?.isActive) return new ChatSDKError("unauthorized:api").toResponse();
+
   for (const url of resolvedImageUrls) {
     try {
-      const imageResponse = await fetch(url, {
-        cache: "no-store",
-        signal: request.signal,
-      });
-
-      if (!imageResponse.ok) {
-        return Response.json(
-          {
-            code: "bad_request:api",
-            message: "Unable to fetch the reference image.",
-          },
-          { status: 400 }
-        );
-      }
-
-      const buffer = await imageResponse.arrayBuffer();
+      const image = await readOwnedImage(url, session.user.id, request.url);
+      const buffer = image.bytes;
       if (buffer.byteLength > MAX_IMAGE_UPLOAD_BYTES) {
         return Response.json(
           {
@@ -510,8 +375,7 @@ export async function POST(request: Request) {
         );
       }
 
-      const contentType = imageResponse.headers.get("content-type");
-      const detected = detectImageMime(buffer, contentType);
+      const detected = image.mediaType;
       if (!detected) {
         return Response.json(
           {
@@ -752,18 +616,18 @@ export async function POST(request: Request) {
       images.slice(0, 1).map(async (image, index) => {
         const extension = image.mediaType.includes("png") ? "png" : "jpg";
         const filename = `${imageFilenamePrefix}-${index + 1}`;
-        const blob = await put(
+        const blob = await putPrivateFile(
           `generated-images/${session.user.id}/${chatId}/${assistantMessageId}-${index + 1}.${extension}`,
           Buffer.from(image.base64, "base64"),
-          {
-            access: "public",
-            contentType: image.mediaType,
-          }
+          image.mediaType
         );
+
+        const protectedUrl = buildDocumentDownloadUrl({ blobUrl: blob.url, userId: session.user.id, baseUrl: request.url });
+        if (!protectedUrl) throw new Error("Unable to store the image.");
 
         return {
           type: "file" as const,
-          url: blob.url,
+          url: protectedUrl,
           mediaType: image.mediaType,
           filename,
         };

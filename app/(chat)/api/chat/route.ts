@@ -164,6 +164,7 @@ import {
   parseDocumentUploadsAccessModeSetting,
 } from "@/lib/uploads/document-uploads";
 import { readPrivateDocument } from "@/lib/uploads/private-documents";
+import { hydratePrivateImageMessages } from "@/lib/uploads/private-images";
 import type { AppUsage } from "@/lib/usage";
 import {
   convertToUIMessages,
@@ -3610,7 +3611,19 @@ export async function POST(request: Request) {
     }
 
     const modelMessage = { ...message, parts: modelParts };
-    const uiMessagesForModel = [...baseUiMessages, modelMessage];
+    let uiMessagesForModel: ChatMessage[];
+    const imageMessages = [...baseUiMessages, modelMessage];
+    if (imageMessages.some(entry => entry.parts.some(part => part.type === "file" && part.mediaType.startsWith("image/")))) {
+      let imageUser: Awaited<ReturnType<typeof getAuthUserById>>;
+      try { imageUser = await withTimeout(getAuthUserById(session.user.id), 2500); }
+      catch { return new ChatSDKError("offline:api").toResponse(); }
+      if (!imageUser?.isActive) return new ChatSDKError("unauthorized:api").toResponse();
+    }
+    try {
+      uiMessagesForModel = await hydratePrivateImageMessages(imageMessages, session.user.id, request.url);
+    } catch {
+      return new ChatSDKError("bad_request:api", "Unable to read the uploaded image.").toResponse();
+    }
 
     const promptText = uiMessagesForModel
       .map((entry) => getTextFromMessage(entry))
@@ -4252,7 +4265,11 @@ export async function POST(request: Request) {
       return new ChatSDKError("bad_request:activate_gateway").toResponse();
     }
 
-    console.error("Unhandled error in chat API:", error, { vercelId });
+    // SDK errors can include request bodies containing private image bytes.
+    console.error("Unhandled error in chat API:", {
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      vercelId,
+    });
     return new ChatSDKError("offline:chat").toResponse();
   } finally {
     if (!streamingOwnsLease) await generationLease?.release();

@@ -1,4 +1,3 @@
-import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -19,7 +18,7 @@ import {
   IMAGE_MIME_TYPES,
   parseDocumentUploadsAccessModeSetting,
 } from "@/lib/uploads/document-uploads";
-import { putPrivateDocument } from "@/lib/uploads/private-documents";
+import { putPrivateFile } from "@/lib/uploads/private-documents";
 
 const MAX_FILE_SIZE_BYTES = DOCUMENT_UPLOADS_MAX_BYTES;
 const ALLOWED_IMAGE_MIME_TYPES = IMAGE_MIME_TYPES;
@@ -29,7 +28,7 @@ const FILE_UPLOAD_RATE_LIMIT = {
   windowMs: 10 * 60 * 1000,
 };
 
-function detectImageMime(buffer: ArrayBuffer, declaredType: string) {
+function detectImageMime(buffer: ArrayBuffer) {
   const bytes = new Uint8Array(buffer);
   const isPng =
     bytes.length >= 8 &&
@@ -48,13 +47,7 @@ function detectImageMime(buffer: ArrayBuffer, declaredType: string) {
     bytes[2] === 0xff;
 
   const detected = isPng ? "image/png" : isJpeg ? "image/jpeg" : null;
-  const type =
-    detected ??
-    (ALLOWED_IMAGE_MIME_TYPES.includes(declaredType as any)
-      ? declaredType
-      : null);
-
-  return type;
+  return detected;
 }
 
 async function enforceFileUploadRateLimit(request: Request, userId: string) {
@@ -162,7 +155,7 @@ export async function POST(request: Request) {
 
     const fileBuffer = await file.arrayBuffer();
     const isImage = ALLOWED_IMAGE_MIME_TYPES.includes(file.type as any);
-    const mimeType = isImage ? detectImageMime(fileBuffer, file.type) : file.type;
+    const mimeType = isImage ? detectImageMime(fileBuffer) : file.type;
 
     if (!mimeType) {
       return NextResponse.json(
@@ -203,14 +196,7 @@ export async function POST(request: Request) {
     const objectKey = `uploads/${session.user.id}/${crypto.randomUUID()}.${extension}`;
 
     try {
-      const data = isImage ? await put(objectKey, fileBuffer, {
-        access: "public",
-        contentType: mimeType,
-      }) : await putPrivateDocument(objectKey, Buffer.from(fileBuffer), mimeType);
-
-      if (isImage) {
-        return NextResponse.json(data);
-      }
+      const data = await putPrivateFile(objectKey, Buffer.from(fileBuffer), mimeType);
 
       const downloadUrl = buildDocumentDownloadUrl({
         blobUrl: data.url,

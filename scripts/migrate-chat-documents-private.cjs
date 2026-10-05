@@ -5,11 +5,11 @@
 // deleting its public original. No names, URLs, contents, or tokens are logged.
 const { createHash } = require('node:crypto');
 const { list, put, get, del } = require('@vercel/blob');
-const keyPattern = /^uploads\/[a-zA-Z0-9-]+\/[a-zA-Z0-9_-]+\.(pdf|docx)$/;
+const keyPattern = /^(uploads\/[a-zA-Z0-9-]+\/[a-zA-Z0-9_-]+\.(pdf|docx|png|jpg|jpeg)|generated-images\/[a-zA-Z0-9-]+\/[a-zA-Z0-9-]+\/[a-zA-Z0-9_-]+\.(png|jpg|jpeg))$/;
 const maxBytes = 5 * 1024 * 1024;
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
-async function boundedBody(stream, size) {
+async function boundedBody(stream, size, maxBytes = 5 * 1024 * 1024) {
   if (size > maxBytes) throw new Error('File exceeds permitted size');
   const chunks = []; let bytes = 0;
   for await (const chunk of stream) {
@@ -33,25 +33,26 @@ async function migrate() {
   if (copy && !destination.token && !destination.storeId) throw new Error('Missing private storage configuration');
   let cursor; let documents = 0; let totalBytes = 0; let verified = 0; let retired = 0;
   do {
-    const page = await list({ token: sourceToken, prefix: 'uploads/', cursor, limit: 1000 });
+    const page = await list({ token: sourceToken, cursor, limit: 1000 });
     for (const file of page.blobs) {
       if (!keyPattern.test(file.pathname)) continue;
       documents++; totalBytes += file.size;
       if (!copy) continue;
       const response = await fetch(file.url, { redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(20_000) });
       if (!response.ok || !response.body) throw new Error('Public source unavailable');
-      const original = await boundedBody(response.body, file.size);
+      const permittedBytes = file.pathname.startsWith('generated-images/') ? 10 * 1024 * 1024 : maxBytes;
+      const original = await boundedBody(response.body, file.size, permittedBytes);
       let existing = await get(file.pathname, destination);
       if (!existing) {
         await put(file.pathname, original, {
           token: destination.token, storeId: destination.storeId,
           access: 'private', addRandomSuffix: false, allowOverwrite: false,
-          contentType: file.pathname.endsWith('.pdf') ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          contentType: file.pathname.endsWith('.pdf') ? 'application/pdf' : file.pathname.endsWith('.docx') ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : file.pathname.endsWith('.png') ? 'image/png' : 'image/jpeg',
         });
         existing = await get(file.pathname, destination);
       }
       if (existing?.statusCode !== 200) throw new Error('Private copy unavailable');
-      const privateBytes = await boundedBody(existing.stream, existing.blob.size);
+      const privateBytes = await boundedBody(existing.stream, existing.blob.size, permittedBytes);
       if (hash(original) !== hash(privateBytes)) throw new Error('Copy verification failed');
       const anonymous = await fetch(existing.blob.url, { cache: 'no-store', signal: AbortSignal.timeout(20_000) });
       await anonymous.body?.cancel();

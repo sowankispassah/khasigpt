@@ -43,7 +43,7 @@ function harness() {
         getCalls.push({ key: k, options });
         if (storageFailure) throw new Error("Storage unavailable");
         if (missing) return null;
-        return { statusCode: 200, stream: new ReadableStream({ start(c) { c.enqueue(data); c.close(); } }), blob: { contentType: "application/pdf", size: data.length, contentDisposition: "attachment; filename=fixture.pdf" } };
+        return { statusCode: 200, stream: new ReadableStream({ start(c) { c.enqueue(data); c.close(); } }), blob: { contentType: k.endsWith(".png") ? "image/png" : "application/pdf", size: data.length, contentDisposition: "attachment; filename=fixture.pdf" } };
       },
       put: async (k: string, _buffer: Buffer, options: any) => { putCalls.push({ key: k, options }); return { url: `https://example.private.blob.vercel-storage.com/${k}`, pathname: k, contentType: options.contentType }; },
     },
@@ -54,6 +54,10 @@ function harness() {
     "@/lib/uploads/document-uploads": documents,
   });
   const errors = load("lib/errors.ts");
+  const images = load("lib/uploads/private-images.ts", {
+    "@/lib/uploads/document-access": access,
+    "@/lib/uploads/private-documents": storage,
+  });
   const route = load("app/api/files/download/route.ts", {
     "@/lib/errors": errors,
     "@/lib/mobile-auth-session": { getAuthenticatedSession: async () => session },
@@ -80,7 +84,9 @@ function harness() {
     "@/lib/uploads/document-uploads": documents,
   });
   const request = () => new Request(downloadUrl);
-  return { token, storage, access, route, upload, downloadUrl, request, env, getCalls, putCalls,
+  return { token, storage, access, images, route, upload, downloadUrl, request, env, getCalls, putCalls,
+    image: () => { data = Buffer.from([137,80,78,71,13,10,26,10,1,2,3]); },
+    largeGeneratedImage: () => { data = Buffer.alloc(9 * 1024 * 1024); },
     anonymous: () => { session = null; },
     stranger: () => { session.user.id = stranger; user.id = stranger; },
     deactivate: () => { user.isActive = false; },
@@ -151,11 +157,59 @@ test("only trusted history renews legacy links, and unauthorized viewers receive
   for (const viewerUserId of [null, stranger]) expect(h.access.rewriteDocumentUrlsForViewer({ messages, viewerUserId, isAdmin: false, baseUrl: "https://app.example.test" })[0].parts[0].url).toBe("");
 });
 
-test("cross-origin token links, traversal, images, and untrusted remote URLs cannot resolve", () => {
+test("cross-origin token links, traversal, and untrusted remote URLs cannot resolve", () => {
   const h = harness();
-  for (const sourceUrl of [h.downloadUrl.replace("app.example.test", "attacker.example.test"), "https://attacker.example.test/secret.pdf", blobUrl.replace("document-example.pdf", "%2e%2e%2fsecret.pdf"), blobUrl.replace(".pdf", ".png")]) {
+  for (const sourceUrl of [h.downloadUrl.replace("app.example.test", "attacker.example.test"), "https://attacker.example.test/secret.pdf", blobUrl.replace("document-example.pdf", "%2e%2e%2fsecret.pdf")]) {
     expect(h.access.resolveDocumentBlobUrl({ sourceUrl, userId: owner, isAdmin: false, baseUrl: "https://app.example.test" })).toBeNull();
   }
+});
+
+test("image uploads and owner previews stay private while anonymous and other-user reads are denied", async () => {
+  const h = harness(); h.image();
+  const form = new FormData(); form.set("file", new File([Buffer.from([137,80,78,71,13,10,26,10,1,2,3])], "test.png", {type:"image/png"}));
+  const uploaded = await h.upload.POST(new Request("https://app.example.test/api/files/upload", {method:"POST",body:form}));
+  expect(uploaded.status).toBe(200);
+  const data = await uploaded.json();
+  expect(h.putCalls[0].options.access).toBe("private");
+  const imageResponse = await h.route.GET(new Request(data.url));
+  expect(imageResponse.status).toBe(200);
+  expect(imageResponse.headers.get("Content-Disposition")).toMatch(/^inline;/);
+  expect(imageResponse.headers.get("Cache-Control")).toBe("private, no-store");
+  h.stranger(); expect((await h.route.GET(new Request(data.url))).status).toBe(403);
+  h.anonymous(); expect((await h.route.GET(new Request(data.url))).status).toBe(401);
+});
+
+test("model input uses owned bounded image bytes and rejects foreign images without storage reads", async () => {
+  const h = harness(); h.image();
+  const imageUrl = blobUrl.replace(".pdf", ".png");
+  const current = {id:"current",role:"user",parts:[{type:"file",mediaType:"image/png",url:imageUrl}]};
+  const hydrated = await h.images.hydratePrivateImageMessages([current], owner, "https://app.example.test");
+  expect(hydrated[0].parts[0].url).toMatch(/^data:image\/png;base64,/);
+  expect(current.parts[0].url).toBe(imageUrl); // Persist the reference, never the in-memory model bytes.
+  const before = h.getCalls.length;
+  for(const url of [imageUrl.replace(owner,stranger),"https://external.example/image.png","https://attacker.example.test/api/files/download?token=invalid"]) {
+    await expect(h.images.readOwnedImage(url,owner,"https://app.example.test")).rejects.toThrow();
+  }
+  expect(h.getCalls.length).toBe(before);
+  await expect(h.images.hydratePrivateImageMessages([{...current,parts:Array(5).fill(current.parts[0])}],owner,"https://app.example.test")).rejects.toThrow("Too many");
+  const legacy = `https://example.public.blob.vercel-storage.com/generated-images/${owner}/33333333-3333-4333-8333-333333333333/test.png`;
+  expect((await h.images.readOwnedImage(legacy,owner,"https://app.example.test")).mediaType).toBe("image/png");
+});
+
+test("image history renews private links and shared-chat anonymous viewers receive no private image URL", () => {
+  const h = harness();
+  const messages=[{id:"image",role:"assistant",parts:[{type:"file",mediaType:"image/png",url:`https://example.public.blob.vercel-storage.com/generated-images/${owner}/33333333-3333-4333-8333-333333333333/test.png`}]}];
+  const rewritten=h.access.rewriteDocumentUrlsForViewer({messages,viewerUserId:owner,isAdmin:false,baseUrl:"https://app.example.test"});
+  expect(rewritten[0].parts[0].url).toContain("/api/files/download?token=");
+  for(const viewerUserId of [null,stranger]) expect(h.access.rewriteDocumentUrlsForViewer({messages,viewerUserId,isAdmin:false,baseUrl:"https://app.example.test"})[0].parts[0].url).toBe("");
+});
+
+test("generated image byte bounds preserve larger outputs without expanding upload limits", async () => {
+  const h = harness(); h.largeGeneratedImage();
+  const generatedKey = `generated-images/${owner}/33333333-3333-4333-8333-333333333333/test.png`;
+  expect((await h.storage.readPrivateFile(generatedKey)).length).toBe(9 * 1024 * 1024);
+  await expect(h.storage.readPrivateFile(`uploads/${owner}/test.png`)).rejects.toThrow("too large");
+  await expect(h.storage.putPrivateFile(generatedKey, Buffer.alloc(10 * 1024 * 1024 + 1), "image/png")).rejects.toThrow("too large");
 });
 
 test("private upload errors fail closed, and private reads are bounded and never fall back to public storage", async () => {

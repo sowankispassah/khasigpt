@@ -2,8 +2,8 @@ import "server-only";
 
 import { createBlobToken, verifyBlobToken } from "@/lib/security/blob-token";
 import type { ChatMessage } from "@/lib/types";
-import { isDocumentMimeType } from "@/lib/uploads/document-uploads";
-import { isDocumentStorageKey } from "@/lib/uploads/private-documents";
+import { IMAGE_MIME_TYPES, isDocumentMimeType } from "@/lib/uploads/document-uploads";
+import { isPrivateFileStorageKey } from "@/lib/uploads/private-documents";
 
 const ALLOWED_BLOB_HOST_SUFFIXES = [
   "blob.vercel-storage.com",
@@ -35,14 +35,14 @@ const extractStorageKey = (blobUrl: string): string | null => {
     const url = new URL(blobUrl);
     const pathname = decodeURIComponent(url.pathname);
     const key = pathname.startsWith("/") ? pathname.slice(1) : pathname;
-    return isDocumentStorageKey(key) ? key : null;
+    return isPrivateFileStorageKey(key) ? key : null;
   } catch {
     return null;
   }
 };
 
 const isOwnedStorageKey = (storageKey: string, userId: string) =>
-  storageKey.startsWith(`uploads/${userId}/`);
+  storageKey.startsWith(`uploads/${userId}/`) || storageKey.startsWith(`generated-images/${userId}/`);
 
 export const buildDocumentDownloadUrl = ({
   blobUrl,
@@ -166,9 +166,13 @@ export const rewriteDocumentUrlsForViewer = ({
         return part;
       }
       const mediaType = part.mediaType ?? "";
-      if (!isDocumentMimeType(mediaType)) {
+      const isImage = IMAGE_MIME_TYPES.includes(mediaType as any);
+      if (!isDocumentMimeType(mediaType) && !isImage) {
         return part;
       }
+      // Leave unrelated public web/reference images alone. Only owned chat
+      // objects in our storage namespace participate in private-file access.
+      if (isImage && !isChatImageUrl(part.url ?? "", baseUrl)) return part;
       if (!viewerUserId) {
         return { ...part, url: "" };
       }
@@ -205,3 +209,11 @@ export const rewriteDocumentUrlsForViewer = ({
     };
   });
 };
+
+export function isChatImageUrl(sourceUrl: string, baseUrl: string) {
+  try {
+    const url = new URL(sourceUrl, baseUrl);
+    if (url.pathname === DOWNLOAD_PATHNAME) return true;
+    return isAllowedBlobHost(url.hostname) && /^(uploads|generated-images)\//.test(decodeURIComponent(url.pathname).slice(1));
+  } catch { return false; }
+}

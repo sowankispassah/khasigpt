@@ -5,7 +5,7 @@ import { verifyBlobToken } from "@/lib/security/blob-token";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { resolveDocumentBlobUrl } from "@/lib/uploads/document-access";
-import { getPrivateDocument } from "@/lib/uploads/private-documents";
+import { getPrivateFile, isPrivateImageStorageKey } from "@/lib/uploads/private-documents";
 import { withTimeout } from "@/lib/utils/async";
 
 export const runtime = "nodejs";
@@ -55,9 +55,9 @@ export async function GET(request: Request) {
     return new ChatSDKError("bad_request:api", "Invalid download token.").toResponse();
   }
 
-  let response: Awaited<ReturnType<typeof getPrivateDocument>>;
+  let response: Awaited<ReturnType<typeof getPrivateFile>>;
   try {
-    response = await getPrivateDocument(resolved.storageKey, request.signal);
+    response = await getPrivateFile(resolved.storageKey, request.signal);
   } catch {
     return new ChatSDKError("offline:api").toResponse();
   }
@@ -69,7 +69,9 @@ export async function GET(request: Request) {
   const headers = new Headers();
   headers.set("Content-Type", response.blob.contentType);
   headers.set("Content-Length", String(response.blob.size));
-  headers.set("Content-Disposition", response.blob.contentDisposition);
+  const image = isPrivateImageStorageKey(resolved.storageKey);
+  if (image && !["image/png", "image/jpeg"].includes(response.blob.contentType)) return new ChatSDKError("bad_request:api").toResponse();
+  headers.set("Content-Disposition", image ? `inline; filename="${resolved.storageKey.split("/").pop()}"` : response.blob.contentDisposition);
   headers.set("Cache-Control", "private, no-store");
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("Referrer-Policy", "no-referrer");

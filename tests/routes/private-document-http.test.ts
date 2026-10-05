@@ -27,3 +27,20 @@ test("real owner session passes auth while another user cannot read its document
   expect(response.status()).toBe(503); // No private fixture store configured: fail closed.
   expect((await response.json()).code).toBe("offline:api");
 });
+
+test("native bearer image requests enforce ownership before private storage", async ({ adaContext, babbageContext, request }) => {
+  expect(process.env.ISOLATED_TEST_RUN).toBe("1");
+  const owner = (await (await adaContext.request.get("/api/auth/session")).json()).user.id;
+  const other = (await (await babbageContext.request.get("/api/auth/session")).json()).user.id;
+  const sign = (payload: unknown) => {
+    const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+    return `${encoded}.${createHmac("sha256", "isolated-audit-test-secret").update(encoded).digest("base64url")}`;
+  };
+  const key = `uploads/${owner}/native-fixture.png`;
+  const issuedAt = Date.now();
+  const token = sign({v:2,key,userId:owner,url:`https://example.private.blob.vercel-storage.com/${key}`,issuedAt,expiresAt:issuedAt+3_600_000});
+  const url = `/api/files/download?token=${token}`;
+  const nativeHeaders = (sub: string) => ({Authorization:`Bearer ${sign({sub,exp:Date.now()+120_000})}`});
+  expect((await request.get(url,{headers:nativeHeaders(other)})).status()).toBe(403);
+  expect((await request.get(url,{headers:nativeHeaders(owner)})).status()).toBe(503); // Auth passed; disposable environment has no private store.
+});
