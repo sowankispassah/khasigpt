@@ -9,6 +9,7 @@ import { mergeExploreDetails } from "@/lib/explore/details";
 import * as discovery from "@/lib/explore/discovery";
 import * as geo from "@/lib/explore/geo";
 import * as budgetPolicy from "@/lib/explore/google-budget-policy";
+import * as googleIntent from "@/lib/explore/google-search-intent";
 import * as imageMatching from "@/lib/explore/image-matching";
 import * as presets from "@/lib/explore/preset-search";
 import * as providers from "@/lib/explore/providers";
@@ -37,6 +38,7 @@ function load(file: string, mocks: Record<string, unknown>, env: Record<string, 
   const code = ts.transpileModule(readFileSync(file, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   vm.runInNewContext(code, { exports, URL, AbortSignal, process: { env }, console: { info: () => {}, warn: () => {} }, require: (name: string) => {
     if (name === "./discovery") return discovery;
+    if (name === "./google-search-intent") return googleIntent;
     if (name === "@/lib/explore/preset-search") return presets;
     if (!(name in mocks)) throw new Error(`Unexpected dependency ${name}`);
     return mocks[name];
@@ -123,7 +125,7 @@ test("discovery deduplicates names and coordinates without collapsing separate b
   expect(discovery.isGeneralDiscovery({ query: discovery.DISCOVERY_QUERY, categoryQuery: "hotels" })).toBe(false);
 });
 
-test("Google initial discovery merges all-type, food and attraction coordinate searches with separate admissions; names and presets stay textual", async () => {
+test("Google initial discovery and food presets use coordinate searches; named searches stay textual", async () => {
   let admissions = 0;
   const calls: Array<{ url: string; body: any }> = [];
   const service = load("lib/explore/places-service.ts", {
@@ -156,11 +158,28 @@ test("Google initial discovery merges all-type, food and attraction coordinate s
   await service.searchExplorePlaces({ ...input, query: "nxgs" });
   await service.searchExplorePlaces({ ...input, query: "restaurant, food, drinks", categoryQuery: "restaurant" });
   expect(admissions).toBe(5);
-  expect(calls.slice(3).map((call) => [call.url, call.body.textQuery])).toEqual([
-    ["https://places.googleapis.com/v1/places:searchText", "nxgs"],
-    ["https://places.googleapis.com/v1/places:searchText", "restaurant restaurant, food, drinks"],
-  ]);
+  expect(calls[3].url).toBe("https://places.googleapis.com/v1/places:searchText");
+  expect(calls[3].body.textQuery).toBe("nxgs");
+  expect(calls[4]).toEqual({ url: "https://places.googleapis.com/v1/places:searchNearby", body: {
+    maxResultCount: 20, rankPreference: "DISTANCE", includedTypes: ["restaurant", "cafe", "bar", "coffee_shop"],
+    locationRestriction: { circle: { center: { latitude: location.latitude, longitude: location.longitude }, radius: 50_000 } },
+  } });
   expect(calls[3].body.locationRestriction.rectangle).toEqual(geo.getRadiusBoundingBox(location, 50));
+  const restaurantResults = await service.searchExplorePlaces({ ...input, query: "restaurant" });
+  expect(calls[5].body.includedTypes).toEqual(["restaurant", "cafe"]);
+  expect(restaurantResults.results.map((place: any) => place.name)).toContain("Langbang Cafe");
+});
+
+test("Google food intent includes cafes without discarding names, locations or user constraints", () => {
+  const types = (query: string, categoryQuery: string | null = null) => googleIntent.googleNearbyFoodTypes({ query, categoryQuery });
+  expect(types("restaurants")).toEqual(["restaurant", "cafe"]);
+  expect(types(" Restaurant, FOOD, drinks ", "restaurant")).toEqual(["restaurant", "cafe", "bar", "coffee_shop"]);
+  expect(types("cafes near me")).toEqual(["cafe", "coffee_shop"]);
+  expect(types("restaurant and cafe nearby")).toEqual(["restaurant", "cafe", "coffee_shop"]);
+  for (const query of ["Langbang Cafe", "nxgs", "vegetarian", "restaurant under 500", "restaurants in Jowai", "food delivery", "__proto__", ""]) {
+    expect(types(query)).toBeUndefined();
+  }
+  expect(types("Langbang", "restaurant, food, drinks")).toBeUndefined();
 });
 
 test("Google initial discovery preserves the admin-selected fallback's full discovery and photo policy", async () => {
@@ -319,7 +338,7 @@ test("Google retrieves photos beyond the first six, avoids out-of-radius charges
   }, { GOOGLE_MAPS_API_KEY: "private-test-key" }, {
     fetch: async (endpoint: string | URL) => {
       const url = String(endpoint);
-      if (url.includes(":searchText")) {
+      if (url.includes(":searchNearby")) {
         searches++;
         return Response.json({ places: Array.from({ length: 9 }, (_, index) => ({ id: `p${index}`, displayName: { text: `Place ${index}` }, location: index === 8 ? { latitude: 0, longitude: 0 } : location, googleMapsUri: `https://www.google.com/maps?cid=${index}`, photos: [{ name: `places/p${index}/photos/photo${index}` }] })) });
       }

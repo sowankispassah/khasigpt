@@ -19,6 +19,7 @@ import {
 import { DISCOVERY_TERMS, isGeneralDiscovery, mergeDiscoveryResults } from "./discovery";
 import { GoogleQuotaError } from "./google-budget-policy";
 import { runGoogleWithFallback } from "./google-fallback";
+import { googleNearbyFoodTypes } from "./google-search-intent";
 import { addExplorePlaceImages } from "./place-images";
 import { getExploreProvider, getSerpentMapsQuickEnabled, getSerpentPhotoSource } from "./provider-config";
 import { dispatchExploreProvider, exploreProviderConfigured } from "./providers";
@@ -176,13 +177,15 @@ async function searchGooglePlaces({
 }: ExplorePlacesSearchInput, beforePhoto?: () => void, nearbyTypes?: readonly string[]) {
   const key = process.env.GOOGLE_MAPS_API_KEY?.trim();
   if (!key) return null;
-  const nearby = isGeneralDiscovery({ categoryQuery, query });
-  // Initial discovery must include all place types, including businesses that
-  // don't match our food/shop/attraction keywords. Keep named searches textual.
+  const foodTypes = googleNearbyFoodTypes({ categoryQuery, query });
+  const nearby = isGeneralDiscovery({ categoryQuery, query }) || Boolean(foodTypes);
+  const includedTypes = nearbyTypes ?? foodTypes;
+  // Initial discovery and broad food filters use the same coordinate-based
+  // path. Keep business names and queries with extra conditions textual.
   const body = nearby ? {
     maxResultCount: 20,
     rankPreference: "DISTANCE",
-    ...(nearbyTypes ? { includedTypes: nearbyTypes } : {}),
+    ...(includedTypes ? { includedTypes } : {}),
     locationRestriction: { circle: {
       center: { latitude: location.latitude, longitude: location.longitude },
       radius: Math.min(radiusKm * 1000, 50_000),
