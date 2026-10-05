@@ -43,3 +43,21 @@ requests on two server instances, a concurrent first-use race, subsequent
 replay, a successful native session, purpose confusion, legacy handoffs,
 revoked/inactive/missing users, expiry, storage outage/recovery and bounded
 cleanup against the disposable loopback database.
+
+## Web callback isolation
+
+The verification exposed a separate routing bug: a root-level Android attempt
+cookie could force a later website Auth.js callback to the native completion
+endpoint, even when the website login explicitly selected `/chat`. Production
+logs showed `Forced Auth.js callback to native handoff` during the web test.
+The session was valid, but the browser returned to an Android URI instead of
+the website. This is a redirect bug, not evidence of a slow OAuth database read.
+
+Auth.js now retains its own success/error destination; cookie/code duplicate
+handling uses only the sanitized, explicitly selected callback URL. Direct
+Android login already carries the attempt in signed state, so it stops creating
+the obsolete root cookie and clears old copies. The handoff completion also
+clears old copies. Explicit legacy native callback destinations remain supported.
+`google-callback-routing.test.ts` covers stale markers on fresh/duplicate web
+callbacks, preserved session cookies/errors, explicit native callbacks, external
+redirect rejection, signed mobile state, and the actual HTTP duplicate boundary.

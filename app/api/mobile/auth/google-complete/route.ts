@@ -4,6 +4,7 @@ import {
   createMobileAuthToken,
   verifyMobileOAuthHandoffToken,
 } from "@/lib/mobile-auth-token";
+import { MOBILE_GOOGLE_AUTH_ATTEMPT_COOKIE } from "@/lib/mobile-google-auth";
 import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,10 @@ function redirectToApp(params: Record<string, string>) {
     "no-store, no-cache, must-revalidate, max-age=0"
   );
   response.headers.set("Pragma", "no-cache");
+  response.cookies.set(MOBILE_GOOGLE_AUTH_ATTEMPT_COOKIE, "", {
+    httpOnly: true, maxAge: 0, path: "/", sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
   return response;
 }
 

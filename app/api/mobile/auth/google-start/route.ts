@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import {
   MOBILE_GOOGLE_AUTH_ATTEMPT_COOKIE,
-  MOBILE_GOOGLE_AUTH_ATTEMPT_MAX_AGE_SECONDS,
   normalizeMobileGoogleAttemptId,
 } from "@/lib/mobile-google-auth";
 import { createMobileGoogleOAuthState } from "@/lib/mobile-google-oauth-state";
@@ -59,9 +58,11 @@ export async function GET(request: Request) {
   });
 
   const response = noStore(NextResponse.redirect(googleUrl));
-  response.cookies.set(MOBILE_GOOGLE_AUTH_ATTEMPT_COOKIE, attemptId, {
+  // Direct mobile OAuth carries its attempt in signed state. Retire the old
+  // root cookie, which could misroute a later, unrelated website sign-in.
+  response.cookies.set(MOBILE_GOOGLE_AUTH_ATTEMPT_COOKIE, "", {
     httpOnly: true,
-    maxAge: MOBILE_GOOGLE_AUTH_ATTEMPT_MAX_AGE_SECONDS,
+    maxAge: 0,
     path: "/",
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
