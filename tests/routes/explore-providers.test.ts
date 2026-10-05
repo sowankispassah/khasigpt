@@ -156,18 +156,58 @@ test("Google initial discovery and food presets use coordinate searches; named s
   } })));
   expect(result.results.map((place: any) => place.name)).toEqual(["NXGS Gaming Studio", "Langbang Cafe"]);
   await service.searchExplorePlaces({ ...input, query: "nxgs" });
-  await service.searchExplorePlaces({ ...input, query: "restaurant, food, drinks", categoryQuery: "restaurant" });
-  expect(admissions).toBe(5);
+  await service.searchExplorePlaces({ ...input, query: "restaurant, food, drinks" });
+  expect(admissions).toBe(7);
   expect(calls[3].url).toBe("https://places.googleapis.com/v1/places:searchText");
   expect(calls[3].body.textQuery).toBe("nxgs");
-  expect(calls[4]).toEqual({ url: "https://places.googleapis.com/v1/places:searchNearby", body: {
-    maxResultCount: 20, rankPreference: "DISTANCE", includedTypes: ["restaurant", "cafe", "bar", "coffee_shop"],
+  expect(calls.slice(4)).toEqual([["restaurant", "cafe"], ["restaurant", "cafe"], ["bar", "cafe", "coffee_shop"]].map((includedTypes) => ({ url: "https://places.googleapis.com/v1/places:searchNearby", body: {
+    maxResultCount: 20, rankPreference: "DISTANCE", includedTypes,
     locationRestriction: { circle: { center: { latitude: location.latitude, longitude: location.longitude }, radius: 50_000 } },
-  } });
+  } })));
   expect(calls[3].body.locationRestriction.rectangle).toEqual(geo.getRadiusBoundingBox(location, 50));
   const restaurantResults = await service.searchExplorePlaces({ ...input, query: "restaurant" });
-  expect(calls[5].body.includedTypes).toEqual(["restaurant", "cafe"]);
+  expect(calls[7].body.includedTypes).toEqual(["restaurant", "cafe"]);
   expect(restaurantResults.results.map((place: any) => place.name)).toContain("Langbang Cafe");
+});
+
+test("comma keywords are independent alternatives, with duplicates removed and multiword constraints preserved", () => {
+  expect(discovery.expandExploreKeywords({ query: " restaurant, food, drinks, RESTAURANT, , fast food ", categoryQuery: null }))
+    .toEqual(["RESTAURANT", "food", "drinks", "fast food"].map(query => ({ query, categoryQuery: null })));
+  expect(discovery.expandExploreKeywords({ query: "vegetarian", categoryQuery: "restaurant, cafe" }))
+    .toEqual([{ query: "vegetarian", categoryQuery: "restaurant" }, { query: "vegetarian", categoryQuery: "cafe" }]);
+  expect(discovery.expandExploreKeywords({ query: "Langbang Cafe", categoryQuery: null }))
+    .toEqual([{ query: "Langbang Cafe", categoryQuery: null }]);
+  expect(() => discovery.expandExploreKeywords({ query: "a,b,c,d,e,f,g,h,i", categoryQuery: null })).toThrow("invalid_explore_keywords");
+});
+
+test("Serpent keyword searches merge any matching place, preserve photo policy, and tolerate one failed keyword", async () => {
+  const h = discoveryHarness();
+  const input = { location, radiusKm: 50, query: "restaurant, shops and services, places to visit, RESTAURANT", categoryQuery: null, detailMode: "list" };
+  const result = await h.service.searchExplorePlaces(input);
+  expect(h.calls).toEqual(["RESTAURANT", "shops and services", "places to visit"]);
+  expect(result.results.map((place: any) => place.name)).toEqual(["Local shop", "Langbang Cafe", "Waterfall"]);
+  expect(result).toMatchObject({ partial: false, imageSearch: true, photoLookupSource: "maps_place" });
+  h.failures.add("shops and services");
+  expect(await h.service.searchExplorePlaces(input)).toMatchObject({ partial: true });
+  h.failures.add("RESTAURANT"); h.failures.add("places to visit");
+  await expect(h.service.searchExplorePlaces(input)).rejects.toThrow("lookup_unavailable");
+});
+
+test("Serper receives separate keyword phrases and preserves a user's refinement for each category alternative", async () => {
+  const calls: any[] = [];
+  const service = load("lib/explore/places-service.ts", {
+    "server-only": {}, "node:crypto": { createHash }, "@/lib/explore/geo": geo,
+    "@/lib/explore/wikimedia-images": {}, "./google-budget-policy": budgetPolicy,
+    "./provider-config": { getExploreProvider: async () => "serper" },
+    "./providers": providers, "./serpent-policy": serpentPolicy, "./google-fallback": {},
+    "./serpent-places": {}, "./serper-places": { searchSerperPlaces: async (input: any) => { calls.push(input); return []; } },
+    "./place-images": { addExplorePlaceImages: async (places: any[]) => places },
+  }, { SERPER_API_KEY: "test" });
+  await service.searchExplorePlaces({ location, radiusKm: 50, query: "restaurant, food, drinks", categoryQuery: null });
+  expect(calls.map(({ query, categoryQuery }) => ({ query, categoryQuery }))).toEqual(["restaurant", "food", "drinks"].map(query => ({ query, categoryQuery: null })));
+  calls.length = 0;
+  await service.searchExplorePlaces({ location, radiusKm: 50, query: "vegetarian", categoryQuery: "restaurant, cafe" });
+  expect(calls.map(({ query, categoryQuery }) => ({ query, categoryQuery }))).toEqual([{ query: "vegetarian", categoryQuery: "restaurant" }, { query: "vegetarian", categoryQuery: "cafe" }]);
 });
 
 test("Google food intent includes cafes without discarding names, locations or user constraints", () => {
@@ -199,6 +239,9 @@ test("Google initial discovery preserves the admin-selected fallback's full disc
   expect(queries).toEqual([...discovery.DISCOVERY_TERMS]);
   expect(result).toMatchObject({ source: "google_maps", partial: false, imageSearch: true, photoLookupSource: "maps_place", detailsPending: false });
   expect(result.results).toHaveLength(3);
+  queries.length = 0;
+  await service.searchExplorePlaces({ location, radiusKm: 50, query: "restaurant, food, drinks", categoryQuery: null, detailMode: "list" });
+  expect(queries).toEqual(["restaurant", "food", "drinks"]);
 });
 
 test("missing provider preserves OpenStreetMap and invalid saved selections fail explicitly", () => {

@@ -608,20 +608,20 @@ export function ExplorePageClient({
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const normalized = query.trim();
+    const normalized = query.trim() || selectedSubcategory?.searchQuery || selectedCategory?.searchQuery || "";
     if (!normalized) { clearSearch(); return; }
     const selection = {
       categoryId: selectedCategoryId,
       query: normalized,
       subcategoryId: selectedSubcategoryId,
     };
-    void runSearch({ selection, mode: "search" });
+    void runSearch({ selection, mode: query.trim() ? "search" : "category" });
   };
 
   const runCategorySearch = (category: ExploreCategoryDto) => {
     setSelectedCategoryId(category.id);
     setSelectedSubcategoryId(null);
-    setQuery(category.searchQuery);
+    setQuery("");
     void runSearch({
       selection: {
         categoryId: category.id,
@@ -1037,7 +1037,7 @@ export function ExplorePageClient({
                 key={subcategory.id}
                 onClick={() => {
                   setSelectedSubcategoryId(subcategory.id);
-                  setQuery(subcategory.searchQuery);
+                  setQuery("");
                   void runSearch({
                     selection: {
                       categoryId: selectedCategory.id,

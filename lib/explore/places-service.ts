@@ -16,7 +16,7 @@ import {
   normalizeWikidataId,
   resolveWikimediaImages,
 } from "@/lib/explore/wikimedia-images";
-import { DISCOVERY_TERMS, isGeneralDiscovery, mergeDiscoveryResults } from "./discovery";
+import { DISCOVERY_TERMS, expandExploreKeywords, isGeneralDiscovery, mergeDiscoveryResults } from "./discovery";
 import { GoogleQuotaError } from "./google-budget-policy";
 import { runGoogleWithFallback } from "./google-fallback";
 import { googleNearbyFoodTypes } from "./google-search-intent";
@@ -573,9 +573,39 @@ async function searchSingleIntent(input: ExplorePlacesSearchInput, provider: Awa
   });
 }
 
+function mergePlaceSearches(settled: PromiseSettledResult<PlaceSearchResult>[]): PlaceSearchResult {
+  const available = settled.flatMap((value) => value.status === "fulfilled" ? [value.value] : []);
+  if (!available.length) {
+    const failure = settled.find((value) => value.status === "rejected");
+    throw failure?.status === "rejected" ? failure.reason : new Error("discovery_unavailable");
+  }
+  const partial = available.length !== settled.length || available.some((value) => value.partial);
+  const results = mergeDiscoveryResults(available.map((value) => value.results));
+  if (partial && !results.length) throw new Error("discovery_incomplete");
+  if (partial) console.warn("[explore/discovery] Some intents unavailable", { completed: available.length, requested: settled.length });
+  return {
+    results, source: available[0].source, partial,
+    detailsPending: available.some((value) => value.detailsPending),
+    imageSearch: available.some((value) => value.imageSearch),
+    photoLookupSource: available.find((value) => value.photoLookupSource)?.photoLookupSource,
+  };
+}
+
 async function searchProviderPlaces(input: ExplorePlacesSearchInput, provider: Awaited<ReturnType<typeof getExploreProvider>>): Promise<PlaceSearchResult> {
-  // OSM already reads the union of tags in one request.
-  if (!isGeneralDiscovery(input) || provider === "openstreetmap") return searchSingleIntent(input, provider);
+  if (!isGeneralDiscovery(input)) {
+    const intents = expandExploreKeywords(input);
+    if (intents.length === 1) return searchSingleIntent({ ...input, ...intents[0] }, provider);
+    const settled: PromiseSettledResult<PlaceSearchResult>[] = [];
+    // Reuse each provider's cache and quota/fallback path. At most three keyword
+    // searches run together, matching the existing initial-discovery ceiling.
+    for (let index = 0; index < intents.length; index += 3) {
+      settled.push(...await Promise.allSettled(intents.slice(index, index + 3)
+        .map((intent) => searchSingleIntent({ ...input, ...intent }, provider))));
+    }
+    return mergePlaceSearches(settled);
+  }
+  // OSM already reads the union of tags in one request for initial discovery.
+  if (provider === "openstreetmap") return searchSingleIntent(input, provider);
   // Each intent keeps the selected provider, cache, photo policy and Google quota
   // reservation. No enrichment/search-provider switch is caused by an empty list.
   const settled = await Promise.allSettled(DISCOVERY_TERMS.map((query, index) =>
@@ -583,22 +613,7 @@ async function searchProviderPlaces(input: ExplorePlacesSearchInput, provider: A
       ? searchSingleIntent(input, provider, { types: GOOGLE_DISCOVERY_TYPES[index], fallbackQuery: query })
       : searchSingleIntent({ ...input, query }, provider),
   ));
-  const available = settled.flatMap((value) => value.status === "fulfilled" ? [value.value] : []);
-  if (!available.length) {
-    const failure = settled.find((value) => value.status === "rejected");
-    throw failure?.status === "rejected" ? failure.reason : new Error("discovery_unavailable");
-  }
-  const partial = available.length !== DISCOVERY_TERMS.length;
-  const results = mergeDiscoveryResults(available.map((value) => value.results));
-  // An incomplete empty set is not a confirmed absence of nearby places.
-  if (partial && !results.length) throw new Error("discovery_incomplete");
-  if (partial) console.warn("[explore/discovery] Some intents unavailable", { completed: available.length, requested: DISCOVERY_TERMS.length });
-  return {
-    results, source: available[0].source, partial,
-    detailsPending: available.some((value) => value.detailsPending),
-    imageSearch: available.some((value) => value.imageSearch),
-    photoLookupSource: available.find((value) => value.photoLookupSource)?.photoLookupSource,
-  };
+  return mergePlaceSearches(settled);
 }
 
 export async function searchExplorePlaces(input: ExplorePlacesSearchInput): Promise<PlaceSearchResult> {

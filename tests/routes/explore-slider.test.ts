@@ -211,10 +211,16 @@ test("image mode looks up visible cards only, stops empty-photo loading and reus
 
 
 test("category presets show the display label but send only the internal keyword", async ({ page }) => {
-  const requests = await mountExplore(page, { categories: [{ id: "food", name: "Eat Nearby", searchQuery: "restaurant", iconName: "Compass", description: "Legacy description", subcategories: [], suggestedPrompts: [], displayOrder: 0 }] });
+  const requests = await mountExplore(page, { categories: [{ id: "food", name: "Eat Nearby", searchQuery: "restaurant, food, drinks", iconName: "Compass", description: "Legacy description", subcategories: [], suggestedPrompts: [], displayOrder: 0 }] });
+  await page.getByPlaceholder("Search restaurants, shops, businesses, events, places...").fill("old search");
   await page.getByRole("button", { name: "Eat Nearby", exact: true }).click();
-  await expect(page.getByPlaceholder("Search restaurants, shops, businesses, events, places...")).toHaveValue("restaurant");
+  await expect(page.getByPlaceholder("Search restaurants, shops, businesses, events, places...")).toHaveValue("");
   await expect.poll(() => requests.length).toBe(2);
-  expect(requests[1]).toMatchObject({ query: "restaurant", categoryId: "food", searchMode: "places_only", radiusKm: 50 });
+  expect(requests[1]).toMatchObject({ query: "restaurant, food, drinks", categoryId: "food", searchMode: "places_only", radiusKm: 50 });
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Clear search", exact: true })).toBeVisible();
+  expect(requests.at(-1)).toMatchObject({ query: "restaurant, food, drinks", categoryId: "food", searchMode: "places_only" });
+  await page.getByRole("button", { name: "Clear search", exact: true }).click();
+  await expect.poll(() => requests.at(-1)).toMatchObject({ categoryId: null, query: "Nearby places, businesses, food, services, attractions and activities" });
   await expect(page.getByText("Legacy description")).toHaveCount(0);
 });
