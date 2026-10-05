@@ -6,6 +6,7 @@ import {
   PRELAUNCH_INVITE_COOKIE_NAME,
 } from "@/lib/constants";
 import { verifyAdminEntryPassToken } from "@/lib/security/admin-entry-pass";
+import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import {
   DEFAULT_ADMIN_ENTRY_PATH,
@@ -44,13 +45,13 @@ const ALLOWED_ORIGINS = Array.from(
 const CANONICAL_HOST =
   process.env.CANONICAL_HOST?.toLowerCase() ?? "khasigpt.com";
 const SHOULD_ENFORCE_CANONICAL =
-  process.env.NODE_ENV === "production" && typeof CANONICAL_HOST === "string";
+  process.env.NODE_ENV === "production" && process.env.VERCEL_ENV !== "preview" && typeof CANONICAL_HOST === "string";
 const ONE_MINUTE = 60 * 1000;
 const API_RATE_LIMIT = {
   limit: 120,
   windowMs: ONE_MINUTE,
 };
-const API_RATE_LIMIT_EXEMPT_PATHS = new Set([
+const API_METADATA_PATHS = new Set([
   "/api/activity/heartbeat",
   "/api/public/site-launch",
   "/api/public/invite-access",
@@ -112,8 +113,6 @@ const INTERNAL_STATUS_FETCH_TIMEOUT_MS =
   INTERNAL_STATUS_FETCH_TIMEOUT_MS_RAW > 0
     ? INTERNAL_STATUS_FETCH_TIMEOUT_MS_RAW
     : DEFAULT_INTERNAL_STATUS_FETCH_TIMEOUT_MS;
-type RateLimitBucket = { count: number; resetAt: number };
-const buckets = new Map<string, RateLimitBucket>();
 let siteStatusCache: {
   fetchedAt: number;
   webLaunched: boolean;
@@ -122,20 +121,6 @@ let siteStatusCache: {
   adminAccessEnabled: boolean;
   adminEntryPath: string;
 } | null = null;
-const kvRestUrl =
-  process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL ?? null;
-const kvRestToken =
-  process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN ?? null;
-const hasRestKv = Boolean(kvRestUrl && kvRestToken);
-const kvRestTimeoutRaw = Number.parseInt(
-  process.env.KV_REST_TIMEOUT_MS ?? "800",
-  10
-);
-const KV_REST_TIMEOUT_MS =
-  Number.isFinite(kvRestTimeoutRaw) && kvRestTimeoutRaw > 0
-    ? kvRestTimeoutRaw
-    : 800;
-
 function getSafeSiteStatusFallback() {
   if (process.env.NODE_ENV === "production") {
     return {
@@ -161,7 +146,7 @@ function getSafeSiteStatusFallback() {
 async function fetchWithTimeout(
   input: string,
   init: RequestInit,
-  timeoutMs = KV_REST_TIMEOUT_MS
+  timeoutMs = INTERNAL_STATUS_FETCH_TIMEOUT_MS
 ) {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     return fetch(input, init);
@@ -183,82 +168,6 @@ async function fetchWithTimeout(
     }
     throw error;
   }
-}
-
-async function incrementRestKv(key: string) {
-  if (!hasRestKv) {
-    return null;
-  }
-
-  try {
-    const response = await fetchWithTimeout(`${kvRestUrl}/pipeline`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${kvRestToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify([
-        ["INCR", key],
-        ["PTTL", key],
-        ["PEXPIRE", key, API_RATE_LIMIT.windowMs.toString()],
-      ]),
-    });
-
-    if (!response || !response.ok) {
-      return null;
-    }
-
-    const json = (await response.json()) as { result?: unknown[] } | null;
-    const results = Array.isArray(json?.result) ? json?.result : null;
-    const unwrap = (value: unknown) =>
-      value && typeof value === "object" && "result" in value
-        ? (value as { result: unknown }).result
-        : value;
-    const countRaw = Array.isArray(results) ? unwrap(results[0]) : null;
-    const ttlRaw = Array.isArray(results) ? unwrap(results[1]) : null;
-    const count = typeof countRaw === "number" ? countRaw : Number(countRaw);
-    const ttl = typeof ttlRaw === "number" ? ttlRaw : Number(ttlRaw);
-
-    if (!Number.isFinite(count)) {
-      return null;
-    }
-
-    const resetAt =
-      Number.isFinite(ttl) && ttl > 0
-        ? Date.now() + ttl
-        : Date.now() + API_RATE_LIMIT.windowMs;
-
-    return {
-      allowed: count <= API_RATE_LIMIT.limit,
-      resetAt,
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function incrementRateLimit(key: string) {
-  const kvResult = await incrementRestKv(key);
-  if (kvResult) {
-    return kvResult;
-  }
-
-  const now = Date.now();
-  const bucket = buckets.get(key);
-
-  if (!bucket || bucket.resetAt <= now) {
-    const resetAt = now + API_RATE_LIMIT.windowMs;
-    buckets.set(key, { count: 1, resetAt });
-    return { allowed: true, resetAt };
-  }
-
-  if (bucket.count >= API_RATE_LIMIT.limit) {
-    return { allowed: false, resetAt: bucket.resetAt };
-  }
-
-  bucket.count += 1;
-  buckets.set(key, bucket);
-  return { allowed: true, resetAt: bucket.resetAt };
 }
 
 function getCorsHeaders(request: NextRequest) {
@@ -291,10 +200,6 @@ function applyCorsHeaders(response: NextResponse, corsHeaders: Headers | null) {
     response.headers.set(key, value);
   });
   return response;
-}
-
-function shouldSkipApiRateLimit(pathname: string) {
-  return API_RATE_LIMIT_EXEMPT_PATHS.has(pathname);
 }
 
 function hasSessionCookie(request: NextRequest) {
@@ -625,6 +530,78 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(redirectUrl, 308);
   }
 
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    const corsHeaders = getCorsHeaders(request);
+
+    if (request.method === "OPTIONS") {
+      const preflightHeaders = new Headers(corsHeaders ?? undefined);
+      if (corsHeaders) {
+        preflightHeaders.set(
+          "Access-Control-Allow-Methods",
+          "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+        );
+        const requestHeaders =
+          request.headers.get("Access-Control-Request-Headers") ??
+          "authorization,content-type";
+        preflightHeaders.set("Access-Control-Allow-Headers", requestHeaders);
+      }
+
+      return new Response(null, {
+        status: 204,
+        headers: preflightHeaders,
+      });
+    }
+
+    const readOnly = request.method === "GET" || request.method === "HEAD";
+    const metadata = readOnly && API_METADATA_PATHS.has(request.nextUrl.pathname);
+    const key = `${metadata ? "api-metadata" : "api"}:${getClientKeyFromHeaders(request.headers)}`;
+    const { allowed, resetAt, reason } = await incrementRateLimit(key, {
+      ...API_RATE_LIMIT,
+      limit: metadata ? 600 : API_RATE_LIMIT.limit,
+      failureMode: readOnly && !request.nextUrl.pathname.startsWith("/api/auth/") ? "local" : undefined,
+    });
+
+    if (!allowed) {
+      const retryAfter = Math.max(
+        Math.ceil((resetAt - Date.now()) / 1000),
+        1
+      ).toString();
+
+      const rateLimitedResponse = NextResponse.json(
+        {
+          code: reason === "unavailable" ? "unavailable:api" : "rate_limit:api",
+          message: reason === "unavailable" ? "Please try again shortly." : "Too many requests. Please try again later.",
+        },
+        {
+          status: reason === "unavailable" ? 503 : 429,
+          headers: {
+            "Retry-After": retryAfter,
+            "Cache-Control": "no-store",
+          },
+        }
+      );
+      return applyCorsHeaders(rateLimitedResponse, corsHeaders);
+    }
+
+    const response = NextResponse.next();
+    return applyCorsHeaders(response, corsHeaders);
+  }
+
+
+  // Protect Server Actions as well as dynamic navigation before DB/auth work.
+  const readOnly = request.method === "GET" || request.method === "HEAD";
+  const result = await incrementRateLimit(`page-${readOnly ? "read" : "write"}:${getClientKeyFromHeaders(request.headers)}`, {
+    windowMs: ONE_MINUTE,
+    limit: readOnly ? 240 : 30,
+    failureMode: readOnly ? "local" : undefined,
+  });
+  if (!result.allowed) {
+    return NextResponse.json({ code: result.reason === "unavailable" ? "unavailable:api" : "rate_limit:api" }, {
+      status: result.reason === "unavailable" ? 503 : 429,
+      headers: { "Retry-After": String(Math.max(1, Math.ceil((result.resetAt - Date.now()) / 1000))), "Cache-Control": "no-store" },
+    });
+  }
+
   if (
     isPageNavigationRequest(request) &&
     !shouldBypassSiteStatusGate(request.nextUrl.pathname) &&
@@ -786,60 +763,6 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (request.nextUrl.pathname.startsWith("/api/")) {
-    const corsHeaders = getCorsHeaders(request);
-
-    if (request.method === "OPTIONS") {
-      const preflightHeaders = new Headers(corsHeaders ?? undefined);
-      if (corsHeaders) {
-        preflightHeaders.set(
-          "Access-Control-Allow-Methods",
-          "GET,POST,PUT,PATCH,DELETE,OPTIONS"
-        );
-        const requestHeaders =
-          request.headers.get("Access-Control-Request-Headers") ??
-          "authorization,content-type";
-        preflightHeaders.set("Access-Control-Allow-Headers", requestHeaders);
-      }
-
-      return new Response(null, {
-        status: 204,
-        headers: preflightHeaders,
-      });
-    }
-
-    if (shouldSkipApiRateLimit(request.nextUrl.pathname)) {
-      const response = NextResponse.next();
-      return applyCorsHeaders(response, corsHeaders);
-    }
-
-    const key = `api:${getClientKeyFromHeaders(request.headers)}`;
-    const { allowed, resetAt } = await incrementRateLimit(key);
-
-    if (!allowed) {
-      const retryAfter = Math.max(
-        Math.ceil((resetAt - Date.now()) / 1000),
-        1
-      ).toString();
-
-      const rateLimitedResponse = NextResponse.json(
-        {
-          code: "rate_limit:api",
-          message: "Too many requests. Please try again later.",
-        },
-        {
-          status: 429,
-          headers: {
-            "Retry-After": retryAfter,
-          },
-        }
-      );
-      return applyCorsHeaders(rateLimitedResponse, corsHeaders);
-    }
-
-    const response = NextResponse.next();
-    return applyCorsHeaders(response, corsHeaders);
-  }
 
   return NextResponse.next();
 }
