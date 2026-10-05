@@ -18,9 +18,9 @@ export const Promo: React.FC = () => <AbsoluteFill style={{background:'#fff'}}>
     <TransitionSeries.Sequence durationInFrames={270} name="04 · Shopping results"><Shopping/></TransitionSeries.Sequence>
     <TransitionSeries.Sequence durationInFrames={240} name="05 · Shillong news"><News/></TransitionSeries.Sequence>
     <TransitionSeries.Sequence durationInFrames={300} name="06 · Plans and pricing"><Pricing/></TransitionSeries.Sequence>
-    <TransitionSeries.Sequence durationInFrames={351} name="07 · Download KhasiGPT"><Closing/></TransitionSeries.Sequence>
+    <TransitionSeries.Sequence durationInFrames={633} name="07 · Download KhasiGPT"><Closing/></TransitionSeries.Sequence>
   </TransitionSeries>
   {[52,82,196,407,542,676,914,1212,1260,1295].map((f,i)=><Sequence key={`whoosh-${i}`} from={f} durationInFrames={20} name="Camera whoosh"><Audio src={staticFile('whoosh.wav')} volume={.22} playbackRate={1.6}/></Sequence>)}
   {[100,134,243,456,742].map((f,i)=><Sequence key={`click-${i}`} from={f} durationInFrames={8} name="UI click"><Audio src={staticFile('click.wav')} volume={.5}/></Sequence>)}
-  {[24,559,565,571,577,583,589,964,1389,1437].map((f,i)=><Sequence key={`pop-${i}`} from={f} durationInFrames={9} name="Card snap"><Audio src={staticFile('switch.wav')} volume={.26} playbackRate={1.3}/></Sequence>)}
+  {[24,559,565,571,577,583,589,964,1479,1575].map((f,i)=><Sequence key={`pop-${i}`} from={f} durationInFrames={9} name="Card snap"><Audio src={staticFile('switch.wav')} volume={.26} playbackRate={1.3}/></Sequence>)}
 </AbsoluteFill>;

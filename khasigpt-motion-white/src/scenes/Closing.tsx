@@ -3,8 +3,8 @@ import {Brand,C,clamp,p,pop,Scene,tween} from '../design';
 
 export const Closing: React.FC = () => {
   const frame=useCurrentFrame();
-  // Keep the opening beats brisk, then play the download end card at half speed.
-  const f=frame<69?frame:69+(frame-69)/2;
+  // Keep the opening beats brisk, then play the download end card at quarter speed.
+  const f=frame<69?frame:69+(frame-69)/4;
   return <Scene>
     {f<40&&<div style={{position:'absolute',left:80,right:80,top:490,textAlign:'center',translate:`0 ${tween(f,29,40,0,-1000)}px`}}><div style={{fontSize:60,fontWeight:600,letterSpacing:-2,opacity:p(f,0,7)}}>Pyndonkam haduh</div><div style={{display:'flex',alignItems:'baseline',justifyContent:'center',gap:27,scale:pop(f,3)}}><span style={{fontSize:370,fontWeight:800,lineHeight:1,letterSpacing:-20}}>3</span><span style={{fontSize:140,fontWeight:800,letterSpacing:-8}}>bnai</span></div><div style={{height:14,borderRadius:20,background:C.mint,width:600,margin:'35px auto 0',scale:`${pop(f,12)} 1`}}/></div>}
     {f>=32&&f<76&&<div style={{position:'absolute',left:88,right:88,top:555,fontWeight:800,fontSize:94,letterSpacing:-5,lineHeight:1.1,translate:`0 ${tween(f,65,76,0,-950)}px`}}>{['Sa bun ki','feature','kin sa wan.'].map((line,i)=><div key={line} style={{overflow:'hidden',height:120}}><div style={{translate:`0 ${tween(f,32+i*5,43+i*5,130,0)}px`,color:i===1?C.green:C.ink}}>{line}</div></div>)}</div>}

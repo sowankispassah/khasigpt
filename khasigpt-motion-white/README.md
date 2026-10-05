@@ -1,6 +1,6 @@
 # KhasiGPT — White Motion
 
-A separate 52.7-second vertical promo with a white canvas, kinetic typography, camera moves into the language picker, fast streamed responses, product card reveals, scrolling plans, and a download end card.
+A separate 62.1-second vertical promo with a white canvas, kinetic typography, camera moves into the language picker, fast streamed responses, product card reveals, scrolling plans, and a download end card.
 
 ## Preview and export
 
@@ -24,7 +24,7 @@ Each scene is a separate composition in Studio and a separate file in `src/scene
 | 14–23 s | T-shirt search, answer, six product-card reveals |
 | 23–31 s | Shillong news, dates, sources, fast response scroll |
 | 31–41 s | Free, Starter, Pro, Ultimate pricing |
-| 41–52.7 s | Three months, future features, Google Play and website (download end card at half speed) |
+| 41–62.1 s | Three months, future features, Google Play and website (download end card at quarter speed) |
 
 ## Audio and assets
 

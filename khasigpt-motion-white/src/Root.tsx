@@ -15,7 +15,7 @@ for (const weight of ['400','600','800']) {
 }
 
 export const RemotionRoot: React.FC = () => <>
-  <Composition id="KhasiGPTWhiteMotion" component={Promo} durationInFrames={1581} fps={30} width={1080} height={1920}/>
+  <Composition id="KhasiGPTWhiteMotion" component={Promo} durationInFrames={1863} fps={30} width={1080} height={1920}/>
   <Folder name="Scenes">
     <Composition id="Opening" component={Opening} durationInFrames={60} fps={30} width={1080} height={1920}/>
     <Composition id="Language" component={Language} durationInFrames={150} fps={30} width={1080} height={1920}/>
@@ -23,6 +23,6 @@ export const RemotionRoot: React.FC = () => <>
     <Composition id="Shopping" component={Shopping} durationInFrames={270} fps={30} width={1080} height={1920}/>
     <Composition id="News" component={News} durationInFrames={240} fps={30} width={1080} height={1920}/>
     <Composition id="Pricing" component={Pricing} durationInFrames={300} fps={30} width={1080} height={1920}/>
-    <Composition id="Closing" component={Closing} durationInFrames={351} fps={30} width={1080} height={1920}/>
+    <Composition id="Closing" component={Closing} durationInFrames={633} fps={30} width={1080} height={1920}/>
   </Folder>
 </>;

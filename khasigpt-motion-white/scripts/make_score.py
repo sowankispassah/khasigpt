@@ -5,7 +5,7 @@ import math
 import numpy as np
 
 rate = 24000
-duration = 52.7
+duration = 62.1
 rng = np.random.default_rng(1403)
 audio = np.zeros((round(rate * duration), 2), dtype=np.float64)
 beat = .4
