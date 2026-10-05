@@ -9,7 +9,9 @@ async function countGoogleInput(params: LanguageModelV2CallOptions, modelId: str
     role: message.role === "assistant" ? "model" : "user",
     parts: typeof message.content === "string" ? [{ text: message.content }] : message.content.map(part => {
       if (part.type === "text") return { text: part.text };
-      if (part.type === "file" && part.data instanceof Uint8Array) return { inlineData: { mimeType: part.mediaType, data: Buffer.from(part.data).toString("base64") } };
+      // The SDK keeps data URLs as base64 strings and downloaded files as bytes.
+      // Both represent inline data; URL objects remain rejected here.
+      if (part.type === "file" && (part.data instanceof Uint8Array || typeof part.data === "string")) return { inlineData: { mimeType: part.mediaType, data: typeof part.data === "string" ? part.data : Buffer.from(part.data).toString("base64") } };
       throw new ChatSDKError("bad_request:configuration");
     }),
   }));

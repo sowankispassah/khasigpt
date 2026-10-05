@@ -20,6 +20,7 @@ import type { UserRole } from "@/app/(auth)/auth";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { budgetedModel } from "@/lib/ai/budgeted-model";
 import { entitlementsByUserRole } from "@/lib/ai/entitlements";
+import { safeAiErrorDiagnostics } from "@/lib/ai/error-diagnostics";
 import { KHASIGPT_IDENTITY_FINAL_REMINDER, KHASIGPT_RESPONSE_LANGUAGE_INSTRUCTION } from "@/lib/ai/identity";
 import { getModelRegistry } from "@/lib/ai/model-registry";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
@@ -4029,6 +4030,11 @@ export async function POST(request: Request) {
       experimental_telemetry: {
         isEnabled: isProductionEnvironment,
         functionId: "stream-text",
+        recordInputs: false,
+        recordOutputs: false,
+      },
+      onError: ({ error }) => {
+        console.error("[chat] generation_failed", safeAiErrorDiagnostics(error));
       },
       onChunk: ({ chunk }) => {
         if (chunk.type === "text-delta") {
@@ -4076,7 +4082,7 @@ export async function POST(request: Request) {
           resolveUsageReady?.();
           return;
         }
-        console.warn("Unable to resolve stream usage", { chatId: id }, error);
+        console.warn("Unable to resolve stream usage", safeAiErrorDiagnostics(error));
       });
 
     const webSourcesData = webSearchAnswer &&

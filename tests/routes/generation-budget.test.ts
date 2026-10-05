@@ -64,3 +64,44 @@ test("the adapter receives the reduced output limit", async () => {
   expect(outputLimit).toBeGreaterThanOrEqual(128);
   expect(outputLimit).toBeLessThan(4096);
 });
+
+test("private image data URLs and byte images are counted before generation", async () => {
+  const originalFetch = globalThis.fetch;
+  const image = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1]);
+  const counts: any[] = [];
+  let calls = 0;
+  globalThis.fetch = async (_url, options) => {
+    // Let the SDK decode inline data locally; mock only the token-count call.
+    if (String(_url).startsWith("data:")) return originalFetch(_url, options);
+    counts.push(JSON.parse(String(options?.body)));
+    return Response.json({ totalTokens: 100 });
+  };
+  try {
+    const provider = testModel(async params => {
+      calls++;
+      expect(params.maxOutputTokens).toBeGreaterThanOrEqual(128);
+      return { content: [{ type: "text", text: "green" }], finishReason: "stop", usage: { inputTokens: 100, outputTokens: 1, totalTokens: 101 }, warnings: [] };
+    });
+    const model = budgetedModel({ model: provider, provider: "google", modelId: "fixture", pricing, balance: () => 1000 });
+    for (const data of [image, `data:image/png;base64,${image.toString("base64")}`]) {
+      await generateText({ model, system: "fixture system", messages: [{ role: "user", content: [{ type: "text", text: "color?" }, { type: "file", mediaType: "image/png", data }] }], maxRetries: 0 });
+    }
+    expect(calls).toBe(2);
+    for (const request of counts) {
+      expect(request.generateContentRequest.contents[0].parts[1].inlineData).toEqual({ mimeType: "image/png", data: image.toString("base64") });
+      expect(request.generateContentRequest.systemInstruction.parts[0].text).toBe("fixture system");
+    }
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("failed image token counting blocks generation without weakening the budget", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (url, options) => String(url).startsWith("data:") ? originalFetch(url, options) : Response.json({ error: "unavailable" }, { status: 503 });
+  try {
+    const provider = testModel(async () => { calls++; throw new Error("must not generate"); });
+    const model = budgetedModel({ model: provider, provider: "google", modelId: "fixture", pricing, balance: () => 1000 });
+    await expect(generateText({ model, messages: [{ role: "user", content: [{ type: "file", mediaType: "image/png", data: "data:image/png;base64,iVBORw0KGgo=" }] }], maxRetries: 0 })).rejects.toThrow();
+    expect(calls).toBe(0);
+  } finally { globalThis.fetch = originalFetch; }
+});
