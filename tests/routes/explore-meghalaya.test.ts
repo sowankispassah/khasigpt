@@ -250,7 +250,7 @@ test.describe("Explore Meghalaya", () => {
     expect(web).toContain("sessionStorage");
     expect(web).toContain('fetch("/api/explore/search"');
     expect(web).toContain('fetch("/api/explore/location"');
-    expect(web).toContain('fetch("/api/explore/context"');
+    expect(await readWorkspaceFile("components/explore/explore-chat-widget.tsx")).toContain('fetch("/api/explore/context"');
     expect(web).toContain("clientRequestId");
     expect(web).toContain("setResponse(null)");
     expect(web).toContain('type="range"');
@@ -290,4 +290,11 @@ test.describe("Explore Meghalaya", () => {
     expect(migration).toContain("admin_only");
     expect(migration).toContain("ENABLE ROW LEVEL SECURITY");
   });
+});
+
+
+test("descriptive place follow-ups do not trigger a new billed Explore search", () => {
+  const recentAssistantTexts = ["Current Explore location: Shangpung (25.48, 92.36).\nCurrent radius: 10 km.\nCurrent search: restaurant.\nSelected result: Langbang Cafe."];
+  for (const currentText of ["Tell me more about this cafe", "What is its address?", "Is it open?"]) expect(resolveExploreChatFollowUp({currentText,recentAssistantTexts})).toBeNull();
+  expect(resolveExploreChatFollowUp({currentText:"Find more restaurants within 5 km",recentAssistantTexts})).toMatchObject({radiusKm:5});
 });

@@ -63,6 +63,7 @@ export type CustomUIDataTypes = {
   jobCards: {
     jobs: JobCard[];
   };
+  exploreContext: { hidden: true };
   newsInitial: {
     hidden: true;
   };

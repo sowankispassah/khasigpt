@@ -10,9 +10,13 @@ let bundle: string;
 
 test.beforeAll(async () => {
   const mocks: Record<string, string> = {
+    "@/components/jobs/job-details-chat-panel": "export const JobDetailsChatPanel = () => null;",
+    "next/dynamic": "import React from 'react'; export default function dynamic() { return function Chat(props) { return React.createElement('div',{'data-testid':'popup-chat','data-chat-id':props.chatId},'Chat composer'); }; }",
+    "@/lib/utils": "export const generateUUID = () => crypto.randomUUID(); export const cn = (...values) => values.filter(Boolean).join(' ');",
+    "@/components/ui/button": "import React from 'react'; export const Button = ({variant,size,...props}) => React.createElement('button',props);",
     "next/navigation": "export const useRouter = () => ({push() {}});",
     "next/image": "import React from 'react'; export default function Image({unoptimized,...props}) { return React.createElement('img',props); }",
-    "@/components/language-provider": "const translate = (key, fallback) => fallback; export const useTranslation = () => ({translate});",
+    "@/components/language-provider": "const translate = (key, fallback) => fallback; export const useTranslation = () => ({translate,activeLanguage:{code:'en'}});",
     "@/components/translation-edit-provider": "import React from 'react'; export const EditableTranslation = ({defaultText}) => React.createElement('span',null,defaultText); export const useEditableTranslation = (key,text) => ({text,editButton:null});",
     "@/lib/ui/global-progress": "export function startGlobalProgress() {}",
   };
@@ -30,7 +34,7 @@ test.beforeAll(async () => {
     plugins: [{
       name: "explore-shell-mocks",
       setup(plugin: any) {
-        plugin.onResolve({filter: /^(next\/|@\/components\/|@\/lib\/ui\/)/}, ({path: name}: {path: string}) => name in mocks ? {path:name, namespace:"mock"} : undefined);
+        plugin.onResolve({filter: /^(next\/|@\/components\/|@\/lib\/)/}, ({path: name}: {path: string}) => name in mocks ? {path:name, namespace:"mock"} : undefined);
         plugin.onLoad({filter: /.*/, namespace:"mock"}, ({path: name}: {path: string}) => ({contents:mocks[name],loader:"js",resolveDir:process.cwd()}));
       },
     }],
@@ -38,7 +42,7 @@ test.beforeAll(async () => {
   bundle = output.outputFiles[0].text;
 });
 
-async function mountExplore(page: Page, options: { categories?: unknown[]; partial?: boolean; imageSearch?: boolean; photoRequests?: string[]; progressive?: boolean; failDetails?: boolean; photos?: boolean; imageGate?: Promise<void>; failImage?: boolean; detailsGate?: (query: string) => Promise<void> } = {}) {
+async function mountExplore(page: Page, options: { categories?: unknown[]; partial?: boolean; imageSearch?: boolean; photoRequests?: string[]; progressive?: boolean; failDetails?: boolean; photos?: boolean; imageGate?: Promise<void>; failImage?: boolean; contextRequests?: any[]; contextGate?: Promise<void>; contextFailure?: () => boolean; detailsGate?: (query: string) => Promise<void> } = {}) {
   const requests: Array<{radiusKm: number; searchMode: string; detailMode: string}> = [];
   const location = {id:"test",label:"Shangpung, Meghalaya",latitude:25.48,longitude:92.36,source:"manual",accuracy:null};
   await page.route("https://images.explore.test/**", async (route) => {
@@ -46,6 +50,12 @@ async function mountExplore(page: Page, options: { categories?: unknown[]; parti
     await route.fulfill(options.failImage ? {status:503,body:"Unavailable"} : {contentType:"image/png",body:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6pQAAAAASUVORK5CYII=","base64")}).catch(() => {});
   });
   await page.route("https://explore.test/**", async (route) => {
+    if (route.request().url().endsWith("/api/explore/context")) {
+      options.contextRequests?.push(route.request().postDataJSON());
+      await options.contextGate;
+      await route.fulfill(options.contextFailure?.() ? {status:503,json:{error:"context_unavailable"}} : {json:{ok:true}});
+      return;
+    }
     if (route.request().url().endsWith("/api/explore/photo")) {
       options.photoRequests?.push(route.request().postDataJSON().token);
       await route.fulfill({ json: { photo: null } }); return;
@@ -223,4 +233,46 @@ test("category presets show the display label but send only the internal keyword
   await page.getByRole("button", { name: "Clear search", exact: true }).click();
   await expect.poll(() => requests.at(-1)).toMatchObject({ categoryId: null, query: "Nearby places, businesses, food, services, attractions and activities" });
   await expect(page.getByText("Legacy description")).toHaveCount(0);
+});
+
+
+test("Explore opens one general launcher and separate place popup chats without leaving the page", async ({ page }) => {
+  const contexts: any[] = [];
+  await mountExplore(page, { contextRequests: contexts });
+  const launcher = page.getByRole("button", { name: "Ask KhasiGPT", exact: true });
+  await expect(launcher).toHaveCount(1);
+  await launcher.click();
+  await expect(page.getByTestId("popup-chat")).toBeVisible();
+  expect(contexts).toHaveLength(1);
+  expect(contexts[0]).toMatchObject({create:true,selectedResult:null,radiusKm:10});
+  expect(contexts[0].results.map((item: any) => item.name)).toEqual(["Place 1"]);
+  const generalId = contexts[0].chatId;
+  await page.getByRole("button", { name: "Close chat", exact: true }).click();
+  await launcher.click();
+  await expect(page.getByTestId("popup-chat")).toHaveAttribute("data-chat-id",generalId);
+  expect(contexts).toHaveLength(1);
+  await page.getByRole("button", { name: "Close chat", exact: true }).click();
+  await page.getByRole("heading", { name: "Place 1", exact: true }).click();
+  await page.getByRole("button", { name: "Ask KhasiGPT", exact: true }).first().click();
+  await expect(page.getByTestId("popup-chat")).toBeVisible();
+  await expect.poll(() => contexts.length).toBe(2);
+  expect(contexts[1].selectedResult.name).toBe("Place 1");
+  expect(contexts[1].chatId).not.toBe(generalId);
+  expect(page.url()).toBe("https://explore.test/");
+});
+
+test("Explore popup responds immediately, blocks composing until ready and offers retry on context failure", async ({ page }) => {
+  let release!: () => void; let fail = true;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const contexts: any[] = [];
+  await mountExplore(page,{contextRequests:contexts,contextGate:gate,contextFailure:()=>fail});
+  await page.getByRole("button",{name:"Ask KhasiGPT",exact:true}).click();
+  await expect(page.getByText("Loading chat...",{exact:true})).toBeVisible();
+  await expect(page.getByTestId("popup-chat")).toHaveCount(0);
+  release();
+  await expect(page.getByRole("alert")).toContainText("Unable to open this chat.");
+  fail = false;
+  await page.getByRole("button",{name:"Retry",exact:true}).click();
+  await expect(page.getByTestId("popup-chat")).toBeVisible();
+  await expect.poll(() => contexts.length).toBe(2);
 });

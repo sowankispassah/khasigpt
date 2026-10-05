@@ -16,7 +16,6 @@ import {
   X,
 } from "lucide-react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import {
   type FormEvent,
   useCallback,
@@ -42,7 +41,8 @@ import type {
   ExploreResult,
   ExploreSearchResponse,
 } from "@/lib/explore/types";
-import { startGlobalProgress } from "@/lib/ui/global-progress";
+import { generateUUID } from "@/lib/utils";
+import { ExploreChatWidget } from "./explore-chat-widget";
 
 const EXPLORE_SESSION_STORAGE_KEY = "explore.locationSession.v2";
 const SAVED_RESULTS_STORAGE_KEY = "explore.savedResults";
@@ -110,7 +110,6 @@ export function ExplorePageClient({
 }: {
   initialCategories: ExploreCategoryDto[] | null;
 }) {
-  const router = useRouter();
   const { translate } = useTranslation();
   const { text: placeholder, editButton: placeholderEdit } =
     useEditableTranslation(
@@ -190,7 +189,7 @@ export function ExplorePageClient({
       return new Set();
     }
   });
-  const [chatPending, setChatPending] = useState(false);
+  const [chatRequest, setChatRequest] = useState<{ id: string; place: ExploreResult } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const currentRequestIdRef = useRef<string | null>(null);
   const requestedSearchKeyRef = useRef<string | null>(null);
@@ -632,41 +631,11 @@ export function ExplorePageClient({
     });
   };
 
-  const askKhasiGpt = async (result: ExploreResult) => {
-    if (!(response?.chatId && location) || chatPending) return;
-    setChatPending(true);
-    try {
-      await fetch("/api/explore/context", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chatId: response.chatId,
-          location,
-          radiusKm: response.radiusKm,
-          query: lastSearch?.query ?? query,
-          category: selectedCategory?.name ?? null,
-          subcategory: selectedSubcategory?.name ?? null,
-          selectedResult: {
-            name: result.name,
-            address: result.address,
-            sourceUrl: result.sourceUrl,
-          },
-          results: [
-            result,
-            ...response.results.filter((item) => item.id !== result.id),
-          ].slice(0, 24).map((item) => ({
-            name: item.name,
-            address: item.address,
-            distanceKm: item.distanceKm,
-            sourceUrl: item.sourceUrl,
-          })),
-        }),
-      });
-    } finally {
-      startGlobalProgress();
-      router.push(`/chat/${response.chatId}`);
-    }
+  const askKhasiGpt = (result: ExploreResult) => {
+    setDetail(null);
+    setChatRequest({ id: generateUUID(), place: result });
   };
+  const chatWidget = <ExploreChatWidget request={chatRequest} location={location} radiusKm={radiusKm} query={lastSearch?.query ?? query} results={response?.results ?? []} />;
 
   if (!sessionRestored) {
     return (
@@ -851,6 +820,7 @@ export function ExplorePageClient({
             </p>
           ) : null}
         </section>
+      {chatWidget}
       </main>
     );
   }
@@ -1283,15 +1253,11 @@ export function ExplorePageClient({
                 </button>
                 <button
                   className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-md bg-primary px-3 text-primary-foreground text-sm disabled:opacity-60"
-                  disabled={chatPending}
+
                   onClick={() => askKhasiGpt(detail)}
                   type="button"
                 >
-                  {chatPending ? (
-                    <LoaderCircle className="size-4 animate-spin" />
-                  ) : (
-                    <MessageCircle className="size-4" />
-                  )}
+                  <MessageCircle className="size-4" />
                   <EditableTranslation
                     defaultText="Ask KhasiGPT"
                     translationKey="explore.result.ask"
@@ -1324,7 +1290,8 @@ export function ExplorePageClient({
           </div>
         </div>
       ) : null}
-    </main>
+    {chatWidget}
+      </main>
   );
 }
 

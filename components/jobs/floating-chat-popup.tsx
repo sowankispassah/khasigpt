@@ -2,6 +2,8 @@
 
 import { MessageSquareText, X } from "lucide-react";
 import type { ReactNode } from "react";
+import { useTranslation } from "@/components/language-provider";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -11,7 +13,8 @@ type FloatingChatPopupProps = {
   isVisible: boolean;
   onClose: () => void;
   onOpen: () => void;
-  title?: string;
+  title?: ReactNode;
+  iconOnly?: boolean;
 };
 
 export function FloatingChatPopup({
@@ -21,7 +24,9 @@ export function FloatingChatPopup({
   onClose,
   onOpen,
   title = "",
+  iconOnly = false,
 }: FloatingChatPopupProps) {
+  const { translate } = useTranslation();
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40">
       <div
@@ -47,12 +52,12 @@ export function FloatingChatPopup({
             className="h-8 w-8 cursor-pointer rounded-full border border-border bg-background p-0 shadow-sm hover:bg-muted"
             onClick={onClose}
             size="sm"
-            title="Close chat"
+            title={translate("chat.popup.close", "Close chat")}
             type="button"
             variant="outline"
           >
             <X className="h-4 w-4" />
-            <span className="sr-only">Close chat</span>
+            <span className="sr-only"><EditableTranslation translationKey="chat.popup.close" defaultText="Close chat" /></span>
           </Button>
         </div>
         <div className="min-h-0 flex flex-1 flex-col overscroll-behavior-contain">
@@ -71,13 +76,13 @@ export function FloatingChatPopup({
           className="h-[42px] cursor-pointer rounded-full border border-border bg-background px-3 shadow-sm hover:bg-muted [&_svg]:!h-[31px] [&_svg]:!w-[31px]"
           onClick={onOpen}
           size="sm"
-          title="Open chat"
+          title={translate("explore.result.ask", "Ask KhasiGPT")}
           type="button"
           variant="outline"
         >
-          <span className="text-base">Ask</span>
+          {iconOnly ? null : <span className="text-base"><EditableTranslation translationKey="jobs.ask" defaultText="Ask" /></span>}
           <MessageSquareText />
-          <span className="sr-only">Open chat</span>
+          <span className="sr-only"><EditableTranslation translationKey="explore.result.ask" defaultText="Ask KhasiGPT" /></span>
         </Button>
       </div>
     </div>

@@ -5,6 +5,13 @@ import { GOOGLE_ALLOWANCE_COPY } from "@/lib/web-search/google-allowance-copy";
 import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
+  { key: "chat.popup.start", defaultText: "Send a message to get started.", description: "Empty popup conversation." },
+  { key: "chat.popup.loading", defaultText: "Loading chat...", description: "Popup preparation and history loading." },
+  { key: "chat.popup.load_error", defaultText: "Unable to load this chat. Please try again.", description: "Popup history failure." },
+  { key: "chat.popup.close", defaultText: "Close chat", description: "Close the floating chat." },
+  { key: "explore.chat.error", defaultText: "Unable to open this chat. Please try again.", description: "Explore context preparation failure." },
+  { key: "chat.popup.private", defaultText: "Only you can access this chat.", description: "Private popup visibility." },
+  { key: "chat.popup.public", defaultText: "Allow this chat to be shared later.", description: "Public popup visibility." },
   { key: "admin.explore.category.add", defaultText: "Add Category", description: "Opens the Explore category preset form." },
   { key: "admin.explore.category.edit", defaultText: "Edit Category", description: "Explore category preset form title." },
   { key: "admin.explore.category.add_subcategory", defaultText: "Add Subcategory", description: "Explore subcategory form title." },

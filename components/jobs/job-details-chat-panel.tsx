@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Messages } from "@/components/messages";
 import { MultimodalInput } from "@/components/multimodal-input";
 import { toast } from "@/components/toast";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { VisibilitySelector } from "@/components/visibility-selector";
 import type { JobCard } from "@/lib/jobs/types";
@@ -24,7 +25,9 @@ type JobDetailsChatPanelProps = {
   initialOldestMessageAt?: string | null;
   initialVisibilityType?: VisibilityType;
   isReadonly?: boolean;
-  jobContext: JobCard;
+  jobContext?: JobCard;
+  embedded?: boolean;
+  restoreHistory?: boolean;
 };
 
 export function JobDetailsChatPanel({
@@ -39,6 +42,8 @@ export function JobDetailsChatPanel({
   initialVisibilityType = "private",
   isReadonly = false,
   jobContext,
+  embedded = false,
+  restoreHistory = false,
 }: JobDetailsChatPanelProps) {
   const [resolvedChatId] = useState(() => chatId ?? generateUUID());
   const [isVisible, setIsVisible] = useState(defaultOpen);
@@ -49,6 +54,9 @@ export function JobDetailsChatPanel({
     initialOldestMessageAt
   );
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyReady, setHistoryReady] = useState(!restoreHistory);
+  const [historyFailed, setHistoryFailed] = useState(false);
+  const [historyAttempt, setHistoryAttempt] = useState(0);
   const currentModelId = initialChatModel;
   const [currentLanguageCode, setCurrentLanguageCode] =
     useState(initialChatLanguage);
@@ -75,9 +83,8 @@ export function JobDetailsChatPanel({
             message: request.messages.at(-1),
             selectedLanguage: currentLanguageCode,
             selectedVisibilityType: initialVisibilityType,
-            chatMode: "jobs",
-            jobPostingId: jobContext.id,
-            originJobPostingId: jobContext.id,
+            chatMode: jobContext ? "jobs" : "default",
+            ...(jobContext ? { jobPostingId: jobContext.id, originJobPostingId: jobContext.id } : {}),
             ...request.body,
           },
         };
@@ -112,6 +119,24 @@ export function JobDetailsChatPanel({
   useEffect(() => {
     setIsVisible(defaultOpen);
   }, [defaultOpen]);
+
+  useEffect(() => {
+    if (!restoreHistory) return;
+    void historyAttempt;
+    let cancelled = false;
+    setHistoryReady(false);
+    setHistoryFailed(false);
+    fetchWithErrorHandlers(`/api/chat/${resolvedChatId}/messages?limit=60`)
+      .then((response) => response.json())
+      .then((data) => {
+        if (cancelled) return;
+        setMessages(Array.isArray(data.messages) ? data.messages : []);
+        setHasMoreHistory(data.hasMore === true);
+        setOldestMessageAt(data.oldestMessageAt ?? null);
+        setHistoryReady(true);
+      }).catch(() => { if (!cancelled) setHistoryFailed(true); });
+    return () => { cancelled = true; };
+  }, [restoreHistory, resolvedChatId, setMessages, historyAttempt]);
 
   useEffect(() => {
     setHasMoreHistory(initialHasMoreHistory);
@@ -173,31 +198,22 @@ export function JobDetailsChatPanel({
 
   const emptyState = (
     <div className="rounded-[20px] border border-dashed border-border/60 bg-muted/20 px-5 py-8 text-center text-muted-foreground text-sm">
-      Send a message to get started.
+      <EditableTranslation translationKey="chat.popup.start" defaultText="Send a message to get started." />
     </div>
   );
 
-  return (
-    <FloatingChatPopup
-      controls={
-        isReadonly ? null : (
-          <VisibilitySelector
-            chatId={resolvedChatId}
-            showOnMobile={true}
-            selectedVisibilityType={initialVisibilityType}
-          />
-        )
-      }
-      isVisible={isVisible}
-      onClose={handleHide}
-      onOpen={handleShow}
-    >
+  const content = !historyReady ? (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-muted-foreground text-sm" aria-live="polite">
+      <EditableTranslation translationKey={historyFailed ? "chat.popup.load_error" : "chat.popup.loading"} defaultText={historyFailed ? "Unable to load this chat. Please try again." : "Loading chat..."} />
+      {historyFailed ? <button className="cursor-pointer rounded-full border px-4 py-2" onClick={() => setHistoryAttempt((attempt) => attempt + 1)} type="button"><EditableTranslation translationKey="common.retry" defaultText="Retry" /></button> : null}
+    </div>
+  ) : (
       <div className="min-h-0 flex flex-1 flex-col overflow-hidden">
         <div className="min-h-0 flex flex-1 overflow-hidden">
           <Messages
             chatId={resolvedChatId}
             hasMoreHistory={hasMoreHistory}
-            header={messages.length === 0 ? emptyState : undefined}
+            header={messages.every((message) => message.parts.some((part) => part.type === "data-exploreContext")) ? emptyState : undefined}
             headerFullWidth={false}
             isArtifactVisible={false}
             isGeneratingImage={false}
@@ -247,6 +263,24 @@ export function JobDetailsChatPanel({
           </div>
         )}
       </div>
+  );
+  if (embedded) return content;
+  return (
+    <FloatingChatPopup
+      controls={
+        isReadonly ? null : (
+          <VisibilitySelector
+            chatId={resolvedChatId}
+            showOnMobile={true}
+            selectedVisibilityType={initialVisibilityType}
+          />
+        )
+      }
+      isVisible={isVisible}
+      onClose={handleHide}
+      onOpen={handleShow}
+    >
+      {content}
     </FloatingChatPopup>
   );
 }

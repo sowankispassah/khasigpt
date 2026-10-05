@@ -127,7 +127,7 @@ function PureMessages({
 }: MessagesProps) {
   const renderMessages = useMemo(() => dedupeMessages(messages), [messages]);
   const displayMessages = useMemo(
-    () => renderMessages.filter((message) => !isNewsInitialMessage(message)),
+    () => renderMessages.filter((message) => !isNewsInitialMessage(message) && !message.parts.some((part) => part.type === "data-exploreContext")),
     [renderMessages]
   );
   const lastMessage = displayMessages.at(-1);

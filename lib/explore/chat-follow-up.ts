@@ -8,7 +8,7 @@ export type ExploreChatContext = {
   radiusKm: number;
 };
 
-const GENERIC_NEW_SEARCH_PATTERN = /\b(more|other|another|nearby)\b/i;
+const GENERIC_NEW_SEARCH_PATTERN = /\b(more|other|another|nearby)\s+(places?|restaurants?|cafes?|options?|results?|shops?|hotels?)\b/i;
 const SEARCH_ACTION_PATTERN = /\b(find|show|search|look|discover)\b/i;
 const SPECIFIC_PLACE_PATTERN =
   /\b(restaurant|cafe|coffee|hotel|stay|food|shop|market|hospital|clinic|pharmacy|school|college|church|museum|park|waterfall|tourist|attraction|event|sport|experience)s?\b/i;
