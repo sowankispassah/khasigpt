@@ -19,6 +19,7 @@ import {
   IMAGE_MIME_TYPES,
   parseDocumentUploadsAccessModeSetting,
 } from "@/lib/uploads/document-uploads";
+import { putPrivateDocument } from "@/lib/uploads/private-documents";
 
 const MAX_FILE_SIZE_BYTES = DOCUMENT_UPLOADS_MAX_BYTES;
 const ALLOWED_IMAGE_MIME_TYPES = IMAGE_MIME_TYPES;
@@ -202,10 +203,10 @@ export async function POST(request: Request) {
     const objectKey = `uploads/${session.user.id}/${crypto.randomUUID()}.${extension}`;
 
     try {
-      const data = await put(objectKey, fileBuffer, {
+      const data = isImage ? await put(objectKey, fileBuffer, {
         access: "public",
         contentType: mimeType,
-      });
+      }) : await putPrivateDocument(objectKey, Buffer.from(fileBuffer), mimeType);
 
       if (isImage) {
         return NextResponse.json(data);

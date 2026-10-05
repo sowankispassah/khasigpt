@@ -3,6 +3,7 @@ import "server-only";
 import { createBlobToken, verifyBlobToken } from "@/lib/security/blob-token";
 import type { ChatMessage } from "@/lib/types";
 import { isDocumentMimeType } from "@/lib/uploads/document-uploads";
+import { isDocumentStorageKey } from "@/lib/uploads/private-documents";
 
 const ALLOWED_BLOB_HOST_SUFFIXES = [
   "blob.vercel-storage.com",
@@ -16,6 +17,7 @@ type ResolveDocumentUrlInput = {
   userId: string;
   baseUrl: string;
   isAdmin: boolean;
+  allowHistorical?: boolean;
 };
 
 type ResolvedDocumentUrl = {
@@ -33,7 +35,7 @@ const extractStorageKey = (blobUrl: string): string | null => {
     const url = new URL(blobUrl);
     const pathname = decodeURIComponent(url.pathname);
     const key = pathname.startsWith("/") ? pathname.slice(1) : pathname;
-    return key.length > 0 ? key : null;
+    return isDocumentStorageKey(key) ? key : null;
   } catch {
     return null;
   }
@@ -84,6 +86,7 @@ export const resolveDocumentBlobUrl = ({
   userId,
   baseUrl,
   isAdmin,
+  allowHistorical = false,
 }: ResolveDocumentUrlInput): ResolvedDocumentUrl | null => {
   if (!sourceUrl) {
     return null;
@@ -96,12 +99,12 @@ export const resolveDocumentBlobUrl = ({
     return null;
   }
 
-  if (resolved.pathname === DOWNLOAD_PATHNAME) {
+  if (resolved.pathname === DOWNLOAD_PATHNAME && (allowHistorical || resolved.origin === new URL(baseUrl).origin)) {
     const token = resolved.searchParams.get("token");
     if (!token) {
       return null;
     }
-    const payload = verifyBlobToken(token);
+    const payload = verifyBlobToken(token, { allowHistorical });
     if (!payload) {
       return null;
     }
@@ -114,7 +117,7 @@ export const resolveDocumentBlobUrl = ({
     } catch {
       return null;
     }
-    if (!isAllowedBlobHost(payloadUrl.hostname)) {
+    if (payloadUrl.protocol !== "https:" || !isAllowedBlobHost(payloadUrl.hostname) || payloadUrl.username || payloadUrl.password || payloadUrl.port) {
       return null;
     }
     if (!payload.key || !isAdmin && !isOwnedStorageKey(payload.key, userId)) {
@@ -175,6 +178,7 @@ export const rewriteDocumentUrlsForViewer = ({
         userId: viewerUserId,
         baseUrl,
         isAdmin,
+        allowHistorical: true,
       });
       if (!resolved) {
         return { ...part, url: "" };

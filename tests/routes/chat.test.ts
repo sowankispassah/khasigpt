@@ -53,6 +53,12 @@ function normalizeStreamData(lines: string[]): string[] {
           return [];
         }
         if (data.type === "message-metadata") return [];
+        if (data.type === "data-messageTimestamp") {
+          expect(typeof data.data?.id).toBe("string");
+          expect(Number.isFinite(Date.parse(data.data?.createdAt))).toBe(true);
+          expect(data.transient).toBe(true);
+          return [];
+        }
         if (data.id) {
           // Replace dynamic id with a static one for comparison
           return `data: ${JSON.stringify({ ...data, id: "STATIC_ID" })}`;
@@ -284,8 +290,7 @@ test.describe
       const text = await response.text();
       const lines = text.split("\n");
 
-      const [_, ...rest] = lines;
-      const actualNormalized = normalizeStreamData(rest.filter(Boolean));
+      const actualNormalized = normalizeStreamData(lines.filter(Boolean));
       const expectedNormalized = normalizeStreamData(
         TEST_PROMPTS.SKY.OUTPUT_STREAM
       );

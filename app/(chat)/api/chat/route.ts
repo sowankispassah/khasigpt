@@ -56,6 +56,7 @@ import {
   WEB_SEARCH_ENABLED_SETTING_KEY,
 } from "@/lib/constants";
 import { getLiveCurrentInfo, type LiveCurrentInfo } from "@/lib/current-info/service";
+import { getAuthUserById } from "@/lib/db/auth-queries";
 import {
   acquirePaidGenerationForUser,
   consumeFreeDailyChatAllowance,
@@ -157,17 +158,19 @@ import {
 import type { QuestionPaperRecord } from "@/lib/study/types";
 import type { ChatMessage } from "@/lib/types";
 import { resolveDocumentBlobUrl } from "@/lib/uploads/document-access";
-import { extractDocumentText } from "@/lib/uploads/document-parser";
+import { extractDocumentText, extractDocumentTextFromBuffer } from "@/lib/uploads/document-parser";
 import {
   isDocumentMimeType,
   parseDocumentUploadsAccessModeSetting,
 } from "@/lib/uploads/document-uploads";
+import { readPrivateDocument } from "@/lib/uploads/private-documents";
 import type { AppUsage } from "@/lib/usage";
 import {
   convertToUIMessages,
   generateUUID,
   getTextFromMessage,
 } from "@/lib/utils";
+import { withTimeout } from "@/lib/utils/async";
 import {
   getWebSearchPlatform,
   hasWebSearchProviderPricing,
@@ -2766,7 +2769,8 @@ export async function POST(request: Request) {
         sourceUrl: part.url ?? "",
         userId: session.user.id,
         baseUrl: request.url,
-        isAdmin: session.user.role === "admin",
+        isAdmin: false,
+        allowHistorical: documentParts.length === 0,
       });
       if (!resolved) {
         return null;
@@ -2785,13 +2789,22 @@ export async function POST(request: Request) {
 
       return {
         name,
-        url: resolved.blobUrl,
+        storageKey: resolved.storageKey,
         mediaType: part.mediaType ?? "",
       };
     };
 
     let documentContextText = "";
     if (documentUploadsEnabled && recentDocumentParts.length > 0) {
+      // The JWT may predate deactivation. Recheck active status only when this
+      // request will read private documents, before any storage or parser work.
+      let documentUser: Awaited<ReturnType<typeof getAuthUserById>>;
+      try {
+        documentUser = await withTimeout(getAuthUserById(session.user.id), 2500);
+      } catch {
+        return new ChatSDKError("offline:api").toResponse();
+      }
+      if (!documentUser?.isActive) return new ChatSDKError("unauthorized:api").toResponse();
       const resolvedParts = [];
       let invalidUpload = false;
 
@@ -2816,10 +2829,10 @@ export async function POST(request: Request) {
 
       try {
         const parsedDocuments = await Promise.all(
-          resolvedParts.map((part) =>
-            extractDocumentText({
+          resolvedParts.map(async (part) =>
+            extractDocumentTextFromBuffer({
               name: part.name,
-              url: part.url,
+              buffer: await readPrivateDocument(part.storageKey),
               mediaType: part.mediaType,
             })
           )

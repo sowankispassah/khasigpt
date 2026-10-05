@@ -1,7 +1,12 @@
+import { getAuthUserById } from "@/lib/db/auth-queries";
 import { ChatSDKError } from "@/lib/errors";
 import { getAuthenticatedSession } from "@/lib/mobile-auth-session";
 import { verifyBlobToken } from "@/lib/security/blob-token";
+import { incrementRateLimit } from "@/lib/security/rate-limit";
+import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { resolveDocumentBlobUrl } from "@/lib/uploads/document-access";
+import { getPrivateDocument } from "@/lib/uploads/private-documents";
+import { withTimeout } from "@/lib/utils/async";
 
 export const runtime = "nodejs";
 
@@ -10,6 +15,9 @@ export async function GET(request: Request) {
   if (!session?.user) {
     return new ChatSDKError("unauthorized:api").toResponse();
   }
+
+  const limit = await incrementRateLimit(`document-download:${session.user.id}:${getClientKeyFromHeaders(request.headers)}`, { limit: 60, windowMs: 60_000 });
+  if (!limit.allowed) return new ChatSDKError("rate_limit:api").toResponse();
 
   const { searchParams } = new URL(request.url);
   const token = searchParams.get("token");
@@ -22,14 +30,23 @@ export async function GET(request: Request) {
     return new ChatSDKError("bad_request:api", "Invalid download token.").toResponse();
   }
 
-  const isAdmin = session.user.role === "admin";
+  // Recheck active status and role before reading a private object. A stale
+  // cookie role must not keep administrative document access after revocation.
+  let user: Awaited<ReturnType<typeof getAuthUserById>>;
+  try {
+    user = await withTimeout(getAuthUserById(session.user.id), 2500);
+  } catch {
+    return new ChatSDKError("offline:api").toResponse();
+  }
+  if (!user?.isActive) return new ChatSDKError("unauthorized:api").toResponse();
+  const isAdmin = user.role === "admin";
   if (!isAdmin && payload.userId !== session.user.id) {
     return new ChatSDKError("forbidden:api").toResponse();
   }
 
   const resolved = resolveDocumentBlobUrl({
-    sourceUrl: payload.url,
-    userId: payload.userId,
+    sourceUrl: request.url,
+    userId: session.user.id,
     baseUrl: request.url,
     isAdmin,
   });
@@ -38,31 +55,27 @@ export async function GET(request: Request) {
     return new ChatSDKError("bad_request:api", "Invalid download token.").toResponse();
   }
 
-  const response = await fetch(resolved.blobUrl, {
-    cache: "no-store",
-    signal: request.signal,
-  });
+  let response: Awaited<ReturnType<typeof getPrivateDocument>>;
+  try {
+    response = await getPrivateDocument(resolved.storageKey, request.signal);
+  } catch {
+    return new ChatSDKError("offline:api").toResponse();
+  }
 
-  if (!response.ok || !response.body) {
+  if (!response || response.statusCode !== 200) {
     return new ChatSDKError("not_found:api").toResponse();
   }
 
   const headers = new Headers();
-  const contentType = response.headers.get("content-type");
-  if (contentType) {
-    headers.set("Content-Type", contentType);
-  }
-  const contentLength = response.headers.get("content-length");
-  if (contentLength) {
-    headers.set("Content-Length", contentLength);
-  }
-  const contentDisposition = response.headers.get("content-disposition");
-  if (contentDisposition) {
-    headers.set("Content-Disposition", contentDisposition);
-  }
-  headers.set("Cache-Control", "private, max-age=60");
+  headers.set("Content-Type", response.blob.contentType);
+  headers.set("Content-Length", String(response.blob.size));
+  headers.set("Content-Disposition", response.blob.contentDisposition);
+  headers.set("Cache-Control", "private, no-store");
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("Referrer-Policy", "no-referrer");
+  headers.set("Vary", "Cookie, Authorization");
 
-  return new Response(response.body, {
+  return new Response(response.stream, {
     status: 200,
     headers,
   });
