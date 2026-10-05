@@ -204,6 +204,11 @@ function LoginContent() {
               {errorMessage}
             </div>
           ) : null}
+          {searchParams?.get("status") === "password-updated" ? (
+            <output className="mt-3 block text-sm">
+              <EditableTranslation translationKey="profile.password.success_signin" defaultText="Password updated. All sessions have been signed out. Sign in again." />
+            </output>
+          ) : null}
         </div>
         <AuthForm
           action={handleSubmit}

@@ -1,10 +1,11 @@
 import "server-only";
 
+import { compare } from "bcrypt-ts";
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
-import { creatorReferral, type User, user } from "@/lib/db/schema";
+import { creatorReferral, passwordResetToken, type User, user } from "@/lib/db/schema";
 import { generateHashedPassword } from "@/lib/db/utils";
 import { ChatSDKError } from "@/lib/errors";
 import { generateUUID } from "@/lib/utils";
@@ -14,6 +15,7 @@ export type AuthDbUser = Pick<
   | "id"
   | "email"
   | "password"
+  | "sessionVersion"
   | "role"
   | "isActive"
   | "allowPersonalKnowledge"
@@ -37,6 +39,7 @@ const authUserColumns = {
   id: user.id,
   email: user.email,
   password: user.password,
+  sessionVersion: user.sessionVersion,
   role: user.role,
   isActive: user.isActive,
   allowPersonalKnowledge: user.allowPersonalKnowledge,
@@ -255,7 +258,7 @@ export async function updateAuthUserProfileFields({
 
 export async function getAuthUserRoleById(
   id: string
-): Promise<Pick<AuthDbUser, "id" | "isActive" | "role"> | null> {
+): Promise<Pick<AuthDbUser, "id" | "isActive" | "role" | "sessionVersion"> | null> {
   if (!isValidUUID(id)) {
     return null;
   }
@@ -266,6 +269,7 @@ export async function getAuthUserRoleById(
         id: user.id,
         isActive: user.isActive,
         role: user.role,
+        sessionVersion: user.sessionVersion,
       })
       .from(user)
       .where(eq(user.id, id))
@@ -278,6 +282,49 @@ export async function getAuthUserRoleById(
       "Failed to get auth user role by id"
     );
   }
+}
+
+// Compare and write against the same credential version. A concurrent reset or
+// change wins once; the losing request cannot overwrite it with stale proof.
+export async function changeAuthUserPassword({ id, currentPassword, password, sessionVersion }: {
+  id: string; currentPassword: string; password: string; sessionVersion: number;
+}): Promise<"success" | "current_invalid" | "reset_required" | "session_changed"> {
+  const record = await getAuthUserById(id);
+  if (!record?.isActive || record.sessionVersion !== sessionVersion) return "session_changed";
+  if (!record.password) return "reset_required";
+  if (!(await compare(currentPassword, record.password))) return "current_invalid";
+  const hashedPassword = generateHashedPassword(password);
+  return getAuthDb().transaction(async (tx) => {
+    const [updated] = await tx.update(user).set({
+      password: hashedPassword, sessionVersion: sql`${user.sessionVersion} + 1`, updatedAt: new Date(),
+    }).where(and(eq(user.id, id), eq(user.isActive, true),
+      eq(user.password, record.password!), eq(user.sessionVersion, sessionVersion))).returning({ id: user.id });
+    if (!updated) return "session_changed";
+    await tx.delete(passwordResetToken).where(eq(passwordResetToken.userId, id));
+    return "success";
+  });
+}
+
+export async function resetAuthUserPassword(token: string, password: string): Promise<boolean> {
+  const hashedPassword = generateHashedPassword(password);
+  return getAuthDb().transaction(async (tx) => {
+    const [candidate] = await tx.select({ userId: passwordResetToken.userId }).from(passwordResetToken)
+      .where(eq(passwordResetToken.token, token)).limit(1);
+    if (!candidate) return false;
+    // All credential writes lock the user before deleting recovery links.
+    const [owner] = await tx.select({ id: user.id }).from(user)
+      .where(eq(user.id, candidate.userId)).for("update").limit(1);
+    if (!owner) return false;
+    // Re-read after acquiring the user lock: a competing reset may have used it.
+    const [proof] = await tx.select({ id: passwordResetToken.id }).from(passwordResetToken)
+      .where(and(eq(passwordResetToken.token, token), eq(passwordResetToken.userId, owner.id),
+        sql`${passwordResetToken.expiresAt} > now()`)).limit(1);
+    if (!proof) return false;
+    await tx.update(user).set({ password: hashedPassword,
+      sessionVersion: sql`${user.sessionVersion} + 1`, updatedAt: new Date() }).where(eq(user.id, owner.id));
+    await tx.delete(passwordResetToken).where(eq(passwordResetToken.userId, owner.id));
+    return true;
+  });
 }
 
 export async function createAuthGuestUser(): Promise<AuthDbUser> {

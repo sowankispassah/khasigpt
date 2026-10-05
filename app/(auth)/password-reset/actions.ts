@@ -3,17 +3,14 @@
 import { randomBytes } from "node:crypto";
 import { headers } from "next/headers";
 import { z } from "zod";
-
+import { resetAuthUserPassword } from "@/lib/db/auth-queries";
 import {
   createPasswordResetTokenRecord,
-  deletePasswordResetTokenById,
   deletePasswordResetTokensForUser,
-  getPasswordResetTokenRecord,
   getUser,
-  getUserById,
-  updateUserPassword,
 } from "@/lib/db/queries";
 import { sendPasswordResetEmail } from "@/lib/email/brevo";
+import { newPasswordSchema } from "@/lib/security/password-change";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { withTimeout } from "@/lib/utils/async";
@@ -24,9 +21,9 @@ const emailSchema = z.object({
 
 const resetSchema = z
   .object({
-    token: z.string().min(1),
-    password: z.string().min(8),
-    confirmPassword: z.string().min(8),
+    token: z.string().min(1).max(256),
+    password: newPasswordSchema,
+    confirmPassword: z.string().min(8).max(72),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match.",
@@ -60,7 +57,7 @@ export type ForgotPasswordState =
 export type ResetPasswordState =
   | { status: "idle" }
   | { status: "success"; message: string }
-  | { status: "error"; message: string };
+  | { status: "error"; message: string; code?: string };
 
 function resolveAppBaseUrl(): string {
   const baseUrl =
@@ -173,53 +170,10 @@ export async function resetPasswordAction(
       confirmPassword: formData.get("confirmPassword"),
     });
 
-    const record = await runPasswordResetDb(
-      "reset.token_lookup",
-      getPasswordResetTokenRecord(token)
-    );
-
-    if (!record) {
-      return {
-        status: "error",
-        message: "This reset link is invalid or has already been used.",
-      };
-    }
-
-    if (record.expiresAt < new Date()) {
-      await runPasswordResetDb(
-        "reset.delete_expired_token",
-        deletePasswordResetTokenById({ id: record.id })
-      );
-      return {
-        status: "error",
-        message: "This reset link has expired. Please request a new one.",
-      };
-    }
-
-    const userRecord = await runPasswordResetDb(
-      "reset.user_lookup",
-      getUserById(record.userId)
-    );
-
-    if (!userRecord) {
-      await runPasswordResetDb(
-        "reset.delete_orphan_token",
-        deletePasswordResetTokenById({ id: record.id })
-      );
-      return {
-        status: "error",
-        message: "The account associated with this link could not be found.",
-      };
-    }
-
-    await runPasswordResetDb(
-      "reset.update_password",
-      updateUserPassword({ id: userRecord.id, password })
-    );
-    await runPasswordResetDb(
-      "reset.delete_used_tokens",
-      deletePasswordResetTokensForUser({ userId: userRecord.id })
-    );
+    const { allowed } = await incrementRateLimit(`password-reset-confirm:${getClientKeyFromHeaders(await headers())}`, { limit: 10, windowMs: 10 * 60 * 1000 });
+    if (!allowed) return { status: "error", code: "reset_password.rate_limited", message: "Too many reset attempts. Please try again later." };
+    const updated = await runPasswordResetDb("reset.consume_and_revoke", resetAuthUserPassword(token, password), 5000);
+    if (!updated) return { status: "error", code: "reset_password.invalid_link", message: "This reset link is invalid, expired, or has already been used." };
 
     return {
       status: "success",
@@ -231,7 +185,7 @@ export async function resetPasswordAction(
       return { status: "error", message };
     }
 
-    console.error("Failed to reset password", error);
+    console.warn("[auth.password] Reset unavailable.");
     return {
       status: "error",
       message: "Something went wrong. Please try again later.",

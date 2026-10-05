@@ -8,8 +8,8 @@ const actorId = "11111111-1111-4111-8111-111111111111";
 const targetId = "22222222-2222-4222-8222-222222222222";
 
 function harness() {
-  let session: any = { user: { id: actorId, role: "admin" } };
-  let current: any = { id: actorId, role: "admin", isActive: true };
+  let session: any = { user: { id: actorId, role: "admin", sessionVersion: 0 } };
+  let current: any = { id: actorId, role: "admin", isActive: true, sessionVersion: 0 };
   let sessionFails = false;
   let lookupFails = false;
   let hangSession = false;
@@ -45,7 +45,7 @@ function harness() {
       require: (name: string) => {
         if (name === "server-only") return {};
         if (name in mocks) return mocks[name];
-        if (name === "@/lib/security/admin-session" || name === "@/lib/utils/async") return load(`${name.slice(2)}.ts`);
+        if (name === "@/lib/security/admin-session" || name === "@/lib/security/session-version" || name === "@/lib/utils/async") return load(`${name.slice(2)}.ts`);
         return new Proxy({}, { get: (_object, key: string) => (..._args: unknown[]) => {
           calls.effects.push(`${name}:${key}`);
           if (key === "markAccountDeletionRequestsViewed") return Promise.resolve({ markedCount: 1 });
@@ -61,11 +61,12 @@ function harness() {
     inactive: () => { current.isActive = false; }, missing: () => { current = null; },
     failSession: () => { sessionFails = true; }, failLookup: () => { lookupFails = true; },
     hangSession: () => { hangSession = true; }, hangLookup: () => { hangLookup = true; },
+    passwordChanged: () => { current.sessionVersion++; },
   };
 }
 
 test("every exported admin action denies stale, inactive, deleted and unavailable administrators before effects", async () => {
-  const scenarios = ["anonymous", "regular", "missingId", "revoked", "inactive", "missing", "failSession", "failLookup"] as const;
+  const scenarios = ["anonymous", "regular", "missingId", "revoked", "inactive", "missing", "failSession", "failLookup", "passwordChanged"] as const;
   for (const scenario of scenarios) {
     const h = harness();
     h[scenario]();

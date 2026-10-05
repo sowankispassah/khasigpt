@@ -40,5 +40,6 @@ declare module "next-auth/jwt" {
   type JWT = {
     id?: string;
     role?: string;
+    sessionVersion?: number;
   };
 }

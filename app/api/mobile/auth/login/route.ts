@@ -170,7 +170,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json(
     {
-      token: createMobileAuthToken(user.id, { persistent: true }),
+      token: createMobileAuthToken(user.id, { persistent: true, sessionVersion: user.sessionVersion }),
       session: createMobileSessionFromUser(user),
     },
     {

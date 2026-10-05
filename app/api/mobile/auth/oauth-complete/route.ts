@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { auth } from "@/app/(auth)/auth";
 import { withApiTiming } from "@/lib/api/observability";
+import { getAuthUserRoleById } from "@/lib/db/auth-queries";
 import { createMobileAuthToken } from "@/lib/mobile-auth-token";
 import { MOBILE_GOOGLE_AUTH_ATTEMPT_COOKIE } from "@/lib/mobile-google-auth";
+import { hasCurrentSessionVersion, sessionVersionClaim } from "@/lib/security/session-version";
 import { withTimeout } from "@/lib/utils/async";
 
 export const runtime = "nodejs";
@@ -55,6 +57,10 @@ export async function GET(request: Request) {
   const tokenUserId = typeof token?.id === "string" ? token.id : null;
 
   if (tokenUserId) {
+    const current = await withTimeout(getAuthUserRoleById(tokenUserId), 2500).catch(() => null);
+    if (!current?.isActive || !hasCurrentSessionVersion(token?.sessionVersion, current.sessionVersion)) {
+      return redirectToApp({ attempt: attemptId, error: "unauthorized" });
+    }
     console.info("[mobile-google-oauth] Auth.js handoff token decoded.", {
       attemptId,
       userId: tokenUserId,
@@ -63,7 +69,7 @@ export async function GET(request: Request) {
 
     return redirectToApp({
       attempt: attemptId,
-      token: createMobileAuthToken(tokenUserId, { persistent: true }),
+      token: createMobileAuthToken(tokenUserId, { persistent: true, sessionVersion: sessionVersionClaim(token?.sessionVersion)! }),
     });
   }
 
@@ -102,6 +108,6 @@ export async function GET(request: Request) {
 
   return redirectToApp({
     attempt: attemptId,
-    token: createMobileAuthToken(session.user.id, { persistent: true }),
+    token: createMobileAuthToken(session.user.id, { persistent: true, sessionVersion: session.user.sessionVersion ?? 0 }),
   });
 }

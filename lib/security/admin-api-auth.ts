@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import type { UserRole } from "@/app/(auth)/auth";
 import { getAuthUserRoleById } from "@/lib/db/auth-queries";
+import { hasCurrentSessionVersion } from "@/lib/security/session-version";
 import { withTimeout } from "@/lib/utils/async";
 
 type AdminApiUser = {
@@ -12,7 +13,7 @@ type AdminApiUser = {
 const ADMIN_AUTH_TIMEOUT_MS = 20_000;
 const ADMIN_DB_TIMEOUT_MS = 4_000;
 
-async function resolveActiveAdminUser(userId: string): Promise<AdminApiUser | null> {
+async function resolveActiveAdminUser(userId: string, sessionVersion: unknown): Promise<AdminApiUser | null> {
   const user = await withTimeout(
     getAuthUserRoleById(userId),
     ADMIN_DB_TIMEOUT_MS
@@ -21,7 +22,7 @@ async function resolveActiveAdminUser(userId: string): Promise<AdminApiUser | nu
     return null;
   });
 
-  if (!user?.isActive || user.role !== "admin") {
+  if (!user?.isActive || user.role !== "admin" || !hasCurrentSessionVersion(sessionVersion, user.sessionVersion)) {
     return null;
   }
 
@@ -39,7 +40,7 @@ export async function requireAdminApiUser(
   if (secret) {
     const token = await getToken({ req: request, secret }).catch(() => null);
     if (typeof token?.id === "string" && token.id.trim().length > 0) {
-      return resolveActiveAdminUser(token.id);
+      return resolveActiveAdminUser(token.id, token.sessionVersion);
     }
   }
 
@@ -54,5 +55,5 @@ export async function requireAdminApiUser(
     return null;
   }
 
-  return resolveActiveAdminUser(session.user.id);
+  return resolveActiveAdminUser(session.user.id, session.user.sessionVersion);
 }

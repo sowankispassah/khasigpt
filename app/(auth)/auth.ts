@@ -13,6 +13,7 @@ import {
   createAuthGuestUser,
   ensureAuthOAuthUser,
   getAuthUserById,
+  getAuthUserRoleById,
   getAuthUsersByEmail,
 } from "@/lib/db/auth-queries";
 import {
@@ -22,10 +23,12 @@ import {
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { verifyMobileAuthToken } from "@/lib/mobile-auth-token";
+import { AuthLookupUnavailableError } from "@/lib/security/auth-unavailable";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 import { GUEST_SIGNIN_RATE_LIMIT, isGuestLoginEnabled } from "@/lib/security/guest-login";
 import { incrementRateLimit, resetRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
+import { hasCurrentSessionVersion } from "@/lib/security/session-version";
 import { withTimeout } from "@/lib/utils/async";
 import { authConfig } from "./auth.config";
 
@@ -33,8 +36,10 @@ export type UserRole = "regular" | "creator" | "admin";
 
 declare module "next-auth" {
   interface Session extends DefaultSession {
+    authLookupUnavailable?: boolean;
     user: {
       id: string;
+      sessionVersion?: number;
       role: UserRole;
       dateOfBirth: string | null;
       imageVersion: string | null;
@@ -46,6 +51,7 @@ declare module "next-auth" {
 
   interface User {
     id?: string;
+    sessionVersion?: number;
     email?: string | null;
     role: UserRole;
     dateOfBirth?: string | null;
@@ -84,6 +90,7 @@ function toNextAuthUser(user: AuthDbUser) {
 
   return {
     id: user.id,
+    sessionVersion: user.sessionVersion,
     email: user.email,
     role: user.role as UserRole,
     dateOfBirth: user.dateOfBirth ?? null,
@@ -177,7 +184,7 @@ providers.push(
         console.error("[auth] Mobile token user lookup failed.", error);
         return null;
       });
-      if (!targetUser || !targetUser.isActive) {
+      if (!targetUser || !targetUser.isActive || !hasCurrentSessionVersion(verified.sessionVersion, targetUser.sessionVersion)) {
         return null;
       }
 
@@ -320,8 +327,8 @@ async function applyPendingInviteAccess(
 }
 
 export const {
-  handlers: { GET, POST },
-  auth,
+  handlers: { GET: uncheckedGET, POST: uncheckedPOST },
+  auth: uncheckedAuth,
   signIn,
   signOut,
   unstable_update,
@@ -397,6 +404,7 @@ export const {
           );
           (user as Record<string, unknown>).isNewUser = isNewOAuthUser;
           user.id = dbUser.id;
+          user.sessionVersion = dbUser.sessionVersion;
           user.role = dbUser.role as UserRole;
           user.image = null;
           user.imageVersion =
@@ -447,6 +455,7 @@ export const {
     }) => {
       if (user) {
         token.id = user.id as string;
+        token.sessionVersion = user.sessionVersion ?? 0;
         token.role = (user.role as UserRole) ?? "regular";
         token.roleRefreshedAt = Date.now();
         token.dbRefreshedAt = Date.now();
@@ -457,6 +466,23 @@ export const {
         token.allowPersonalKnowledge = user.allowPersonalKnowledge ?? false;
       } else if (!token.id && !isUserRole(token.role)) {
         token.role = "regular";
+      }
+
+      if (!user && token.id) {
+        // Validate before profile refresh. Auth.js's server-side session wrapper
+        // falls back to token data when a session callback returns null, so
+        // confirmed revocation must reject the JWT itself.
+        try {
+          const current = await withTimeout(getAuthUserRoleById(token.id), 2500);
+          if (!current?.isActive || !hasCurrentSessionVersion(token.sessionVersion, current.sessionVersion)) return null;
+          delete token.authLookupUnavailable;
+        } catch {
+          console.warn("[auth.session] Credential validation unavailable.");
+          // Preserve credentials during an outage; server callers and the
+          // session endpoint deny access with a retryable 503 below.
+          token.authLookupUnavailable = true;
+          return token;
+        }
       }
 
       let cachedDbUser:
@@ -636,12 +662,14 @@ export const {
 
       return token;
     },
-    session({ session, token }: { session: any; token: any }) {
+    async session({ session, token }: { session: any; token: any }) {
       if (!token.id) {
         return null;
       }
+      if (token.authLookupUnavailable) session.authLookupUnavailable = true;
       if (session.user) {
         session.user.id = (token.id ?? session.user.id) as string;
+        session.user.sessionVersion = token.sessionVersion ?? 0;
         session.user.role = (token.role as UserRole | undefined) ?? "regular";
         session.user.dateOfBirth = (token.dateOfBirth ?? null) as string | null;
         session.user.imageVersion = (token.imageVersion ?? null) as
@@ -663,6 +691,32 @@ export const {
     },
   },
 });
+
+export async function auth() {
+  const session = await uncheckedAuth();
+  if (session?.authLookupUnavailable) throw new AuthLookupUnavailableError();
+  return session?.user?.id ? session : null;
+}
+
+async function validatedAuthResponse(response: Response) {
+  if (response.headers.get("Content-Type")?.includes("application/json")) {
+    const body = await response.clone().json().catch(() => null);
+    if (body?.authLookupUnavailable) {
+      return Response.json({ code: "auth_lookup_unavailable" }, {
+        status: 503, headers: { "Cache-Control": "no-store" },
+      });
+    }
+  }
+  return response;
+}
+
+export async function GET(request: Parameters<typeof uncheckedGET>[0]) {
+  return validatedAuthResponse(await uncheckedGET(request));
+}
+
+export async function POST(request: Parameters<typeof uncheckedPOST>[0]) {
+  return validatedAuthResponse(await uncheckedPOST(request));
+}
 
 import { cookies } from "next/headers";
 import { normalizeReferralCode, REFERRAL_COOKIE } from "@/lib/referrals/rules";

@@ -8,10 +8,13 @@ import {
   getAuthUserById,
 } from "@/lib/db/auth-queries";
 import { verifyMobileAuthToken } from "@/lib/mobile-auth-token";
+import { AuthLookupUnavailableError } from "@/lib/security/auth-unavailable";
+import { hasCurrentSessionVersion } from "@/lib/security/session-version";
 import { withTimeout } from "@/lib/utils/async";
 
 export type AuthenticatedRouteUser = {
   id: string;
+  sessionVersion?: number;
   email: string | null;
   name: string | null;
   role: UserRole;
@@ -45,15 +48,7 @@ const DEFAULT_BEARER_AUTH_TIMEOUT_MS = 2500;
 const DEFAULT_COOKIE_AUTH_TIMEOUT_MS = 4000;
 const DEFAULT_ADMIN_AUTH_LOOKUP_TIMEOUT_MS = 2500;
 
-export class AuthLookupUnavailableError extends Error {
-  code = "auth_lookup_unavailable";
-  status = 503;
-
-  constructor(message = "Authentication lookup is temporarily unavailable.") {
-    super(message);
-    this.name = "AuthLookupUnavailableError";
-  }
-}
+export { AuthLookupUnavailableError };
 
 export function getBearerToken(request: Request) {
   const authorization = request.headers.get("authorization") ?? "";
@@ -85,6 +80,7 @@ function createSessionFromUser(user: AuthDbUser): AuthenticatedRouteSession {
   return {
     user: {
       id: user.id,
+      sessionVersion: user.sessionVersion,
       email: user.email,
       name: computedName || user.email,
       role: user.role as UserRole,
@@ -113,6 +109,7 @@ function createSessionFromAuthSession(
   return {
     user: {
       id: session.user.id,
+      sessionVersion: session.user.sessionVersion,
       email: session.user.email ?? null,
       name: session.user.name ?? session.user.email ?? null,
       role: session.user.role,
@@ -142,7 +139,7 @@ export async function getAuthenticatedUser(
         const verified = verifyMobileAuthToken(token);
         if (verified) {
           const user = await getAuthUserById(verified.userId);
-          if (user?.isActive) {
+          if (user?.isActive && hasCurrentSessionVersion(verified.sessionVersion, user.sessionVersion)) {
             const session = createSessionFromUser(user);
             return {
               source: "bearer" as const,
@@ -210,8 +207,8 @@ export async function getAuthenticatedUser(
       user: session.user,
     };
   } catch (error) {
-    console.warn("[api/auth] Cookie auth lookup failed.", error);
-    return null;
+    console.warn("[api/auth] Cookie auth lookup failed.");
+    throw new AuthLookupUnavailableError();
   }
 }
 
@@ -244,7 +241,7 @@ export async function requireAdminUser(request: Request, options?: AuthOptions) 
     console.warn("[api/auth] Admin role lookup failed.", error);
     return null;
   });
-  if (!user?.isActive || user.role !== "admin") {
+  if (!user?.isActive || user.role !== "admin" || !hasCurrentSessionVersion(context.user.sessionVersion, user.sessionVersion)) {
     return null;
   }
 

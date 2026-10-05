@@ -1,11 +1,13 @@
 "use client";
 
+import { signOut } from "next-auth/react";
 import { useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 
 export function PasswordForm() {
+  const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -27,37 +29,36 @@ export function PasswordForm() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          currentPassword,
           password,
           confirmPassword,
         }),
       });
 
       const body = (await response.json().catch(() => null)) as
-        | { error?: string; ok?: boolean }
+        | { error?: string; code?: string; ok?: boolean }
         | null;
 
       if (!response.ok || body?.ok === false) {
         setStatus({
           message:
-            body?.error ??
-            translate(
-              "profile.password.error",
-              "Unable to update password."
-            ),
+            translate(`profile.password.${body?.code ?? "error"}`, body?.error ?? "Unable to update password."),
           type: "error",
         });
         return;
       }
 
       setPassword("");
+      setCurrentPassword("");
       setConfirmPassword("");
       setStatus({
         message: translate(
-          "profile.password.success",
-          "Password updated successfully."
+          "profile.password.success_signin",
+          "Password updated. All sessions have been signed out. Sign in again."
         ),
         type: "success",
       });
+      await signOut({ callbackUrl: "/login?status=password-updated" });
     } catch {
       setStatus({
         message: translate(
@@ -90,6 +91,17 @@ export function PasswordForm() {
           />
         </p>
       </div>
+      <p className="text-muted-foreground text-sm">
+        <EditableTranslation translationKey="profile.password.security_notice" defaultText="Changing your password signs out every device. If you use Google or forgot your current password, use Forgot password to set a new one." />
+      </p>
+      <div className="space-y-2">
+        <label className="font-medium text-sm" htmlFor="profile-current-password">
+          <EditableTranslation translationKey="profile.password.current_label" defaultText="Current password" />
+        </label>
+        <input id="profile-current-password" name="currentPassword" autoComplete="current-password" type="password" required
+          className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+          onChange={(event) => setCurrentPassword(event.target.value)} value={currentPassword} />
+      </div>
       <div className="space-y-2">
         <label className="font-medium text-sm" htmlFor="profile-password">
           <EditableTranslation
@@ -101,6 +113,8 @@ export function PasswordForm() {
           className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
           id="profile-password"
           minLength={8}
+          maxLength={72}
+          autoComplete="new-password"
           name="password"
           onChange={(event) => setPassword(event.target.value)}
           required
@@ -122,6 +136,8 @@ export function PasswordForm() {
           className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
           id="profile-password-confirm"
           minLength={8}
+          maxLength={72}
+          autoComplete="new-password"
           name="confirmPassword"
           onChange={(event) => setConfirmPassword(event.target.value)}
           required

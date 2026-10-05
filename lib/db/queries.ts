@@ -2345,13 +2345,16 @@ export async function updateUserPassword({
   const hashedPassword = generateHashedPassword(password);
 
   try {
-    const [updated] = await db
+    return await db.transaction(async (tx) => {
+    const [updated] = await tx
       .update(user)
-      .set({ password: hashedPassword, updatedAt: new Date() })
+      .set({ password: hashedPassword, sessionVersion: sql`${user.sessionVersion} + 1`, updatedAt: new Date() })
       .where(eq(user.id, id))
       .returning();
 
+    if (updated) await tx.delete(passwordResetToken).where(eq(passwordResetToken.userId, id));
     return updated ?? null;
+    });
   } catch (_error) {
     throw new ChatSDKError(
       "bad_request:database",

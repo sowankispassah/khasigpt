@@ -257,7 +257,7 @@ async function exchangeGoogleCodeForHandoff({
     });
 
     return {
-      handoff: createMobileOAuthHandoffToken(user.id),
+      handoff: createMobileOAuthHandoffToken(user.id, user.sessionVersion),
       type: "handoff",
     };
   } catch (error) {

@@ -359,7 +359,18 @@ export async function hasVerifiedAdminSession(request: NextRequest) {
   }).catch(
     () => null
   );
-  return token?.role === "admin";
+  if (token?.role !== "admin" || typeof token.id !== "string") return false;
+  const roleUrl = request.nextUrl.clone();
+  roleUrl.pathname = SITE_SESSION_ROLE_API_PATH;
+  roleUrl.search = "?fresh=1";
+  try {
+    const response = await fetchWithTimeout(roleUrl.toString(), {
+      headers: { cookie: request.headers.get("cookie") ?? "", accept: "application/json" }, cache: "no-store",
+    }, INTERNAL_STATUS_FETCH_TIMEOUT_MS);
+    if (!response?.ok) return false;
+    const body = await response.json();
+    return body?.authenticated === true && body?.role === "admin";
+  } catch { return false; }
 }
 
 async function resolveIsAdmin(request: NextRequest) {
@@ -506,13 +517,22 @@ async function hasAuthenticatedSession(request: NextRequest) {
 
   const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
   if (!authSecret) {
-    return true;
+    return false;
   }
 
   const token = await getToken({ req: request, secret: authSecret }).catch(
     () => null
   );
-  return Boolean(token);
+  if (typeof token?.id !== "string") return false;
+  const roleUrl = request.nextUrl.clone();
+  roleUrl.pathname = SITE_SESSION_ROLE_API_PATH;
+  roleUrl.search = "?fresh=1";
+  try {
+    const response = await fetchWithTimeout(roleUrl.toString(), {
+      headers: { cookie: request.headers.get("cookie") ?? "", accept: "application/json" }, cache: "no-store",
+    }, INTERNAL_STATUS_FETCH_TIMEOUT_MS);
+    return Boolean(response?.ok && (await response.json())?.authenticated === true);
+  } catch { return false; }
 }
 
 export async function proxy(request: NextRequest) {

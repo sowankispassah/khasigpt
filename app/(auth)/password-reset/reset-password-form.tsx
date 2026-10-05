@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useState } from "react";
-
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -83,7 +83,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
       </Button>
       <div aria-live="polite" className="min-h-[1.25rem] text-sm">
         {state.status === "error" ? (
-          <span className="text-destructive">{state.message}</span>
+          <span className="text-destructive"><EditableTranslation translationKey={state.code ?? "reset_password.error"} defaultText={state.message} /></span>
         ) : null}
       </div>
     </form>

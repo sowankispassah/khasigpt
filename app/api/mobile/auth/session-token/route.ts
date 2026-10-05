@@ -14,7 +14,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json(
     {
-      token: createMobileAuthToken(session.user.id, { persistent: true }),
+      token: createMobileAuthToken(session.user.id, { persistent: true, sessionVersion: session.user.sessionVersion ?? 0 }),
     },
     {
       headers: {

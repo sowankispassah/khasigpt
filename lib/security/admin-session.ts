@@ -2,6 +2,7 @@ import "server-only";
 
 import { auth } from "@/app/(auth)/auth";
 import { getAuthUserRoleById } from "@/lib/db/auth-queries";
+import { hasCurrentSessionVersion } from "@/lib/security/session-version";
 import { withTimeout } from "@/lib/utils/async";
 
 const ADMIN_SESSION_TIMEOUT_MS = 4000;
@@ -23,7 +24,7 @@ export async function getActiveAdminSession() {
     console.warn("[admin-session] Current administrator could not be confirmed.");
     return null;
   });
-  if (!currentUser?.isActive || currentUser.role !== "admin") return null;
+  if (!currentUser?.isActive || currentUser.role !== "admin" || !hasCurrentSessionVersion(session.user.sessionVersion, currentUser.sessionVersion)) return null;
 
   // Preserve the existing session contract after confirming its current role.
   return session;

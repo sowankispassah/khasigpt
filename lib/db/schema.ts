@@ -41,6 +41,7 @@ export const user = pgTable(
     email: varchar("email", { length: 64 }).notNull(),
     signupReferralCode: varchar("signupReferralCode", { length: 64 }),
     password: varchar("password", { length: 64 }),
+    sessionVersion: integer("sessionVersion").notNull().default(0),
     role: userRoleEnum("role").notNull().default("regular"),
     authProvider: authProviderEnum("authProvider")
       .notNull()

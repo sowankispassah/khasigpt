@@ -1,53 +1,41 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
-import { z } from "zod";
-import { createAuditLogEntry, updateUserPassword } from "@/lib/db/queries";
+import { AuthLookupUnavailableError } from "@/lib/api/auth";
+import { createAuditLogEntry } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
+import { performPasswordChange } from "@/lib/security/password-change";
+import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const passwordSchema = z
-  .object({
-    confirmPassword: z.string().min(8),
-    password: z.string().min(8),
-  })
-  .refine((value) => value.password === value.confirmPassword, {
-    message: "Passwords do not match.",
-    path: ["confirmPassword"],
-  });
-
 export async function PATCH(request: Request) {
-  const session = await getMobileSession(request);
+  let session: Awaited<ReturnType<typeof getMobileSession>>;
+  try {
+    session = await getMobileSession(request);
+  } catch (error) {
+    if (error instanceof AuthLookupUnavailableError) return NextResponse.json({ code: "error" }, { status: 503, headers: { "Cache-Control": "no-store" } });
+    throw error;
+  }
   if (!session?.user) {
     return new ChatSDKError("unauthorized:api").toResponse();
   }
 
-  const parsed = passwordSchema.safeParse(await request.json());
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: parsed.error.issues.at(0)?.message ?? "Invalid password." },
-      { status: 400 }
-    );
-  }
-
-  await updateUserPassword({
-    id: session.user.id,
-    password: parsed.data.password,
-  });
+  const result = await performPasswordChange(session.user.id, session.user.sessionVersion ?? 0, await request.json().catch(() => null));
+  if (!result.ok) return NextResponse.json(result, { status: result.status, headers: { "Cache-Control": "no-store" } });
 
   const clientInfo = await getClientInfoFromHeaders();
-  await createAuditLogEntry({
+  void withTimeout(createAuditLogEntry({
     actorId: session.user.id,
     action: "user.profile.password.update",
     target: { userId: session.user.id },
     subjectUserId: session.user.id,
     ...clientInfo,
-  });
+  }), 1500).catch(() => console.warn("[auth.password] Audit unavailable."));
 
   revalidatePath("/profile");
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, signInRequired: true }, { headers: { "Cache-Control": "no-store" } });
 }

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { sessionVersionClaim } from "@/lib/security/session-version";
 
 const TOKEN_TTL_MS = 2 * 60 * 1000;
 const PERSISTENT_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -38,11 +39,14 @@ function sign(value: string) {
 
 export function createMobileAuthToken(
   userId: string,
-  options?: { persistent?: boolean }
+  options: { persistent?: boolean; sessionVersion: number }
 ) {
+  if (sessionVersionClaim(options.sessionVersion) !== options.sessionVersion) throw new Error("Invalid session version.");
   const payload = base64UrlEncode(
     JSON.stringify({
       sub: userId,
+      type: "mobile-access",
+      sessionVersion: options.sessionVersion,
       exp:
         Date.now() +
         (options?.persistent ? PERSISTENT_TOKEN_TTL_MS : TOKEN_TTL_MS),
@@ -62,55 +66,22 @@ export function createJobPreviewToken(jobId: string) {
   return `${payload}.${sign(payload)}`;
 }
 
-export function createMobileOAuthHandoffToken(userId: string) {
+export function createMobileOAuthHandoffToken(userId: string, sessionVersion: number) {
+  if (sessionVersionClaim(sessionVersion) !== sessionVersion) throw new Error("Invalid session version.");
   const payload = base64UrlEncode(
     JSON.stringify({
       exp: Date.now() + OAUTH_HANDOFF_TOKEN_TTL_MS,
       sub: userId,
       type: "mobile-oauth-handoff",
+      sessionVersion,
     })
   );
   return `${payload}.${sign(payload)}`;
 }
 
 export function verifyMobileAuthToken(token: string) {
-  const [payload, signature] = token.split(".");
-  if (!payload || !signature) {
-    return null;
-  }
-
-  const expected = sign(payload);
-  const actualBuffer = Buffer.from(signature);
-  const expectedBuffer = Buffer.from(expected);
-  if (
-    actualBuffer.length !== expectedBuffer.length ||
-    !timingSafeEqual(actualBuffer, expectedBuffer)
-  ) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(base64UrlDecode(payload)) as {
-      exp?: unknown;
-      sub?: unknown;
-    };
-    if (typeof parsed.sub !== "string" || typeof parsed.exp !== "number") {
-      return null;
-    }
-    if (parsed.exp < Date.now()) {
-      return null;
-    }
-    return {
-      userId: parsed.sub,
-    };
-  } catch {
-    return null;
-  }
-}
-
-export function verifyMobileOAuthHandoffToken(token: string) {
-  const [payload, signature] = token.split(".");
-  if (!payload || !signature) {
+  const [payload, signature, extra] = token.split(".");
+  if (!payload || !signature || extra !== undefined || token.length > 4096) {
     return null;
   }
 
@@ -129,6 +100,49 @@ export function verifyMobileOAuthHandoffToken(token: string) {
       exp?: unknown;
       sub?: unknown;
       type?: unknown;
+      sessionVersion?: unknown;
+    };
+    if (typeof parsed.sub !== "string" || typeof parsed.exp !== "number") {
+      return null;
+    }
+    if (!Number.isFinite(parsed.exp) || parsed.exp <= Date.now() ||
+      (parsed.type !== undefined && parsed.type !== "mobile-access") ||
+      (parsed.type === undefined && parsed.sessionVersion !== undefined) ||
+      (parsed.type === "mobile-access" && parsed.sessionVersion === undefined) ||
+      sessionVersionClaim(parsed.sessionVersion) === null) {
+      return null;
+    }
+    return {
+      userId: parsed.sub,
+      sessionVersion: sessionVersionClaim(parsed.sessionVersion)!,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function verifyMobileOAuthHandoffToken(token: string) {
+  const [payload, signature, extra] = token.split(".");
+  if (!payload || !signature || extra !== undefined || token.length > 4096) {
+    return null;
+  }
+
+  const expected = sign(payload);
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (
+    actualBuffer.length !== expectedBuffer.length ||
+    !timingSafeEqual(actualBuffer, expectedBuffer)
+  ) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(base64UrlDecode(payload)) as {
+      exp?: unknown;
+      sub?: unknown;
+      type?: unknown;
+      sessionVersion?: unknown;
     };
     if (
       parsed.type !== "mobile-oauth-handoff" ||
@@ -137,11 +151,12 @@ export function verifyMobileOAuthHandoffToken(token: string) {
     ) {
       return null;
     }
-    if (parsed.exp < Date.now()) {
+    if (!Number.isFinite(parsed.exp) || parsed.exp <= Date.now() || sessionVersionClaim(parsed.sessionVersion) === null) {
       return null;
     }
     return {
       userId: parsed.sub,
+      sessionVersion: sessionVersionClaim(parsed.sessionVersion)!,
     };
   } catch {
     return null;

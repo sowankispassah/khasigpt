@@ -11,6 +11,7 @@ declare module "next-auth/jwt" {
 
   export interface JWT extends Record<string, unknown> {
     id?: string;
+    sessionVersion?: number;
     role?: string;
     dateOfBirth?: string | null;
     firstName?: string | null;

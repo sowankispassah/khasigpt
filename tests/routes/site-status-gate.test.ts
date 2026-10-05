@@ -10,12 +10,14 @@ import {
 
 test("verified admin navigation does not wait for site availability", async () => {
   const previousSecret = process.env.AUTH_SECRET;
+  const previousFetch = globalThis.fetch;
   const secret = "local-admin-navigation-verification";
   process.env.AUTH_SECRET = secret;
+  globalThis.fetch = async () => Response.json({ authenticated: true, role: "admin" });
   try {
     for (const secure of [false, true]) {
       const name = secure ? "__Secure-authjs.session-token" : "authjs.session-token";
-      const token = await encode({ secret, salt: name, token: { role: "admin" }, maxAge: 600 });
+      const token = await encode({ secret, salt: name, token: { id: "11111111-1111-4111-8111-111111111111", role: "admin" }, maxAge: 600 });
       const request = new NextRequest(`${secure ? "https" : "http"}://localhost/admin/settings`, {
         headers: { cookie: `${name}=${token}`, accept: "text/html" },
       });
@@ -25,6 +27,7 @@ test("verified admin navigation does not wait for site availability", async () =
       expect(Date.now() - started).toBeLessThan(200);
     }
   } finally {
+    globalThis.fetch = previousFetch;
     if (previousSecret === undefined) delete process.env.AUTH_SECRET;
     else process.env.AUTH_SECRET = previousSecret;
   }

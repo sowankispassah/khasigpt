@@ -8,7 +8,6 @@ import {
   createAuditLogEntry,
   updateUserActiveState,
   updateUserLocation,
-  updateUserPassword,
 } from "@/lib/db/queries";
 import {
   createPersonalKnowledgeEntry,
@@ -17,6 +16,8 @@ import {
 } from "@/lib/rag/service";
 import type { SanitizedRagEntry } from "@/lib/rag/types";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
+import { performPasswordChange } from "@/lib/security/password-change";
+import { withTimeout } from "@/lib/utils/async";
 import { getChatRequestSession } from "../chat-route-session";
 
 async function requireUser() {
@@ -63,41 +64,25 @@ export async function updatePasswordAction(
 ): Promise<UpdatePasswordState> {
   const user = await requireUser();
 
-  const password = formData.get("password")?.toString();
-  const confirmPassword = formData.get("confirmPassword")?.toString();
-
-  if (!password || password.length < 8) {
-    return {
-      status: "error",
-      message: "Password must be at least 8 characters long.",
-    };
-  }
-
-  if (password !== confirmPassword) {
-    return {
-      status: "error",
-      message: "Passwords do not match.",
-    };
-  }
+  const result = await performPasswordChange(user.id, user.sessionVersion ?? 0, {
+    currentPassword: formData.get("currentPassword"),
+    password: formData.get("password"), confirmPassword: formData.get("confirmPassword"),
+  });
+  if (!result.ok) return { status: "error", message: result.error };
 
   const clientInfo = await getClientInfoFromHeaders();
-  await updateUserPassword({
-    id: user.id,
-    password,
-  });
-
-  await createAuditLogEntry({
+  void withTimeout(createAuditLogEntry({
     actorId: user.id,
     action: "user.profile.password.update",
     target: { userId: user.id },
     subjectUserId: user.id,
     ...clientInfo,
-  });
+  }), 1500).catch(() => console.warn("[auth.password] Audit unavailable."));
 
   revalidatePath("/profile");
   return {
     status: "success",
-    message: "Password updated successfully.",
+    message: "Password updated. All sessions have been signed out. Sign in again.",
   };
 }
 
