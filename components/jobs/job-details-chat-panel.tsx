@@ -4,8 +4,10 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useCallback, useEffect, useState } from "react";
 import { useSWRConfig } from "swr";
+import { unstable_serialize } from "swr/infinite";
 import { Messages } from "@/components/messages";
 import { MultimodalInput } from "@/components/multimodal-input";
+import { getChatHistoryPaginationKeyForMode } from "@/components/sidebar-history";
 import { toast } from "@/components/toast";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import type { VisibilityType } from "@/components/visibility-selector";
@@ -102,9 +104,16 @@ export function JobDetailsChatPanel({
         description: message || "Unable to send your message right now.",
       });
     },
+    onData: (part) => {
+      if (part.type === "data-messageTimestamp") {
+        setMessages((current) => current.map((message) => message.id === part.data.id
+          ? { ...message, metadata: { ...message.metadata, createdAt: part.data.createdAt } }
+          : message));
+      }
+    },
     onFinish: () => {
       if (onBeforeSubmit) {
-        void mutate((key) => typeof key === "string" && key.includes("/api/history?"));
+        void mutate(unstable_serialize(getChatHistoryPaginationKeyForMode("all")));
       }
     },
   });
