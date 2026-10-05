@@ -3,6 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useCallback, useEffect, useState } from "react";
+import { useSWRConfig } from "swr";
 import { Messages } from "@/components/messages";
 import { MultimodalInput } from "@/components/multimodal-input";
 import { toast } from "@/components/toast";
@@ -28,6 +29,7 @@ type JobDetailsChatPanelProps = {
   jobContext?: JobCard;
   embedded?: boolean;
   restoreHistory?: boolean;
+  onBeforeSubmit?: (prompt: string) => Promise<void>;
 };
 
 export function JobDetailsChatPanel({
@@ -44,7 +46,9 @@ export function JobDetailsChatPanel({
   jobContext,
   embedded = false,
   restoreHistory = false,
+  onBeforeSubmit,
 }: JobDetailsChatPanelProps) {
+  const { mutate } = useSWRConfig();
   const [resolvedChatId] = useState(() => chatId ?? generateUUID());
   const [isVisible, setIsVisible] = useState(defaultOpen);
   const [input, setInput] = useState("");
@@ -97,6 +101,11 @@ export function JobDetailsChatPanel({
         type: "error",
         description: message || "Unable to send your message right now.",
       });
+    },
+    onFinish: () => {
+      if (onBeforeSubmit) {
+        void mutate((key) => typeof key === "string" && key.includes("/api/history?"));
+      }
     },
   });
 
@@ -249,6 +258,7 @@ export function JobDetailsChatPanel({
               isGeneratingImage={false}
               messages={messages}
               onGenerateImage={async () => {}}
+              onBeforeSubmit={onBeforeSubmit}
               onLanguageChange={handleLanguageChange}
               onToggleImageMode={() => {}}
               selectedLanguageCode={currentLanguageCode}

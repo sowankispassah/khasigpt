@@ -11261,7 +11261,7 @@ export async function recordTokenUsage({
   generationPricing,
 }: {
   userId: string;
-  chatId: string;
+  chatId: string | null;
   modelConfigId: string | null;
   liveVoiceModelConfigId?: string | null;
   inputTokens: number;
@@ -11701,7 +11701,7 @@ export async function recordWebSearchUsage({
   triggerReason,
   userId,
 }: {
-  chatId: string;
+  chatId: string | null;
   creditCostTokens: number;
   creditMultiplier: number;
   errorReason?: string | null;
@@ -12381,7 +12381,7 @@ export async function getSessionTokenUsageForUser(
 
     const rows = await orderedQuery;
 
-    return rows.map((row) => ({
+    return rows.filter((row): row is typeof row & { chatId: string } => row.chatId !== null).map((row) => ({
       chatId: row.chatId,
       chatTitle: row.chatTitle,
       chatCreatedAt:
@@ -14111,12 +14111,12 @@ export async function listChatFinancialSummaries({
         chat.createdAt
       );
 
-    const usageRows = await (whereClause ? query.where(whereClause) : query)
+    const usageRows = await query.where(and(whereClause, isNotNull(tokenUsage.chatId)))
       .orderBy(desc(sql<Date>`MIN(${tokenUsage.createdAt})`))
       .limit(limit)
       .offset(offset);
 
-    const records = usageRows.map((row) => ({
+    const records = usageRows.filter((row): row is typeof row & { chatId: string } => row.chatId !== null).map((row) => ({
       ...row,
       totalInputTokens: toNumber(row.totalInputTokens),
       totalOutputTokens: toNumber(row.totalOutputTokens),

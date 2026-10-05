@@ -11,7 +11,7 @@ let bundle: string;
 test.beforeAll(async () => {
   const mocks: Record<string, string> = {
     "@/components/jobs/job-details-chat-panel": "export const JobDetailsChatPanel = () => null;",
-    "next/dynamic": "import React from 'react'; export default function dynamic() { return function Chat(props) { return React.createElement('div',{'data-testid':'popup-chat','data-chat-id':props.chatId},'Chat composer'); }; }",
+    "next/dynamic": "import React from 'react'; export default function dynamic() { return function Chat(props) { const [busy,setBusy]=React.useState(false); const [error,setError]=React.useState(false); return React.createElement('div',{'data-testid':'popup-chat','data-chat-id':props.chatId},React.createElement('button',{disabled:busy,onClick:async()=>{setBusy(true);setError(false);try{await props.onBeforeSubmit('Question');}catch{setError(true);}finally{setBusy(false);}}},busy?'Sending...':'Send message'),error?React.createElement('div',{role:'alert'},'Unable to start the chat. Please try again.'):null); }; }",
     "@/lib/utils": "export const generateUUID = () => crypto.randomUUID(); export const cn = (...values) => values.filter(Boolean).join(' ');",
     "@/components/ui/button": "import React from 'react'; export const Button = ({variant,size,...props}) => React.createElement('button',props);",
     "next/navigation": "export const useRouter = () => ({push() {}});",
@@ -243,7 +243,9 @@ test("Explore opens one general launcher and separate place popup chats without 
   await expect(launcher).toHaveCount(1);
   await launcher.click();
   await expect(page.getByTestId("popup-chat")).toBeVisible();
-  expect(contexts).toHaveLength(1);
+  expect(contexts).toHaveLength(0);
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect.poll(() => contexts.length).toBe(1);
   expect(contexts[0]).toMatchObject({create:true,selectedResult:null,radiusKm:10});
   expect(contexts[0].results.map((item: any) => item.name)).toEqual(["Place 1"]);
   const generalId = contexts[0].chatId;
@@ -255,24 +257,31 @@ test("Explore opens one general launcher and separate place popup chats without 
   await page.getByRole("heading", { name: "Place 1", exact: true }).click();
   await page.getByRole("button", { name: "Ask KhasiGPT", exact: true }).first().click();
   await expect(page.getByTestId("popup-chat")).toBeVisible();
+  expect(contexts).toHaveLength(1);
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
   await expect.poll(() => contexts.length).toBe(2);
   expect(contexts[1].selectedResult.name).toBe("Place 1");
   expect(contexts[1].chatId).not.toBe(generalId);
   expect(page.url()).toBe("https://explore.test/");
 });
 
-test("Explore popup responds immediately, blocks composing until ready and offers retry on context failure", async ({ page }) => {
+test("Explore opening is write-free and first submission blocks repeat clicks and retries failed context", async ({ page }) => {
   let release!: () => void; let fail = true;
   const gate = new Promise<void>((resolve) => { release = resolve; });
   const contexts: any[] = [];
   await mountExplore(page,{contextRequests:contexts,contextGate:gate,contextFailure:()=>fail});
   await page.getByRole("button",{name:"Ask KhasiGPT",exact:true}).click();
-  await expect(page.getByText("Loading chat...",{exact:true})).toBeVisible();
-  await expect(page.getByTestId("popup-chat")).toHaveCount(0);
-  release();
-  await expect(page.getByRole("alert")).toContainText("Unable to open this chat.");
-  fail = false;
-  await page.getByRole("button",{name:"Retry",exact:true}).click();
   await expect(page.getByTestId("popup-chat")).toBeVisible();
+  expect(contexts).toHaveLength(0);
+  await page.getByRole("button",{name:"Send message",exact:true}).click();
+  await expect(page.getByRole("button",{name:"Sending...",exact:true})).toBeDisabled();
+  release();
+  await expect(page.getByRole("alert")).toContainText("Unable to start the chat.");
+  fail = false;
+  await page.getByRole("button",{name:"Send message",exact:true}).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
   await expect.poll(() => contexts.length).toBe(2);
+  expect(contexts[0].chatId).toBe(contexts[1].chatId);
+  await page.getByRole("button",{name:"Send message",exact:true}).click();
+  expect(contexts).toHaveLength(2);
 });

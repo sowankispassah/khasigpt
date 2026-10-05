@@ -1766,7 +1766,6 @@ export const tokenUsage = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     chatId: uuid("chatId")
-      .notNull()
       .references(() => chat.id, { onDelete: "cascade" }),
     modelConfigId: uuid("modelConfigId").references(() => modelConfig.id, {
       onDelete: "set null",
@@ -1889,7 +1888,6 @@ export const webSearchUsage = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     chatId: uuid("chatId")
-      .notNull()
       .references(() => chat.id, { onDelete: "cascade" }),
     provider: varchar("provider", { length: 64 }).notNull(),
     platform: varchar("platform", { length: 16 }).notNull(),

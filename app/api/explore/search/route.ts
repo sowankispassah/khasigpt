@@ -20,8 +20,6 @@ import {
   getTextGenerationPricing,
   recordTokenUsage,
   recordWebSearchUsage,
-  saveChat,
-  saveMessages,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { isExploreMeghalayaEnabledForRole } from "@/lib/explore/config";
@@ -40,7 +38,6 @@ import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { loadUserFeatureAccessOverride } from "@/lib/settings/user-feature-access";
-import type { ChatMessage } from "@/lib/types";
 import { generateUUID } from "@/lib/utils";
 import {
   getWebSearchPlatform,
@@ -218,14 +215,7 @@ export async function POST(request: Request) {
         ? requestedChat
         : null;
     const chatId = reusableChat?.id ?? generateUUID();
-    if (!reusableChat) {
-      await saveChat({
-        id: chatId,
-        userId: auth.user.id,
-        title: `Explore ${parsed.data.location.label}: ${parsed.data.query}`,
-        visibility: "private",
-      });
-    }
+    // Compatibility identifier for progressive results, not a saved Chat row.
 
     const presetSearch = resolveExplorePreset(parsed.data.query, category, subcategory);
     const effectiveCategoryQuery = presetSearch.categoryQuery;
@@ -419,7 +409,7 @@ export async function POST(request: Request) {
         ) {
           await recordTokenUsage({
             userId: auth.user.id,
-            chatId,
+            chatId: null,
             modelConfigId: model.id,
             inputTokens: answer.usage.inputTokens,
             outputTokens: answer.usage.outputTokens,
@@ -447,11 +437,11 @@ export async function POST(request: Request) {
                     },
                   ]
                 : [],
-            requestKey: `explore:${chatId}:${queryHash}`,
+            requestKey: `explore:${auth.user.id}:${chatId}:${queryHash}`,
           });
         }
         await recordWebSearchUsage({
-          chatId,
+          chatId: null,
           creditCostTokens: 0,
           creditMultiplier:
             searchProvider === "disabled"
@@ -474,7 +464,7 @@ export async function POST(request: Request) {
             ? 1
             : config.providerMarkupMultiplier[attemptedProvider];
         await recordWebSearchUsage({
-          chatId,
+          chatId: null,
           creditCostTokens: 0,
           creditMultiplier: attemptedMarkupMultiplier,
           errorReason:
@@ -506,53 +496,8 @@ export async function POST(request: Request) {
         radiusKm: parsed.data.radiusKm,
         results,
       });
-    if (shouldEnrichExploreSearch(searchMode) && !detailsPending) {
-      const now = new Date();
-      const assistantParts: ChatMessage["parts"] = [
-        {
-          type: "text",
-          text: [
-            `Current Explore context: ${parsed.data.location.label} (${parsed.data.location.latitude}, ${parsed.data.location.longitude}), within ${parsed.data.radiusKm} km.`,
-            summary,
-            ...results.slice(0, 24).map(
-              (item) =>
-                `- ${item.name} — ${item.distance}${item.address ? ` — ${item.address}` : ""}: ${item.sourceUrl}`,
-            ),
-          ].join("\n"),
-        },
-      ];
-      if (answer) {
-        assistantParts.push({
-          type: "data-webSources",
-          data: {
-            sources: answer.sources,
-            searchQueries: answer.searchQueries,
-            citations: answer.citations,
-            videos: answer.videos,
-          },
-        });
-      }
-      await saveMessages({
-        messages: [
-          {
-            chatId,
-            id: generateUUID(),
-            role: "user",
-            parts: [{ type: "text", text: parsed.data.query }],
-            attachments: [],
-            createdAt: now,
-          },
-          {
-            chatId,
-            id: generateUUID(),
-            role: "assistant",
-            parts: assistantParts,
-            attachments: [],
-            createdAt: new Date(now.getTime() + 1),
-          },
-        ],
-      });
-    }
+    // Search results are discovery data, not chat messages. The popup creates its
+    // conversation only after the user submits a message.
 
     const response: ExploreSearchResponse = {
       answer: summary,

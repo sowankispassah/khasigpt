@@ -31,43 +31,34 @@ export function ExploreChatWidget({ request, location, radiusKm, query, results 
   const [visible, setVisible] = useState(false);
   const [place, setPlace] = useState<ExploreResult | null>(null);
   const [chatId, setChatId] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [restoreHistory, setRestoreHistory] = useState(false);
   const sessions = useRef(new Map<string, string>());
-  const attempt = useRef(0);
+  const saved = useRef(new Set<string>());
   const handledRequest = useRef<string | null>(null);
-  const mounted = useRef(true);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
-  const open = useCallback(async (selected: ExploreResult | null) => {
-    const currentAttempt = ++attempt.current;
+  const open = useCallback((selected: ExploreResult | null) => {
     setPlace(selected);
     setVisible(true);
-    setFailed(false);
     const key = JSON.stringify([location?.latitude, location?.longitude, radiusKm, query, selected?.id ?? null]);
-    const existing = sessions.current.get(key);
-    if (existing) { setChatId(existing); setPending(false); return; }
-    setChatId(null);
-    setPending(true);
-    const id = generateUUID();
-    try {
-      const response = await fetch("/api/explore/context", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chatId: id, create: true, location, radiusKm, query: query.trim() || "Nearby places",
-          selectedResult: selected ? { name: selected.name, address: selected.address, sourceUrl: selected.sourceUrl, description: selected.description, phone: selected.phone, website: selected.website, rating: selected.rating, openStatus: selected.openStatus } : null,
-          results: results.slice(0, 24).map((item) => ({ name: item.name, address: item.address, distanceKm: item.distanceKm, sourceUrl: item.sourceUrl })),
-        }),
-      });
-      if (!response.ok) throw new Error("context_unavailable");
-      sessions.current.set(key, id);
-      if (mounted.current && attempt.current === currentAttempt) setChatId(id);
-    } catch {
-      if (mounted.current && attempt.current === currentAttempt) setFailed(true);
-    } finally {
-      if (mounted.current && attempt.current === currentAttempt) setPending(false);
-    }
-  }, [location, radiusKm, query, results]);
+    let id = sessions.current.get(key);
+    if (!id) { id = generateUUID(); sessions.current.set(key, id); }
+    setChatId(id);
+    setRestoreHistory(saved.current.has(id));
+  }, [location, radiusKm, query]);
+
+  const prepareBeforeSend = useCallback(async () => {
+    if (!chatId || saved.current.has(chatId)) return;
+    const response = await fetch("/api/explore/context", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chatId, create: true, location, radiusKm, query: query.trim() || "Nearby places",
+        selectedResult: place ? { name: place.name, address: place.address, sourceUrl: place.sourceUrl, description: place.description, phone: place.phone, website: place.website, rating: place.rating, openStatus: place.openStatus } : null,
+        results: results.slice(0, 24).map((item) => ({ name: item.name, address: item.address, distanceKm: item.distanceKm, sourceUrl: item.sourceUrl })),
+      }),
+    });
+    if (!response.ok) throw new Error("context_unavailable");
+    saved.current.add(chatId);
+  }, [chatId, location, radiusKm, query, place, results]);
 
   useEffect(() => {
     if (!request || handledRequest.current === request.id) return;
@@ -76,6 +67,6 @@ export function ExploreChatWidget({ request, location, radiusKm, query, results 
   }, [request, open]);
 
   return <FloatingChatPopup iconOnly isVisible={visible} onClose={() => setVisible(false)} onOpen={() => void open(null)} title={<div className="min-w-0"><EditableTranslation translationKey="explore.result.ask" defaultText="Ask KhasiGPT" />{place ? <div className="max-w-[20rem] truncate text-muted-foreground text-xs">{place.name}</div> : null}</div>}>
-    {pending ? <ChatLoading /> : failed ? <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center text-muted-foreground text-sm" role="alert"><EditableTranslation translationKey="explore.chat.error" defaultText="Unable to open this chat. Please try again." /><button className="cursor-pointer rounded-full border px-4 py-2" onClick={() => void open(place)} type="button"><EditableTranslation translationKey="common.retry" defaultText="Retry" /></button></div> : chatId ? <ChatPanel key={chatId} chatId={chatId} defaultOpen={visible} embedded restoreHistory documentUploadsEnabled={false} initialChatLanguage={activeLanguage.code} initialChatModel="default" /> : null}
+    {chatId ? <ChatPanel key={chatId} chatId={chatId} defaultOpen={visible} embedded restoreHistory={restoreHistory} onBeforeSubmit={prepareBeforeSend} documentUploadsEnabled={false} initialChatLanguage={activeLanguage.code} initialChatModel="default" /> : null}
   </FloatingChatPopup>;
 }

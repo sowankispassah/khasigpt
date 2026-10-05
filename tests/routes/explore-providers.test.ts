@@ -593,7 +593,7 @@ test("fast list API response preserves auth and returns before summaries, billin
   expect(response.headers.get("Cache-Control")).toBe("no-store");
   const full = await route.POST(post({ ...input, searchMode: "places_only", detailMode: "full", chatId: list.chatId, locationContextKey: list.locationContextKey }));
   expect(full.status).toBe(200);
-  expect(chats).toBe(1);
+  expect(chats).toBe(0);
   selectedCategory = { id: "1ae3affc-d65e-44c9-a5de-fb9570945740", name: "Eat Nearby", searchQuery: "restaurant", resultType: "standard", searchType: "local" };
   const preset = await route.POST(post({ ...input, categoryId: selectedCategory.id, query: "Eat Nearby", detailMode: "full" }));
   expect(preset.status).toBe(200);
@@ -602,8 +602,49 @@ test("fast list API response preserves auth and returns before summaries, billin
   authenticated = false;
   expect((await route.POST(post(input))).status).toBe(401);
   expect(calls).toEqual(["list", "full", "full"]);
+  expect(chats).toBe(0);
 });
 
+
+test("enriched discovery records usage without creating any sidebar conversation", async () => {
+  const tokens: any[] = [], searches: any[] = [];
+  const unexpectedChatWrite = () => { throw new Error("Discovery must not save a chat"); };
+  const route = load("app/api/explore/search/route.ts", {
+    "node:crypto": { createHash }, "next/server": { NextResponse: Response }, zod: { z },
+    "@/lib/api/auth": { getAuthenticatedUser: async () => ({ user: { id: "user", role: "admin" } }) },
+    "@/lib/api/cache": { noStoreHeaders: () => ({ "Cache-Control": "no-store" }) },
+    "@/lib/ai/model-registry": { getModelRegistry: async () => ({ configs: [{ id: "model", providerModelId: "model" }] }) },
+    "@/lib/billing/search-budget": {},
+    "@/lib/chat/free-daily-limit": { hasUsableChatCredits: () => false, isFreeDailyChatLimitBypassedForTest: () => true, requiresPaidWebSearchCredits: () => false },
+    "@/lib/constants": { DEFAULT_FREE_MESSAGES_PER_DAY: 5 },
+    "@/lib/db/queries": {
+      getChatById: async () => null, saveChat: unexpectedChatWrite, saveMessages: unexpectedChatWrite,
+      getActiveSubscriptionForUser: async () => null, getMessageCountByUserId: async () => 0,
+      recordTokenUsage: async (input: any) => tokens.push(input), recordWebSearchUsage: async (input: any) => searches.push(input),
+    },
+    "@/lib/errors": { ChatSDKError: class extends Error {} },
+    "@/lib/explore/config": { isExploreMeghalayaEnabledForRole: async () => true },
+    "@/lib/explore/photo-token": {},
+    "@/lib/explore/places-service": { searchExplorePlaces: async () => ({ results: [{ name: "Cafe", distanceKm: 1 }] }) },
+    "@/lib/explore/service": { getEnabledExploreSelection: async () => ({ category: null, subcategory: null }) },
+    "@/lib/explore/types": { shouldEnrichExploreSearch: (mode: string) => mode === "enriched" },
+    "@/lib/explore/validation": { exploreSearchInputSchema },
+    "@/lib/free-messages": { loadFreeMessageSettings: async () => ({ mode: "global", globalLimit: 5 }) },
+    "@/lib/security/rate-limit": { incrementRateLimit: async () => ({ allowed: true }) },
+    "@/lib/security/request-helpers": { getClientKeyFromHeaders: () => "client" },
+    "@/lib/settings/user-feature-access": { loadUserFeatureAccessOverride: async () => null },
+    "@/lib/utils": { generateUUID: () => "1ae3affc-d65e-44c9-a5de-fb9570945740" },
+    "@/lib/web-search/config": { loadWebSearchConfig: async () => ({ provider: "serper", providerCostPerCallUsd: { serper: 0.001 }, providerMarkupMultiplier: { serper: 3 } }), getWebSearchPlatform: () => "web", isWebSearchAllowedForUser: () => true, hasWebSearchProviderPricing: () => true },
+    "@/lib/web-search/google-allowance-policy": {},
+    "@/lib/web-search/service": { webSearchService: { answerWithSearch: async () => ({ answer: '{"summary":"A cafe nearby"}', provider: "serper", usage: { inputTokens: 10, outputTokens: 10 }, searchCallCount: 1, providerBillingUnitCount: 1, sources: [], searchQueries: [] }) } },
+  }, {}, { performance, console });
+  const response = await route.POST(new Request("https://example.com/api/explore/search", { method: "POST", body: JSON.stringify({ query: "cafe", location, radiusKm: 50, clientRequestId: "test", detailMode: "full", searchMode: "enriched" }) }));
+  expect(response.status).toBe(200);
+  expect((await response.json()).answer).toBe("A cafe nearby");
+  expect(tokens).toHaveLength(1); expect(tokens[0].chatId).toBeNull();
+  expect(tokens[0].additionalCharges[0]).toMatchObject({ category: "web_search", providerKey: "serper", unitCount: 1, markupMultiplier: 3 });
+  expect(searches).toHaveLength(1); expect(searches[0].chatId).toBeNull();
+});
 
 test("image mode clamps full requests to list for primary and Google fallback", async () => {
   for (const fallback of [false, true]) {

@@ -281,7 +281,9 @@ test.describe("Explore Meghalaya", () => {
     expect(searchRoute).toContain("locationContextKey");
     expect(searchRoute).not.toContain("recentConversation");
     expect(contextRoute).toContain("Current geographically verified result set");
-    expect(searchRoute).toContain("Current Explore context");
+    expect(contextRoute).toContain("Current Explore location");
+    expect(searchRoute).not.toContain("saveChat");
+    expect(searchRoute).not.toContain("saveMessages");
     expect(webSidebar).toContain('translationKey="sidebar.explore_meghalaya"');
     expect(nativeSidebar).toContain('translationKey="sidebar.explore_meghalaya"');
     expect(searchRoute).toContain("recordTokenUsage");
