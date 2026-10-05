@@ -8,7 +8,7 @@ const jobs: JobListItem[] = Array.from({ length: 40 }, (_, index) => ({
   id: `job-${index}`, title: `Job ${index}`, company: "Government", location: "Shillong", employmentType: "government",
   salaryLabel: "Not disclosed", notificationDateLabel: "Today", fetchedOnLabel: "Today", sourceLabel: "Source", descriptionSnippet: "Description", hasPdfFile: false,
 }));
-const router = { back() {}, forward() {}, refresh() {}, push() {}, replace() {}, prefetch() {} };
+const router = { bfcacheId: "jobs-list-test", back() {}, forward() {}, refresh() {}, push() {}, replace() {}, prefetch() {} };
 const render = (items: JobListItem[]) => renderToStaticMarkup(createElement(AppRouterContext.Provider, { value: router },
   createElement(JobsInfiniteList, { jobs: items, visibleCount: 36, onVisibleCountChange() {} })));
 console.log(JSON.stringify({

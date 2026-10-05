@@ -115,6 +115,7 @@ export async function createAuthenticatedContext({
   const password = generateId();
 
   await ensureCredentialsUser(email, password, name);
+  await fundIsolatedTestUser(email);
 
   await page.goto("/login?callbackUrl=/chat&credentials=1");
   await page.getByLabel("Email Address").click();
@@ -146,4 +147,30 @@ export function generateRandomTestUser() {
     email,
     password,
   };
+}
+
+function assertIsolatedDatabase() {
+  const database = new URL(postgresUrl ?? "http://invalid");
+  if (!["localhost", "127.0.0.1", "[::1]"].includes(database.hostname) || !database.pathname.startsWith("/khasigpt_audit_")) {
+    throw new Error("Signup fixtures require a disposable local audit database");
+  }
+}
+
+async function fundIsolatedTestUser(email: string) {
+  if (process.env.ISOLATED_TEST_RUN !== "1") return;
+  assertIsolatedDatabase();
+  // Exercise paid admission and settlement with fictional local credit balances.
+  // Production free-chat limits remain enforced during production-mode tests.
+  await sql`insert into "UserSubscription" ("userId","planId","tokenAllowance","tokenBalance","paidTokenBalance","expiresAt")
+    select u.id,'00000000-0000-4000-8000-000000000099',100000,100000,100000,now() + interval '30 days'
+    from "User" u where lower(u.email) = lower(${email})
+      and not exists (select 1 from "UserSubscription" s where s."userId" = u.id and s.status = 'active' and s."expiresAt" > now())`;
+}
+
+export async function completeIsolatedTestSignup(email: string) {
+  if (process.env.ISOLATED_TEST_RUN !== "1") return;
+  assertIsolatedDatabase();
+  // The isolated runner has no outbound email service. Complete only this
+  // fixture's verification before the serial login/registered-account checks.
+  await sql`update "User" set "emailVerificationPending" = false, "isActive" = true where lower(email) = lower(${email})`;
 }

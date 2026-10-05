@@ -39,15 +39,25 @@ const overriddenSettings = new Map<string, postgres.JSONValue>([
 
 // Helper function to normalize stream data for comparison
 function normalizeStreamData(lines: string[]): string[] {
-  return lines.map((line) => {
+  return lines.flatMap((line) => {
     if (line.startsWith("data: ")) {
       try {
         const data = JSON.parse(line.slice(6)); // Remove 'data: ' prefix
+        if (data.messageMetadata) {
+          expect(Number.isFinite(Date.parse(data.messageMetadata.createdAt))).toBe(true);
+          delete data.messageMetadata;
+        }
+        if (data.type === "start") {
+          expect(typeof data.messageId).toBe("string");
+          expect(data.messageId.length).toBeGreaterThan(0);
+          return [];
+        }
+        if (data.type === "message-metadata") return [];
         if (data.id) {
           // Replace dynamic id with a static one for comparison
           return `data: ${JSON.stringify({ ...data, id: "STATIC_ID" })}`;
         }
-        return line;
+        return `data: ${JSON.stringify(data)}`;
       } catch {
         return line; // Return as-is if it's not valid JSON
       }

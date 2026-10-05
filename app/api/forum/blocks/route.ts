@@ -11,7 +11,10 @@ const inputSchema = z.object({ userId: z.string().uuid() });
 const json = (value: unknown, status = 200) =>
   Response.json(value, { status, headers: { "Cache-Control": "no-store" } });
 
-async function actor(request: Request) {
+async function actor(request: Request): Promise<
+  | { response: Response; userId: null }
+  | { response: null; userId: string }
+> {
   const session = await getMobileSession(request);
   if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
     return { response: forumDisabledResponse(), userId: null };
@@ -24,7 +27,7 @@ async function actor(request: Request) {
 
 export async function GET(request: Request) {
   const { response, userId } = await actor(request);
-  if (response || !userId) return response;
+  if (response) return response;
   try {
     return json({ users: await listForumBlockedUsers(userId) });
   } catch (error) {
@@ -34,7 +37,7 @@ export async function GET(request: Request) {
 
 async function update(request: Request, blocked: boolean) {
   const { response, userId } = await actor(request);
-  if (response || !userId) return response;
+  if (response) return response;
   const parsed = inputSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return json({ error: "Invalid user." }, 400);
   try {

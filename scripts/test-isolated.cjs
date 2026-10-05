@@ -22,6 +22,15 @@ async function main() {
     }
     fs.rmSync(testOutput, { recursive: true, force: true });
   }
+  // Preserve compiled output when reusing a build, but discard data cached from
+  // an earlier disposable database (including an empty model registry).
+  const fetchCache = path.join(testOutput, 'cache', 'fetch-cache');
+  if (reuseProductionBuild && fs.existsSync(fetchCache)) {
+    if (fs.realpathSync(fetchCache) !== fetchCache) {
+      throw new Error('Refusing to remove redirected isolated fetch cache');
+    }
+    fs.rmSync(fetchCache, { recursive: true, force: true });
+  }
   const env = { ...process.env };
   const productionBuild = process.env.AUDIT_PRODUCTION_BUILD === '1' || reuseProductionBuild;
   for (const key of Object.keys(env)) {
@@ -48,6 +57,15 @@ async function main() {
     ENABLE_GUEST_LOGIN: 'true',
   });
   try {
+    await sql`insert into "PricingPlan" (id,name,"priceInPaise","tokenAllowance","billingCycleDays")
+      values ('00000000-0000-4000-8000-000000000099','Isolated test credits',100000,100000,30)
+      on conflict (id) do nothing`;
+    // A fresh disposable schema has no configured models. These fixtures use
+    // the PLAYWRIGHT provider in lib/ai/providers.ts; no paid provider is called.
+    await sql`insert into "ModelConfig" (key,provider,"providerModelId","displayName","supportsReasoning","reasoningTag","isEnabled","isDefault","freeMessagesPerDay","inputProviderCostPerMillion","outputProviderCostPerMillion")
+      values ('chat-model','openai','gpt-4o-mini','Chat model',false,null,true,true,1000,0.15,0.60),
+             ('chat-model-reasoning','openai','o3-mini','Reasoning model',true,'think',true,false,1000,1.10,4.40)
+      on conflict (key) do nothing`;
     // public.jobs is intentionally maintained by SQL migrations, outside the
     // Drizzle schema generator used to prepare some disposable databases.
     for (const migration of ['0049_jobs_table.sql', '0050_jobs_status.sql', '0053_jobs_pdf_cache.sql', '0054_jobs_scraper_reliability.sql']) {

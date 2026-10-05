@@ -1,7 +1,7 @@
 import type { Request as PlaywrightRequest } from "@playwright/test";
 import { getMessageByErrorCode } from "@/lib/errors";
 import { expect, test } from "../fixtures";
-import { generateRandomTestUser } from "../helpers";
+import { completeIsolatedTestSignup, generateRandomTestUser } from "../helpers";
 import { AuthPage } from "../pages/auth";
 import { ChatPage } from "../pages/chat";
 
@@ -115,6 +115,7 @@ test.describe
     test("Register new account", async () => {
       await authPage.register(testUser.email, testUser.password);
       await authPage.expectToastToContain("Check your email");
+      await completeIsolatedTestSignup(testUser.email);
     });
 
     test("Register new account with existing email", async () => {
