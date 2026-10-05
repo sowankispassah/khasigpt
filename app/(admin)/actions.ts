@@ -4,7 +4,6 @@ import { put } from "@vercel/blob";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 
-import { auth } from "@/app/(auth)/auth";
 import {
   ADMIN_SETTINGS_CACHE_TAG,
   ADMIN_SETTINGS_IMAGE_MODELS_CACHE_TAG,
@@ -162,6 +161,7 @@ import type { UpsertRagEntryInput } from "@/lib/rag/types";
 import {
   normalizeAdminEntryCodeInput,
 } from "@/lib/security/admin-entry-pass";
+import { getActiveAdminSession } from "@/lib/security/admin-session";
 import { sanitizeAdminEntryPathInput } from "@/lib/settings/admin-entry";
 import {
   sanitizeComingSoonContentInput,
@@ -194,14 +194,8 @@ import {
 } from "@/lib/voice/live";
 
 async function requireAdmin() {
-  const session = await withTimeout(auth(), ADMIN_ACTION_AUTH_TIMEOUT_MS).catch(
-    (error) => {
-      console.error("[admin/actions] Admin session lookup timed out.", error);
-      return null;
-    }
-  );
-
-  if (!session?.user || session.user.role !== "admin") {
+  const session = await getActiveAdminSession();
+  if (!session) {
     throw new Error("forbidden");
   }
 
@@ -304,7 +298,6 @@ function revalidateAdminTranslationFeatureLanguages(source: string) {
 }
 
 const ADMIN_ACTION_AUDIT_TIMEOUT_MS = 3000;
-const ADMIN_ACTION_AUTH_TIMEOUT_MS = 10000;
 const ADMIN_ACTION_SETTING_TIMEOUT_MS = 12000;
 const ADMIN_ACTION_INVITE_TIMEOUT_MS = 12000;
 const ADMIN_PRICING_PLAN_MUTATION_TIMEOUT_MS = 10000;

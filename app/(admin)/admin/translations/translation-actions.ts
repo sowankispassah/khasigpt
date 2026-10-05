@@ -1,6 +1,5 @@
 "use server";
 
-import { auth } from "@/app/(auth)/auth";
 import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
 import {
   createAuditLogEntry,
@@ -14,6 +13,7 @@ import {
 } from "@/lib/i18n/dictionary";
 import { getLanguageByCode } from "@/lib/i18n/languages";
 import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
+import { getActiveAdminSession } from "@/lib/security/admin-session";
 
 const TRANSLATIONS_PATH = "/admin/translations";
 const TRANSLATION_AUDIT_TIMEOUT_MS = 3000;
@@ -42,9 +42,8 @@ async function createAuditLogEntrySafely(
 }
 
 async function requireAdminUser() {
-  const session = await auth();
-
-  if (!session?.user || session.user.role !== "admin") {
+  const session = await getActiveAdminSession();
+  if (!session) {
     throw new Error("forbidden");
   }
 

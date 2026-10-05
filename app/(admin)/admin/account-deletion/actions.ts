@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { auth } from "@/app/(auth)/auth";
 import {
   createAuditLogEntry,
   markAccountDeletionRequestsViewed,
@@ -10,6 +9,7 @@ import {
 } from "@/lib/db/queries";
 import type { AccountDeletionRequestStatus } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
+import { getActiveAdminSession } from "@/lib/security/admin-session";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 
 const VALID_STATUSES = new Set<AccountDeletionRequestStatus>([
@@ -21,8 +21,8 @@ const VALID_STATUSES = new Set<AccountDeletionRequestStatus>([
 ]);
 
 async function requireAdmin() {
-  const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+  const session = await getActiveAdminSession();
+  if (!session) {
     redirect("/");
   }
   return session;
