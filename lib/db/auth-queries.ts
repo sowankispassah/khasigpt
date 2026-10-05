@@ -1,11 +1,12 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
 import { compare } from "bcrypt-ts";
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
-import { creatorReferral, passwordResetToken, type User, user } from "@/lib/db/schema";
+import { creatorReferral, mobileOAuthHandoffReceipt, passwordResetToken, type User, user } from "@/lib/db/schema";
 import { generateHashedPassword } from "@/lib/db/utils";
 import { ChatSDKError } from "@/lib/errors";
 import { generateUUID } from "@/lib/utils";
@@ -146,6 +147,33 @@ function normalizeEmailValue(email: string) {
 
 function isValidUUID(value: string | null | undefined): value is string {
   return typeof value === "string" && UUID_REGEX.test(value);
+}
+
+export async function consumeMobileOAuthHandoff({
+  token, userId, sessionVersion, expiresAt,
+}: { token: string; userId: string; sessionVersion: number; expiresAt: number }) {
+  if (!isValidUUID(userId) || !Number.isSafeInteger(sessionVersion) || sessionVersion < 0 ||
+    !Number.isSafeInteger(expiresAt) || expiresAt <= Date.now() || expiresAt > Date.now() + 660_000) return false;
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  // One statement confirms current identity and wins the unique receipt. The
+  // cleanup is bounded and skips locked rows; keep receipts for a further day
+  // so clock skew or a delayed expiry cannot reopen a consumed token.
+  const rows = await getAuthDb().execute(sql`
+    WITH expired AS (
+      SELECT "tokenHash" FROM ${mobileOAuthHandoffReceipt}
+      WHERE "expiresAt" < now() - interval '1 day'
+      ORDER BY "expiresAt" LIMIT 100 FOR UPDATE SKIP LOCKED
+    ), cleanup AS (
+      DELETE FROM ${mobileOAuthHandoffReceipt} WHERE "tokenHash" IN (SELECT "tokenHash" FROM expired)
+    )
+    INSERT INTO ${mobileOAuthHandoffReceipt} ("tokenHash", "expiresAt")
+    SELECT ${tokenHash}, ${new Date(expiresAt).toISOString()}::timestamptz FROM ${user}
+    WHERE ${user.id} = ${userId} AND ${user.isActive} = true
+      AND ${user.sessionVersion} = ${sessionVersion}
+      AND ${new Date(expiresAt).toISOString()}::timestamptz > now()
+    ON CONFLICT ("tokenHash") DO NOTHING RETURNING "tokenHash"
+  `);
+  return rows.length === 1;
 }
 
 export async function getAuthUsersByEmail(

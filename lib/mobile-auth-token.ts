@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { sessionVersionClaim } from "@/lib/security/session-version";
 
 const TOKEN_TTL_MS = 2 * 60 * 1000;
@@ -71,6 +71,7 @@ export function createMobileOAuthHandoffToken(userId: string, sessionVersion: nu
   const payload = base64UrlEncode(
     JSON.stringify({
       exp: Date.now() + OAUTH_HANDOFF_TOKEN_TTL_MS,
+      nonce: randomUUID(),
       sub: userId,
       type: "mobile-oauth-handoff",
       sessionVersion,
@@ -151,12 +152,16 @@ export function verifyMobileOAuthHandoffToken(token: string) {
     ) {
       return null;
     }
-    if (!Number.isFinite(parsed.exp) || parsed.exp <= Date.now() || sessionVersionClaim(parsed.sessionVersion) === null) {
+    if (!Number.isSafeInteger(parsed.exp) || parsed.exp <= Date.now() ||
+      // Permit a small difference between issuer and completion instances.
+      parsed.exp > Date.now() + OAUTH_HANDOFF_TOKEN_TTL_MS + 60_000 ||
+      sessionVersionClaim(parsed.sessionVersion) === null) {
       return null;
     }
     return {
       userId: parsed.sub,
       sessionVersion: sessionVersionClaim(parsed.sessionVersion)!,
+      expiresAt: parsed.exp,
     };
   } catch {
     return null;

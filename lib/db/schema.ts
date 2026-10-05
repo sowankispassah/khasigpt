@@ -76,6 +76,19 @@ export const user = pgTable(
 
 export type User = InferSelectModel<typeof user>;
 
+// Only a digest is retained; the bearer handoff and account data stay out of
+// this short-lived receipt. A unique key makes consumption global and atomic.
+export const mobileOAuthHandoffReceipt = pgTable(
+  "MobileOAuthHandoffReceipt",
+  {
+    tokenHash: varchar("tokenHash", { length: 64 }).primaryKey().notNull(),
+    expiresAt: timestamp("expiresAt", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    expiryIdx: index("MobileOAuthHandoffReceipt_expiry_idx").on(table.expiresAt),
+  })
+).enableRLS();
+
 export const adminUsersViewState = pgTable("AdminUsersViewState", {
   adminId: uuid("adminId")
     .primaryKey()

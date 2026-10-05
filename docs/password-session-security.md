@@ -32,7 +32,8 @@ version 206 includes the updated form and translated recovery errors.
 Native access and OAuth handoff purposes are distinct. Handoff/preview tokens
 cannot authenticate as access tokens. Handoff and cookie-to-native exchanges
 must validate the original version before minting an access token. Separate
-single-use OAuth handoff storage is outside this remediation.
+single-use OAuth handoff storage was completed by the subsequent
+[handoff remediation](mobile-oauth-handoff-security.md).
 
 Auth database failure denies privileged work. The browser session endpoint
 returns 503 without expiring the existing cookie, and server auth callers throw

@@ -100,7 +100,12 @@ test("mobile access tokens bind a credential version and reject handoff/preview 
   expect(tokens.verifyMobileAuthToken(fresh)).toEqual({ userId: id, sessionVersion: 3 });
   expect(tokens.verifyMobileAuthToken(`${fresh}.extra`)).toBeNull();
   const handoff = tokens.createMobileOAuthHandoffToken(id, 3);
-  expect(tokens.verifyMobileOAuthHandoffToken(handoff)).toEqual({ userId: id, sessionVersion: 3 });
+  expect(tokens.verifyMobileOAuthHandoffToken(handoff)).toMatchObject({ userId: id, sessionVersion: 3 });
+  const secondHandoff = tokens.createMobileOAuthHandoffToken(id, 3);
+  const firstNonce = JSON.parse(Buffer.from(handoff.split(".")[0], "base64url").toString()).nonce;
+  const secondNonce = JSON.parse(Buffer.from(secondHandoff.split(".")[0], "base64url").toString()).nonce;
+  expect(firstNonce).toMatch(/^[0-9a-f-]{36}$/);
+  expect(firstNonce).not.toBe(secondNonce);
   expect(tokens.verifyMobileAuthToken(handoff)).toBeNull();
   expect(tokens.verifyMobileOAuthHandoffToken(fresh)).toBeNull();
   expect(tokens.verifyMobileAuthToken(tokens.createJobPreviewToken(id))).toBeNull();

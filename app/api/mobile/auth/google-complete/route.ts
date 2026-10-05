@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import { getAuthUserRoleById } from "@/lib/db/auth-queries";
+import { consumeMobileOAuthHandoff } from "@/lib/db/auth-queries";
 import {
   createMobileAuthToken,
   verifyMobileOAuthHandoffToken,
 } from "@/lib/mobile-auth-token";
-import { hasCurrentSessionVersion } from "@/lib/security/session-version";
 import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
@@ -29,12 +28,20 @@ export async function GET(request: Request) {
   const handoff = requestUrl.searchParams.get("handoff");
   const payload = handoff ? verifyMobileOAuthHandoffToken(handoff) : null;
 
-  if (!payload) {
+  if (!handoff || !payload) {
     return redirectToApp({ error: "oauth_handoff_expired" });
   }
 
-  const user = await withTimeout(getAuthUserRoleById(payload.userId), 2500).catch(() => null);
-  if (!user?.isActive || !hasCurrentSessionVersion(payload.sessionVersion, user.sessionVersion)) {
+  let consumed: boolean;
+  try {
+    consumed = await withTimeout(consumeMobileOAuthHandoff({ token: handoff, ...payload }), 2500);
+  } catch {
+    // Never mint a token when global consumption cannot be confirmed. A timed
+    // out write may have committed: the user must restart Google sign-in.
+    console.warn("[mobile-google-oauth] Handoff consumption unavailable.");
+    return redirectToApp({ error: "oauth_handoff_unavailable" });
+  }
+  if (!consumed) {
     return redirectToApp({ error: "oauth_handoff_expired" });
   }
 
