@@ -59,6 +59,7 @@ import {
   parseVoiceChatAccessModeSetting,
   resolvePlatformVoiceChatSetting,
 } from "@/lib/voice/config";
+import { isUnmeteredLiveEnabledForRole } from "@/lib/voice/launch-access";
 import { getChatRouteSession } from "../../chat-route-session";
 
 const chatPageInitialLimitRaw = Number.parseInt(
@@ -339,7 +340,7 @@ export default async function Page(props: {
     legacyValue: voiceChatLegacySetting,
     webValue: voiceChatWebSetting,
   });
-  const voiceChatEnabled = isFeatureEnabledForRole(
+  const voiceChatEnabled = isUnmeteredLiveEnabledForRole(
     parseVoiceChatAccessModeSetting(voiceChatSettings.web),
     userRole,
     userAccess.values.get(VOICE_CHAT_WEB_FEATURE_FLAG_KEY)

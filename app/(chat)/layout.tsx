@@ -37,6 +37,7 @@ import { loadUserFeatureAccessOverrides } from "@/lib/settings/user-feature-acce
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { parseTranslateAccessModeSetting } from "@/lib/translate/config";
 import { withTimeout } from "@/lib/utils/async";
+import { isUnmeteredLiveEnabledForRole } from "@/lib/voice/launch-access";
 import { getChatRouteSession } from "./chat-route-session";
 
 const CHAT_LAYOUT_FEATURE_ACCESS_TIMEOUT_MS = 2_000;
@@ -221,7 +222,7 @@ export default async function Layout({
   );
   const liveTranslationAccessMode =
     parseLiveTranslationAccessModeSetting(liveTranslationSetting);
-  const liveTranslationEnabled = isFeatureEnabledForRole(
+  const liveTranslationEnabled = isUnmeteredLiveEnabledForRole(
     liveTranslationAccessMode,
     session?.user?.role ?? null,
     userAccess.values.get(LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY)

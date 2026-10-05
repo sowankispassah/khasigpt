@@ -25,6 +25,7 @@ import { isFeatureEnabledForUser } from "@/lib/settings/user-feature-access";
 import { generateUUID } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
 import { resolveLiveVoiceModelConfig } from "@/lib/voice/live-models";
+import { enforceLiveSessionLaunchAccess } from "@/lib/voice/live-session-access";
 import { normalizeKhasiVoiceTranscript } from "@/lib/voice/transcript-normalization";
 import { resolveLiveVoiceTurnUsage } from "@/lib/voice/usage";
 
@@ -100,6 +101,9 @@ export async function POST(request: Request) {
   if (!authContext?.user) {
     return Response.json({ message: "Unauthorized" }, { status: 401 });
   }
+
+  const launchDenied = await enforceLiveSessionLaunchAccess(authContext.user);
+  if (launchDenied) return launchDenied;
 
   const body = await request.json().catch(() => null);
   const parsedBody = liveTranslationSessionSchema.safeParse(body);

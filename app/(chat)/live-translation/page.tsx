@@ -1,7 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { LiveTranslationPageClient } from "@/components/live-translation-page-client";
 import { LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY } from "@/lib/constants";
-import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import {
   DEFAULT_LIVE_TRANSLATION_LANGUAGE_A,
   DEFAULT_LIVE_TRANSLATION_LANGUAGE_B,
@@ -13,6 +12,7 @@ import {
 } from "@/lib/live-translation/config";
 import { loadLiveTranslationSettingsValues } from "@/lib/live-translation/settings-read";
 import { loadUserFeatureAccessOverride } from "@/lib/settings/user-feature-access";
+import { isUnmeteredLiveEnabledForRole } from "@/lib/voice/launch-access";
 import { getChatRouteSession } from "../chat-route-session";
 
 const LIVE_TRANSLATION_PAGE_QUERY_TIMEOUT_MS = 5_000;
@@ -43,7 +43,7 @@ export default async function LiveTranslationPage() {
     }),
   ]);
 
-  if (!isFeatureEnabledForRole(accessMode, session.user.role, userOverride)) {
+  if (!isUnmeteredLiveEnabledForRole(accessMode, session.user.role, userOverride)) {
     notFound();
   }
 

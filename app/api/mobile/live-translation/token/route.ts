@@ -43,6 +43,7 @@ import {
   hasEnoughCreditsForLiveVoice,
   resolveLiveVoiceModelConfig,
 } from "@/lib/voice/live-models";
+import { enforceLiveSessionLaunchAccess } from "@/lib/voice/live-session-access";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -138,6 +139,9 @@ export async function POST(request: Request) {
   if (!authContext?.user) {
     return Response.json({ message: "Unauthorized" }, { status: 401 });
   }
+
+  const launchDenied = await enforceLiveSessionLaunchAccess(authContext.user);
+  if (launchDenied) return launchDenied;
 
   const rateLimited = await enforceLiveTranslationTokenRateLimit(
     request,

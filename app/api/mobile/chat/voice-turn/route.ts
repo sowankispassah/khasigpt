@@ -19,6 +19,7 @@ import { generateUUID } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
 import { getVoiceChatAccessModeForPlatform } from "@/lib/voice/config";
 import { resolveLiveVoiceModelConfig } from "@/lib/voice/live-models";
+import { enforceLiveSessionLaunchAccess } from "@/lib/voice/live-session-access";
 import { normalizeKhasiVoiceTranscript } from "@/lib/voice/transcript-normalization";
 import { resolveLiveVoiceTurnUsage } from "@/lib/voice/usage";
 
@@ -78,6 +79,9 @@ export async function POST(request: Request) {
     return Response.json({ message: "Unauthorized" }, { status: 401 });
   }
 
+  const launchDenied = await enforceLiveSessionLaunchAccess(authContext.user);
+  if (launchDenied) return launchDenied;
+
   const body = await request.json().catch(() => null);
   const parsedBody = voiceTurnSchema.safeParse(body);
   if (!parsedBody.success) {
@@ -92,7 +96,7 @@ export async function POST(request: Request) {
       "[api/mobile/chat/voice-turn] Feature setting read failed.",
       error
     );
-    return "enabled" as const;
+    return "disabled" as const;
   });
 
   if (!(await isFeatureEnabledForUser({

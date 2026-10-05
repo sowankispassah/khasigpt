@@ -37,6 +37,7 @@ import {
   parseVoiceChatAccessModeSetting,
   resolvePlatformVoiceChatSetting,
 } from "@/lib/voice/config";
+import { isUnmeteredLiveEnabledForRole } from "@/lib/voice/launch-access";
 
 export async function isHomeShortcutTargetAvailable({
   platform,
@@ -113,7 +114,7 @@ export async function isHomeShortcutTargetAvailable({
       const mode = parseLiveTranslationAccessModeSetting(
         settings.get(settingKey)
       );
-      return isFeatureEnabledForRole(mode, role, userOverrides.get(settingKey));
+      return isUnmeteredLiveEnabledForRole(mode, role, userOverrides.get(settingKey));
     }
     case "study":
       return isFeatureEnabledForRole(
@@ -145,7 +146,7 @@ export async function isHomeShortcutTargetAvailable({
       const mode = parseVoiceChatAccessModeSetting(
         platform === "web" ? resolved.web : resolved.android
       );
-      return isFeatureEnabledForRole(
+      return isUnmeteredLiveEnabledForRole(
         mode,
         role,
         userOverrides.get(platformKey)

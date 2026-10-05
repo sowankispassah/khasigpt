@@ -5,6 +5,7 @@ import type { FeatureAccessMode, FeatureAccessRole } from "@/lib/feature-access"
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { isUserFeatureAccessKey } from "@/lib/feature-access-catalog";
 import { withTimeout } from "@/lib/utils/async";
+import { isUnmeteredLiveEnabledForRole, isUnmeteredLiveFeatureKey } from "@/lib/voice/launch-access";
 
 export type UserFeatureAccessReadStatus = "confirmed" | "stale" | "unavailable";
 
@@ -116,10 +117,13 @@ export async function isFeatureEnabledForUser({
   source: string;
   userId?: string | null;
 }) {
+  if (isUnmeteredLiveFeatureKey(featureKey) && !isUnmeteredLiveEnabledForRole(mode, role)) return false;
   const override = await loadUserFeatureAccessOverride({
     featureKey,
     source,
     userId,
   });
-  return isFeatureEnabledForRole(mode, role, override);
+  return isUnmeteredLiveFeatureKey(featureKey)
+    ? isUnmeteredLiveEnabledForRole(mode, role, override)
+    : isFeatureEnabledForRole(mode, role, override);
 }

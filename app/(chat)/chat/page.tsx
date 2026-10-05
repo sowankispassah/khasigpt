@@ -41,6 +41,7 @@ import {
   parseVoiceChatAccessModeSetting,
   resolvePlatformVoiceChatSetting,
 } from "@/lib/voice/config";
+import { isUnmeteredLiveEnabledForRole } from "@/lib/voice/launch-access";
 import { getChatRouteSession } from "../chat-route-session";
 
 const CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS = 2500;
@@ -227,7 +228,7 @@ export default async function Page({
     legacyValue: getFeatureSetting(VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY),
     webValue: getFeatureSetting(VOICE_CHAT_WEB_FEATURE_FLAG_KEY),
   });
-  const voiceChatEnabled = isFeatureEnabledForRole(
+  const voiceChatEnabled = isUnmeteredLiveEnabledForRole(
     parseVoiceChatAccessModeSetting(voiceChatSettings.web),
     session.user.role,
     userAccess.values.get(VOICE_CHAT_WEB_FEATURE_FLAG_KEY)

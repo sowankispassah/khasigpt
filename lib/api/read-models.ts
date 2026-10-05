@@ -72,6 +72,7 @@ import {
   parseVoiceChatAccessModeSetting,
   resolvePlatformVoiceChatSetting,
 } from "@/lib/voice/config";
+import { isUnmeteredLiveEnabledForRole } from "@/lib/voice/launch-access";
 
 const READ_TIMEOUT_MS = 5000;
 const PRICING_READ_TIMEOUT_MS = 8000;
@@ -261,32 +262,32 @@ export async function loadFeatureAccessReadModel({
       role,
       userFeatureAccess.values.get(WEB_SEARCH_ENABLED_SETTING_KEY)
     ),
-    liveTranslation: isFeatureEnabledForRole(
+    liveTranslation: isUnmeteredLiveEnabledForRole(
       parseLiveTranslationAccessModeSetting(liveTranslationAndroidSetting),
       role,
       userFeatureAccess.values.get(LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY)
     ),
-    liveTranslationAndroid: isFeatureEnabledForRole(
+    liveTranslationAndroid: isUnmeteredLiveEnabledForRole(
       parseLiveTranslationAccessModeSetting(liveTranslationAndroidSetting),
       role,
       userFeatureAccess.values.get(LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY)
     ),
-    liveTranslationWeb: isFeatureEnabledForRole(
+    liveTranslationWeb: isUnmeteredLiveEnabledForRole(
       parseLiveTranslationAccessModeSetting(liveTranslationWebSetting),
       role,
       userFeatureAccess.values.get(LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY)
     ),
-    voiceChat: isFeatureEnabledForRole(
+    voiceChat: isUnmeteredLiveEnabledForRole(
       parseVoiceChatAccessModeSetting(voiceChatSettings.android),
       role,
       userFeatureAccess.values.get(VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY)
     ),
-    voiceChatAndroid: isFeatureEnabledForRole(
+    voiceChatAndroid: isUnmeteredLiveEnabledForRole(
       parseVoiceChatAccessModeSetting(voiceChatSettings.android),
       role,
       userFeatureAccess.values.get(VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY)
     ),
-    voiceChatWeb: isFeatureEnabledForRole(
+    voiceChatWeb: isUnmeteredLiveEnabledForRole(
       parseVoiceChatAccessModeSetting(voiceChatSettings.web),
       role,
       userFeatureAccess.values.get(VOICE_CHAT_WEB_FEATURE_FLAG_KEY)
