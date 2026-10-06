@@ -35,7 +35,7 @@ export function SidebarResizeHandle() {
       aria-valuemin={DEFAULT_SIDEBAR_WIDTH}
       aria-valuemax={maxSidebarWidth(viewportWidth)}
       aria-valuenow={sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH}
-      className="absolute inset-y-0 -right-1 z-30 w-2 cursor-col-resize touch-none select-none outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 hover:after:bg-sidebar-ring focus-visible:after:bg-sidebar-ring"
+      className="absolute inset-y-0 -right-1 z-30 w-2 cursor-col-resize touch-none select-none outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 focus-visible:after:bg-sidebar-border"
       data-sidebar="resize-handle"
       onDoubleClick={() => setSidebarWidth(null)}
       onKeyDown={event => {
