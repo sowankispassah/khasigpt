@@ -23,6 +23,8 @@ export type ResolvedLiveVoiceModelConfig = {
   mediaResolution: string;
   durationPricing: DurationVoicePricing | null;
   markupMultiplier: number;
+  inputProviderCostPerMillion: number;
+  outputProviderCostPerMillion: number;
 };
 
 function toResolvedLiveVoiceModelConfig(
@@ -41,8 +43,10 @@ function toResolvedLiveVoiceModelConfig(
     systemInstruction,
     voiceName: config.voiceName?.trim() || "Zephyr",
     mediaResolution: config.mediaResolution?.trim() || "MEDIA_RESOLUTION_MEDIUM",
-    durationPricing: readDurationVoicePricing(config.config),
+    durationPricing: config.provider === "openai" ? readDurationVoicePricing(config.config) : null,
     markupMultiplier: config.markupMultiplier,
+    inputProviderCostPerMillion: Number(config.inputProviderCostPerMillion),
+    outputProviderCostPerMillion: Number(config.outputProviderCostPerMillion),
   };
 }
 

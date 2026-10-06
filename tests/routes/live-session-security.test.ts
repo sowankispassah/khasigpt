@@ -17,9 +17,10 @@ function harness() {
   let mode = "enabled";
   let override = true;
   let settingFails = false;
+  let credits = true;
   const calls = { lookup: 0, provider: 0, model: 0, credits: 0, writes: 0, override: 0 };
   const modules = new Map<string, any>();
-  const model = { id: userId, providerModelId: "fixture", displayName: "fixture", voiceName: "fixture", mediaResolution: "MEDIA_RESOLUTION_MEDIUM", systemInstruction: "fixture" };
+  const model: any = { provider: "google", id: userId, providerModelId: "fixture", displayName: "fixture", voiceName: "fixture", mediaResolution: "MEDIA_RESOLUTION_MEDIUM", systemInstruction: "fixture" };
   const mocks: Record<string, any> = {
     "@/lib/voice/duration-session": { findOwnedVoiceSession: async () => null },
     "@/lib/utils": { generateUUID: () => userId },
@@ -37,7 +38,7 @@ function harness() {
     "@/lib/voice/config": { getVoiceChatAccessModeForPlatform: async () => { if (settingFails) throw new Error("fixture failure"); return mode; } },
     "@/lib/voice/live-models": {
       resolveLiveVoiceModelConfig: async () => { calls.model++; return model; },
-      hasEnoughCreditsForLiveVoice: async () => { calls.credits++; return true; },
+      hasEnoughCreditsForLiveVoice: async () => { calls.credits++; return credits; },
     },
     "@/lib/live-translation/settings-read": { loadLiveTranslationSettingsValues: async () => ({ languagesValue: undefined }) },
     "@/lib/settings/feature-access-settings": { loadFeatureAccessSettingsByKeys: async () => ({status:"confirmed"}), getFeatureAccessModeSettingValue: () => mode },
@@ -59,16 +60,16 @@ function harness() {
   }
   const policy = load("lib/voice/launch-access.ts");
   const featureAccess = load("lib/settings/user-feature-access.ts");
-  const request = (file: string) => new Request(`https://app.example.test/${file}`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(file.includes("live-translation") ? { languageACode:"en", languageBCode:"kha" } : {}) });
+  const request = (file: string) => new Request(`https://app.example.test/${file}`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(file.includes("live-translation") ? { languageACode:"en", languageBCode:"kha" } : file.includes("voice-turn") ? { chatId: userId, userText: "Fixture question", assistantText: "Fixture answer" } : { supportsDurationVoice: true, supportsRelayVoice: true }) });
   return { calls, policy, featureAccess, load, request,
     anonymous: () => { context = null; }, regular: () => { context.user.role = "regular"; current.role = "regular"; },
-    revoked: () => { current.role = "regular"; }, deactivate: () => { current.isActive = false; },
-    failLookup: () => { lookupFails = true; }, disable: () => { mode = "disabled"; }, block: () => { override = false; }, failSettings: () => { settingFails = true; },
+    revoked: () => { current.role = "regular"; mode = "admin_only"; }, deactivate: () => { current.isActive = false; },
+    noCredits: () => { credits = false; }, adminOnly: () => { mode = "admin_only"; }, gpt: () => { model.provider = "openai"; model.durationPricing = {}; }, failLookup: () => { lookupFails = true; }, disable: () => { mode = "disabled"; }, block: () => { override = false; }, failSettings: () => { settingFails = true; },
   };
 }
 
 test("all web and native live endpoints deny regular users before settings, providers or writes", async () => {
-  for (const file of [...tokenRoutes, ...saveRoutes]) {
+  for (const file of [...tokenRoutes, ...saveRoutes].filter(file => file.includes("live-translation"))) {
     const h = harness(); h.regular();
     const response = await h.load(file).POST(h.request(file));
     expect(response.status, file).toBe(404);
@@ -83,7 +84,8 @@ test("revoked admins, disabled accounts and failed fresh lookups cannot issue to
       const h = harness(); h[change]();
       const response = await h.load(file).POST(h.request(file));
       expect(response.status, `${file}:${change}`).toBe(change === "failLookup" ? 503 : 404);
-      expect(h.calls).toMatchObject({ lookup:1, provider:0, model:0, credits:0, writes:0, override:0 });
+      expect(h.calls.provider).toBe(0);
+      expect(h.calls.writes).toBe(0);
     }
   }
 });
@@ -94,7 +96,7 @@ test("active admins retain token access while disabled settings and explicit blo
     const response = await h.load(file).POST(h.request(file));
     expect(response.status, file).toBe(200);
     expect((await response.json()).liveSupported).toBe(true);
-    expect(h.calls.provider).toBe(1);
+    expect(h.calls.provider).toBe(file.includes("live-translation") ? 1 : 0);
     for (const change of ["disable", "block"] as const) {
       const denied = harness(); denied[change]();
       expect((await denied.load(file).POST(denied.request(file))).status, `${file}:${change}`).toBe(404);
@@ -106,14 +108,14 @@ test("active admins retain token access while disabled settings and explicit blo
 test("voice feature-setting exceptions fail closed rather than enabling token creation", async () => {
   for (const file of tokenRoutes.filter(file => file.includes("/chat/"))) {
     const h = harness(); h.failSettings();
-    expect((await h.load(file).POST(h.request(file))).status).toBe(404);
+    expect((await h.load(file).POST(h.request(file))).status).toBe(503);
     expect(h.calls.provider).toBe(0);
   }
 });
 
 test("live grants cannot bypass launch policy; unrelated feature grants retain their behavior", async () => {
   const h = harness();
-  const keys = ["chat.voice.web.enabled", "chat.voice.android.enabled", "chat.liveTranslation.web.enabled", "chat.liveTranslation.android.enabled"];
+  const keys = ["chat.liveTranslation.web.enabled", "chat.liveTranslation.android.enabled"];
   for (const featureKey of keys) {
     expect(h.policy.isUnmeteredLiveFeatureKey(featureKey), featureKey).toBe(true);
     for (const mode of ["enabled", "admin_only", "disabled"])
@@ -124,4 +126,43 @@ test("live grants cannot bypass launch policy; unrelated feature grants retain t
   for (const role of [null, undefined, "guest", "regular"])
     expect(h.policy.isUnmeteredLiveEnabledForRole("enabled",role,true)).toBe(false);
   expect(h.policy.isUnmeteredLiveEnabledForRole("disabled","admin",true)).toBe(false);
+});
+
+
+test("both admin-selected voice transports allow credited regular users only when enabled", async () => {
+  for (const file of tokenRoutes.filter(file => file.includes("/chat/"))) {
+    for (const gpt of [false, true]) {
+      const h = harness(); h.regular(); if (gpt) h.gpt();
+      const response = await h.load(file).POST(h.request(file));
+      expect(response.status).toBe(200);
+      expect((await response.json()).transport).toBe(gpt ? "webrtc" : "relay");
+      expect(h.calls.lookup).toBe(1);
+      expect(h.calls.provider).toBe(0);
+      for (const change of ["disable", "adminOnly", "block"] as const) {
+        const denied = harness(); denied.regular(); denied[change]();
+        expect((await denied.load(file).POST(denied.request(file))).status).toBe(404);
+      }
+    }
+  }
+});
+
+test("per-user grants cannot open disabled or admin-only metered voice to ordinary users", async () => {
+  const h = harness();
+  for (const featureKey of ["chat.voice.web.enabled", "chat.voice.android.enabled"]) {
+    for (const mode of ["disabled", "admin_only"])
+      expect(await h.featureAccess.isFeatureEnabledForUser({featureKey,mode,role:"regular",userId,source:"fixture"})).toBe(false);
+    expect(await h.featureAccess.isFeatureEnabledForUser({featureKey,mode:"enabled",role:"regular",userId,source:"fixture"})).toBe(true);
+  }
+});
+
+
+test("neither live transport can start when the credited balance cannot be confirmed", async () => {
+  for (const file of tokenRoutes.filter(file => file.includes("/chat/"))) {
+    for (const gpt of [false, true]) {
+      const h = harness(); h.regular(); h.noCredits(); if (gpt) h.gpt();
+      expect((await h.load(file).POST(h.request(file))).status).toBe(402);
+      expect(h.calls.provider).toBe(0);
+      expect(h.calls.writes).toBe(0);
+    }
+  }
 });

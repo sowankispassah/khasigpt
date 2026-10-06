@@ -321,7 +321,7 @@ export async function startWebGeminiVoiceTurn({
 
   onStatus?.("connecting");
   const tokenResponse = await requestVoiceToken({
-    tokenBody: { ...tokenBody, supportsDurationVoice: true },
+    tokenBody: { ...tokenBody, supportsDurationVoice: true, supportsRelayVoice: true },
     tokenEndpoint,
     unavailableMessage,
   });
@@ -381,7 +381,8 @@ export async function startWebGeminiVoiceTurn({
   );
   resultPromise.catch(() => undefined);
 
-  const ws = new WebSocket(
+  const relay = tokenResponse.transport === "relay";
+  const ws = relay ? (await import("@/lib/voice/web-relay-socket")).createWebVoiceRelaySocket(tokenResponse.sessionEndpoint ?? "/api/chat/voice-relay") : new WebSocket(
     `${tokenResponse.webSocketUrl}?access_token=${encodeURIComponent(
       tokenResponse.token
     )}`
@@ -416,7 +417,7 @@ export async function startWebGeminiVoiceTurn({
     } else {
       activeAssistantMessageId = id;
     }
-    messages = [...messages, { id, role, text: normalizedText }];
+    messages = [...messages, { id, role, text: normalizedText, ...(relay ? { voiceSessionId: (ws as import("@/lib/voice/relay-socket").VoiceRelaySocket).sessionId } : {}) }];
     emitMessages();
   };
 
@@ -598,13 +599,15 @@ export async function startWebGeminiVoiceTurn({
     fail(new Error("Voice chat connection failed."));
   };
 
-  ws.onclose = (event) => {
+  ws.onclose = (event: { reason: string }) => {
+    if (relay && hasStoppedInput && !isSettled) { settle({ messages }); return; }
     if (!isSettled && !hasStoppedInput) {
-      fail(new Error(getVoiceCloseErrorMessage(event)));
+      if (relay) { onCompletedSession?.(messages); messages = []; }
+      fail(new Error(getVoiceCloseErrorMessage(event as CloseEvent)));
     }
   };
 
-  ws.onmessage = async (event) => {
+  ws.onmessage = async (event: { data: unknown }) => {
     const message = await parseServerMessage(event.data);
     if (!message) {
       return;
@@ -824,6 +827,7 @@ export async function startWebGeminiVoiceTurn({
   };
 
   return {
+    serverMetered: relay,
     cancel: () => {
       if (isSettled) {
         return;

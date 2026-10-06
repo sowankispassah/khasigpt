@@ -33,6 +33,7 @@ import type { ToolIntentResolution } from "@/lib/tool-intent";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { getAttachmentAcceptValue } from "@/lib/uploads/document-uploads";
 import { cn, generateUUID } from "@/lib/utils";
+import { groupDurationVoicePairs } from "@/lib/voice/duration-transcripts";
 import {
   startWebGeminiVoiceTurn,
   type WebGeminiVoiceConversationMessage,
@@ -150,7 +151,8 @@ async function postVoiceTurn(
 
 function buildVoiceConversationPairs(
   voiceMessages: WebGeminiVoiceConversationMessage[]
-) {
+): VoiceConversationPair[] {
+  if (voiceMessages.some(message => message.voiceSessionId)) return groupDurationVoicePairs(voiceMessages);
   const pairs: VoiceConversationPair[] = [];
   let pendingUserText: string | null = null;
 

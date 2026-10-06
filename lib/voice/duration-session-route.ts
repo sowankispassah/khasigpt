@@ -15,7 +15,7 @@ export async function handleDurationSession(request: Request, platform: "web" | 
   const auth = await getAuthenticatedUser(request, { allowBearer: platform === "native" });
   const fail = (status: number) => Response.json({ message: "KhasiGPT voice chat is temporarily unavailable. Please try again.", reason: status === 402 ? "insufficient-credits" : "live-api-unavailable" }, { status, headers: noStoreHeaders() });
   if (!auth?.user) return fail(401);
-  const denied = await enforceLiveSessionLaunchAccess(auth.user);
+  const denied = await enforceLiveSessionLaunchAccess(auth.user, { serverMetered: true });
   if (denied) return denied;
   const rate = await incrementRateLimit(`live-session:${auth.user.id}`, { limit: 10, windowMs: 300_000 });
   if (!rate.allowed) return fail(429);

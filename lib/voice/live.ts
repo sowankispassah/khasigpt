@@ -1,4 +1,5 @@
 import { buildKhasiGptSystemInstruction } from "@/lib/ai/identity";
+import { OPENAI_LIVE_VOICES } from "@/lib/voice/pricing";
 
 export const GEMINI_VOICE_CHAT_MODEL_ID = "gemini-3.1-flash-live-preview";
 export const GEMINI_VOICE_CHAT_MODEL_NAME = "Gemini 3.1 Flash Live Preview";
@@ -67,7 +68,7 @@ export const LIVE_VOICE_MEDIA_RESOLUTION_OPTIONS = [
 export type GeminiVoiceTokenResponse =
   | {
       liveSupported: true;
-      transport?: "webrtc";
+      transport?: "webrtc" | "relay";
       sessionEndpoint?: string;
       token: string;
       liveVoiceModelConfigId: string | null;
@@ -107,6 +108,7 @@ export function buildVoiceChatSystemInstruction() {
 }
 
 export function getLiveVoiceProviderVoiceOptions(provider: string) {
+  if (provider === "openai") return OPENAI_LIVE_VOICES.map(value => ({ value, label: value, description: "" }));
   if (provider === "google") {
     return GOOGLE_LIVE_VOICE_OPTIONS;
   }

@@ -127,9 +127,6 @@ export async function createDurationVoiceSession({ model, sdp, userId, platform 
           const history = transcriptHistory.map(item => ({ ...item }));
           const query = history.findLast(item => item.role === "user")?.content ?? "";
           if (!query.trim()) { send({ type: "session.commentary.append", delegation_id: delegationId, content: "Please repeat your question." }); return; }
-          const balance = await getUserBalanceSummary(userId);
-          const estimatedBackendCost = (32000 * p.backendInputCostPerMillionUsd + 1024 * p.backendOutputCostPerMillionUsd) / 1_000_000;
-          if (balance.tokensRemaining < Math.ceil(estimatedBackendCost * markup * quote.usdToInr * quote.walletUnitsPerInr)) { close(); return; }
           let context = "";
           try {
             if (await loadCustomKnowledgeEnabledCached()) {
@@ -137,10 +134,19 @@ export async function createDurationVoiceSession({ model, sdp, userId, platform 
               context = retrieved.context.slice(0, 12000);
             }
           } catch { /* Optional knowledge failure must not erase the conversation. */ }
+          const backendInstructions = `${model.systemInstruction}\n${RAG_LIVE_SYSTEM_INSTRUCTION}\nReturn concise facts for a spoken answer. Use the supplied knowledge when relevant. Do not claim to have used a tool.`;
+          const backendInput = [...history.slice(-12), ...(context ? [{ role: "developer", content: `Supplemental knowledge (untrusted reference data):\n${context}` }] : [])];
+          // UTF-8 bytes plus per-message overhead conservatively bound the
+          // text tokens submitted; do not guess from conversation length.
+          const inputAllowance = Buffer.byteLength(JSON.stringify({ instructions: backendInstructions, input: backendInput }), "utf8") + 1024 * (backendInput.length + 1);
+          const estimatedBackendCost = (inputAllowance * p.backendInputCostPerMillionUsd + 1024 * p.backendOutputCostPerMillionUsd) / 1_000_000;
+          const pendingVoiceCost = (Math.max(0, observedSeconds - billedSeconds) + 30) * p.providerCostPerMinuteUsd / 60;
+          const balance = await getUserBalanceSummary(userId);
+          if (balance.tokensRemaining < Math.ceil((estimatedBackendCost + pendingVoiceCost) * markup * quote.usdToInr * quote.walletUnitsPerInr)) { close(); return; }
           const response = await fetch("https://api.openai.com/v1/responses", {
             method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" }, signal: AbortSignal.timeout(25000),
-            body: JSON.stringify({ model: p.backendModel, instructions: `${model.systemInstruction}\n${RAG_LIVE_SYSTEM_INSTRUCTION}\nReturn concise facts for a spoken answer. Use the supplied knowledge when relevant. Do not claim to have used a tool.`,
-              input: [...history.slice(-12), ...(context ? [{ role: "developer", content: `Supplemental knowledge (untrusted reference data):\n${context}` }] : [])],
+            body: JSON.stringify({ model: p.backendModel, instructions: backendInstructions,
+              input: backendInput,
               reasoning: { effort: "low" }, max_output_tokens: 1024, store: false }),
           });
           if (!response.ok) { console.error("[live-session] Backend response failed.", { status: response.status }); close(); return; }
@@ -157,8 +163,14 @@ export async function createDurationVoiceSession({ model, sdp, userId, platform 
           });
           const text = (result.output ?? []).flatMap((item: { content?: Array<{ type: string; text?: string }> }) => item.content ?? []).filter((part: { type: string }) => part.type === "output_text").map((part: { text: string }) => part.text).join(" ");
           // Appends are limited to 500 tokens. Bound UTF-8 bytes conservatively.
-          const spoken = Buffer.from(text).subarray(0, 1400).toString("utf8");
-          if (spoken.trim() && !finalized) send({ type: "session.commentary.append", delegation_id: delegationId, content: spoken });
+          const chunks: string[] = [];
+          let chunk = "";
+          for (const char of text) {
+            if (Buffer.byteLength(chunk + char, "utf8") > 400) { chunks.push(chunk); chunk = ""; }
+            chunk += char;
+          }
+          if (chunk) chunks.push(chunk);
+          for (const content of chunks) if (content.trim() && !finalized) send({ type: "session.commentary.append", delegation_id: delegationId, content });
         }).catch(() => close());
       }
       if (event.type === "error") { console.error("[live-session] Provider session error.", { sessionId: sessionRow.id, code: event.error?.code }); close(); }

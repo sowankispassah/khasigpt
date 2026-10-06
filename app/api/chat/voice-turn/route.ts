@@ -67,7 +67,7 @@ export async function POST(request: Request) {
     return Response.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const launchDenied = await enforceLiveSessionLaunchAccess(authContext.user);
+  const launchDenied = await enforceLiveSessionLaunchAccess(authContext.user, { serverMetered: true });
   if (launchDenied) return launchDenied;
 
   const body = await request.json().catch(() => null);
@@ -78,6 +78,9 @@ export async function POST(request: Request) {
       { headers: noStoreHeaders(), status: 400 }
     );
   }
+
+  const confirmedSession = parsedBody.data.voiceSessionId ? await findOwnedVoiceSession(parsedBody.data.voiceSessionId, authContext.user.id) : null;
+  if (authContext.user.role !== "admin" && !confirmedSession) return Response.json({ message: "Not found" }, { status: 404, headers: noStoreHeaders() });
 
   const voiceMode = await getVoiceChatAccessModeForPlatform("web").catch((error) => {
     console.error("[api/chat/voice-turn] Feature setting read failed.", error);
@@ -97,7 +100,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const ownedSession = parsedBody.data.voiceSessionId ? await findOwnedVoiceSession(parsedBody.data.voiceSessionId, authContext.user.id) : null;
+  const ownedSession = confirmedSession;
   if (parsedBody.data.voiceSessionId && (!ownedSession?.providerSessionId || ownedSession.status === "failed")) return Response.json({ message: "Voice session could not be confirmed." }, { status: 403, headers: noStoreHeaders() });
   const liveVoiceModel = ownedSession ? { id: ownedSession.modelConfigId, durationPricing: true } : await withTimeout(
     resolveLiveVoiceModelConfig({
@@ -130,7 +133,7 @@ export async function POST(request: Request) {
     selectedVisibilityType,
   } =
     parsedBody.data;
-  const userText = await normalizeKhasiVoiceTranscript({
+  const userText = ownedSession ? parsedBody.data.userText.trim() : await normalizeKhasiVoiceTranscript({
     assistantText,
     languageCode: selectedLanguageCode,
     userText: parsedBody.data.userText,

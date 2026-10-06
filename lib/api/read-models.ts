@@ -72,7 +72,7 @@ import {
   parseVoiceChatAccessModeSetting,
   resolvePlatformVoiceChatSetting,
 } from "@/lib/voice/config";
-import { isUnmeteredLiveEnabledForRole } from "@/lib/voice/launch-access";
+import { isMeteredVoiceEnabledForRole, isUnmeteredLiveEnabledForRole } from "@/lib/voice/launch-access";
 
 const READ_TIMEOUT_MS = 5000;
 const PRICING_READ_TIMEOUT_MS = 8000;
@@ -277,17 +277,17 @@ export async function loadFeatureAccessReadModel({
       role,
       userFeatureAccess.values.get(LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY)
     ),
-    voiceChat: isUnmeteredLiveEnabledForRole(
+    voiceChat: isMeteredVoiceEnabledForRole(
       parseVoiceChatAccessModeSetting(voiceChatSettings.android),
       role,
       userFeatureAccess.values.get(VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY)
     ),
-    voiceChatAndroid: isUnmeteredLiveEnabledForRole(
+    voiceChatAndroid: isMeteredVoiceEnabledForRole(
       parseVoiceChatAccessModeSetting(voiceChatSettings.android),
       role,
       userFeatureAccess.values.get(VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY)
     ),
-    voiceChatWeb: isUnmeteredLiveEnabledForRole(
+    voiceChatWeb: isMeteredVoiceEnabledForRole(
       parseVoiceChatAccessModeSetting(voiceChatSettings.web),
       role,
       userFeatureAccess.values.get(VOICE_CHAT_WEB_FEATURE_FLAG_KEY)

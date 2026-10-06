@@ -13,8 +13,15 @@ export function restrictUnmeteredLiveAccess(mode: FeatureAccessMode): FeatureAcc
   return mode === "enabled" ? "admin_only" : mode;
 }
 
-const unmeteredLiveFeatureKeys = new Set<string>([VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY, VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
-  LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY, LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY]);
+const unmeteredLiveFeatureKeys = new Set<string>([LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY, LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY]);
+
+export function isMeteredVoiceFeatureKey(key: string) {
+  return key === VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY || key === VOICE_CHAT_WEB_FEATURE_FLAG_KEY;
+}
+
+export function isMeteredVoiceEnabledForRole(mode: FeatureAccessMode, role: FeatureAccessRole, override?: boolean | null) {
+  return (role === "admin" || role === "regular") && override !== false && (mode === "enabled" || (mode === "admin_only" && role === "admin"));
+}
 
 export function isUnmeteredLiveFeatureKey(featureKey: string) {
   return unmeteredLiveFeatureKeys.has(featureKey);

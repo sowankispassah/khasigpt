@@ -19,6 +19,12 @@ export async function startDurationWebVoice(callbacks: WebGeminiVoiceCallbacks, 
   let readyTimer: ReturnType<typeof setTimeout> | undefined;
   let levelTimer: ReturnType<typeof setInterval> | undefined;
   let context: AudioContext | undefined;
+  let remoteAnalyser: AnalyserNode | undefined;
+  let remoteSamples: Float32Array<ArrayBuffer> | undefined;
+  let lastOutputActivity = 0;
+  let waitingForBackend = false;
+  let lastStatus = "connecting";
+  const status = (next: "listening" | "speaking" | "thinking") => { if (next !== lastStatus) { lastStatus = next; callbacks.onStatus?.(next); } };
   let resolveClosed: (() => void) | undefined;
   const finished = new Promise<void>(resolve => { resolveClosed = resolve; });
   let rejectReady: ((error: Error) => void) | undefined;
@@ -44,21 +50,25 @@ export async function startDurationWebVoice(callbacks: WebGeminiVoiceCallbacks, 
     if (events.readyState === "open") events.send(JSON.stringify({ type: "session.close" }));
     closeTimer = setTimeout(fail, 15_000);
   };
-  peer.ontrack = event => { audio.srcObject = new MediaStream([event.track]); void audio.play().catch(fail); };
+  peer.ontrack = event => {
+    const stream = new MediaStream([event.track]); audio.srcObject = stream;
+    if (context) { remoteAnalyser = context.createAnalyser(); remoteAnalyser.fftSize = 256; remoteSamples = new Float32Array(remoteAnalyser.fftSize); context.createMediaStreamSource(stream).connect(remoteAnalyser); }
+    void audio.play().catch(fail);
+  };
   peer.onconnectionstatechange = () => { if (peer.connectionState === "failed") fail(); };
   events.onclose = () => { if (!closed) fail(); };
   events.onmessage = event => {
     let data: Record<string, any>;
     try { data = JSON.parse(event.data); } catch { return; }
-    if (data.type === "session.started") { ready = true; clearTimeout(readyTimer); callbacks.onStatus?.("listening"); resolveReady?.(); }
+    if (data.type === "session.started") { ready = true; clearTimeout(readyTimer); status("listening"); resolveReady?.(); }
     if (data.type === "session.input_transcript.delta" || data.type === "session.output_transcript.delta") {
       messages = appendDurationTranscript(messages, data as { type: string }, sessionId);
       callbacks.onMessages?.(messages.map(message => ({ ...message })));
       const message = messages.at(-1);
-      if (message?.role === "user") { callbacks.onUserTranscript?.(message.text); callbacks.onStatus?.("listening"); }
-      else if (message) { callbacks.onAssistantTranscript?.(message.text); callbacks.onStatus?.("speaking"); }
+      if (message?.role === "user") { callbacks.onUserTranscript?.(message.text); status("listening"); }
+      else if (message) { callbacks.onAssistantTranscript?.(message.text); waitingForBackend = false; lastOutputActivity = Date.now(); status("speaking"); }
     }
-    if (data.type === "session.delegation.created") callbacks.onStatus?.("thinking");
+    if (data.type === "session.delegation.created") { waitingForBackend = true; status("thinking"); }
     if (data.type === "session.closed") {
       if (!ready) rejectReady?.(new LiveSessionError("live_connection_failed"));
       if (ready && !stopping) { if (callbacks.onCompletedSession) { callbacks.onCompletedSession(messages); messages = []; } callbacks.onError?.(new LiveSessionError("live_session_ended")); }
@@ -75,7 +85,9 @@ export async function startDurationWebVoice(callbacks: WebGeminiVoiceCallbacks, 
     analyser.fftSize = 256;
     context.createMediaStreamSource(microphone).connect(analyser);
     const samples = new Float32Array(analyser.fftSize);
-    levelTimer = setInterval(() => { analyser.getFloatTimeDomainData(samples); const rms = Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length); callbacks.onInputLevel?.(Math.min(1, rms * 6)); }, 80);
+    levelTimer = setInterval(() => { analyser.getFloatTimeDomainData(samples); const rms = Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length); callbacks.onInputLevel?.(Math.min(1, rms * 6));
+      if (remoteAnalyser && remoteSamples) { remoteAnalyser.getFloatTimeDomainData(remoteSamples); const output = Math.sqrt(remoteSamples.reduce((sum, value) => sum + value * value, 0) / remoteSamples.length); if (output > 0.008) { lastOutputActivity = Date.now(); status("speaking"); } else if (ready && !waitingForBackend && Date.now() - lastOutputActivity > 800) status("listening"); }
+    }, 80);
     await peer.setLocalDescription(await peer.createOffer());
     if (peer.iceGatheringState !== "complete") await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => { peer.removeEventListener("icegatheringstatechange", check); reject(new Error("KhasiGPT voice chat could not connect.")); }, 10_000);

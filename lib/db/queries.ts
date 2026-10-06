@@ -11365,7 +11365,7 @@ export async function recordTokenUsage({
     }
 
     tokenCostPlusSnapshot = billTokenUsage && generationPricing
-      ? { category: "chat", ...generationPricing }
+      ? { category: liveVoiceModelConfigId ? "live_voice" : "chat", ...generationPricing }
       : billTokenUsage
       ? await getTokenCostPlusSnapshot({
           liveVoiceModelConfigId,

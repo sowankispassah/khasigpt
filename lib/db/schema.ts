@@ -1956,7 +1956,7 @@ export const creditCharge = pgTable(
       .notNull()
       .default(0),
     imageOutputTokens: integer("imageOutputTokens").notNull().default(0),
-    unitCount: integer("unitCount").notNull().default(0),
+    unitCount: doublePrecision("unitCount").notNull().default(0),
     providerCostUsd: doublePrecision("providerCostUsd").notNull().default(0),
     usdToInr: doublePrecision("usdToInr").notNull().default(0),
     markupMultiplier: doublePrecision("markupMultiplier").notNull().default(1),
