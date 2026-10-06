@@ -486,7 +486,7 @@ export function Chat({
     const historyCacheKey = unstable_serialize(historyPaginationKey);
     const now = new Date();
 
-    mutate(
+    const promotion = mutate(
       historyCacheKey,
       (currentPages: ChatHistory[] | undefined) => {
         if (!currentPages || currentPages.length === 0) {
@@ -539,7 +539,9 @@ export function Chat({
     }
 
     if (immediate) {
-      void mutate(historyCacheKey);
+      // The saved row is authoritative; keep its confirmed title. At session
+      // start, fetch history only after the local promotion has finished.
+      if (!savedChat) void promotion.then(() => mutate(historyCacheKey));
       return;
     }
     historyRevalidateTimerRef.current = setTimeout(() => {
