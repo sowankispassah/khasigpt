@@ -23,6 +23,10 @@ test("traced upload package parses PDF and DOCX without the source node_modules"
     "Requires the isolated production build.",
   );
   const root = process.cwd();
+  const pdfEntry = JSON.parse(
+    readFileSync(".next-isolated-tests/required-server-files.json", "utf8"),
+  ).config.env.CHAT_DOCUMENT_PDF_ENTRY;
+  expect(pdfEntry).toMatch(/^\.\/node_modules\//);
   const trace = path.join(
     root,
     ".next-isolated-tests/server/app/(chat)/api/files/upload/route.js.nft.json",
@@ -132,7 +136,7 @@ test("traced upload package parses PDF and DOCX without the source node_modules"
               ),
             );
         });
-        child.send({ buffer, mediaType, maxTextChars: 32000 });
+        child.send({ buffer, mediaType, maxTextChars: 32000, pdfEntry });
       });
       expect(text).toContain("KhasiGPT");
     }

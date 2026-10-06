@@ -1,6 +1,7 @@
 // Untrusted chat attachments execute in a disposable worker. No credentials,
 // network fetch or paid OCR are used here. The parent terminates slow work.
 const { inflateRawSync } = require('node:zlib');
+const path = require('node:path');
 
 function checkDocx(buffer) {
   const fail = () => { throw new Error('invalid_archive'); };
@@ -42,7 +43,7 @@ async function main(workerData) {
   let text = '';
   if (workerData.mediaType === 'application/pdf') {
     if (!buffer.subarray(0,8).toString('ascii').startsWith('%PDF-')) throw new Error('invalid_pdf');
-    const { PDFParse } = require('pdf-parse');
+    const { PDFParse } = require(workerData.pdfEntry ? path.resolve(process.cwd(), workerData.pdfEntry) : 'pdf-parse');
     const parser = new PDFParse({ data: buffer, isEvalSupported: false, useSystemFonts: false, maxImageSize: 16_000_000 });
     try {
       const info = await parser.getInfo();

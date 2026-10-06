@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import type { NextConfig } from "next";
 import { contactImageOrigin } from "./lib/security/contact-image-origin";
@@ -10,6 +11,18 @@ import { buildStructuredData, getSiteUrl } from "./lib/seo/site";
 
 const isDevelopment = process.env.NODE_ENV !== "production";
 const distDir = process.env.NEXT_DIST_DIR?.trim();
+// Trace actual package files, not files beneath pnpm aliases: mixing a traced
+// directory link with files written inside it produces invalid function output.
+const runtimePackageRoot = (name: string) =>
+  `./${path
+    .relative(
+      __dirname,
+      realpathSync(path.join(__dirname, "node_modules", name)),
+    )
+    .split(path.sep)
+    .join("/")}`;
+const pdfRuntimeRoot = runtimePackageRoot("pdf-parse");
+const pdfJsRuntimeRoot = runtimePackageRoot("pdfjs-dist");
 
 const inlineScriptHashes = [
   PRELOAD_PROGRESS_SCRIPT,
@@ -127,6 +140,9 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  env: {
+    CHAT_DOCUMENT_PDF_ENTRY: `${pdfRuntimeRoot}/dist/pdf-parse/cjs/index.cjs`,
+  },
   ...(distDir ? { distDir } : {}),
   experimental: { serverActions: { bodySizeLimit: "4mb" } },
   images: {
@@ -148,25 +164,25 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/chat": [
       "./scripts/chat-document-worker.cjs",
-      "./node_modules/pdf-parse/package.json",
-      "./node_modules/pdf-parse/dist/pdf-parse/cjs/*.cjs",
-      "./node_modules/pdf-parse/dist/pdf-parse/cjs/*.mjs",
-      "./node_modules/pdf-parse/dist/worker/cjs/*.cjs",
-      "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
-      "./node_modules/pdfjs-dist/cmaps/**/*",
-      "./node_modules/pdfjs-dist/standard_fonts/**/*",
-      "./node_modules/pdfjs-dist/wasm/**/*",
+      `${pdfRuntimeRoot}/package.json`,
+      `${pdfRuntimeRoot}/dist/pdf-parse/cjs/*.cjs`,
+      `${pdfRuntimeRoot}/dist/pdf-parse/cjs/*.mjs`,
+      `${pdfRuntimeRoot}/dist/worker/cjs/*.cjs`,
+      `${pdfJsRuntimeRoot}/legacy/build/pdf.worker.mjs`,
+      `${pdfJsRuntimeRoot}/cmaps/**/*`,
+      `${pdfJsRuntimeRoot}/standard_fonts/**/*`,
+      `${pdfJsRuntimeRoot}/wasm/**/*`,
     ],
     "/api/files/upload": [
       "./scripts/chat-document-worker.cjs",
-      "./node_modules/pdf-parse/package.json",
-      "./node_modules/pdf-parse/dist/pdf-parse/cjs/*.cjs",
-      "./node_modules/pdf-parse/dist/pdf-parse/cjs/*.mjs",
-      "./node_modules/pdf-parse/dist/worker/cjs/*.cjs",
-      "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
-      "./node_modules/pdfjs-dist/cmaps/**/*",
-      "./node_modules/pdfjs-dist/standard_fonts/**/*",
-      "./node_modules/pdfjs-dist/wasm/**/*",
+      `${pdfRuntimeRoot}/package.json`,
+      `${pdfRuntimeRoot}/dist/pdf-parse/cjs/*.cjs`,
+      `${pdfRuntimeRoot}/dist/pdf-parse/cjs/*.mjs`,
+      `${pdfRuntimeRoot}/dist/worker/cjs/*.cjs`,
+      `${pdfJsRuntimeRoot}/legacy/build/pdf.worker.mjs`,
+      `${pdfJsRuntimeRoot}/cmaps/**/*`,
+      `${pdfJsRuntimeRoot}/standard_fonts/**/*`,
+      `${pdfJsRuntimeRoot}/wasm/**/*`,
     ],
   },
   outputFileTracingExcludes: {

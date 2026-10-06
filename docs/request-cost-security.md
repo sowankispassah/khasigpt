@@ -66,6 +66,9 @@ bundles and extra source maps. Including all distribution variants exceeded Verc
 250 MB uncompressed function limit. The test enforces a smaller trace budget to
 leave deployment headroom. Static dependency references retain package
 aliases without initializing native parser libraries in the request process.
+Asset globs use real package locations so deployment does not place files beneath
+directory symlinks. The PDF entry path is a non-secret build constant sent only
+to the private child process; it is not supplied by the request.
 
 ## Verification and remaining controls
 

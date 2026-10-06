@@ -99,6 +99,7 @@ export async function extractChatDocument({
           buffer,
           mediaType,
           maxTextChars: MAX_TEXT_CHARS,
+          pdfEntry: process.env.CHAT_DOCUMENT_PDF_ENTRY,
           tracedDependencies: {
             pdf: require.resolve("pdf-parse"),
             docx: require.resolve("mammoth"),
