@@ -1,10 +1,10 @@
 "use client";
 
-import { InfoIcon, RefreshCcw } from "lucide-react";
+import { Eye, EyeOff, InfoIcon, RefreshCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { ReceiptDownloadButton } from "@/components/receipt-download-button";
-import { EditableTranslation } from "@/components/translation-edit-provider";
+import { EditableTranslation, useEditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,6 +16,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { compactTransactionCode } from "@/lib/ui/compact-transaction-code";
 import { cn } from "@/lib/utils";
 
 type HistoryRow = {
@@ -50,11 +51,15 @@ export function RechargeHistoryDialog({
   labels,
 }: RechargeHistoryDialogProps) {
   const [open, setOpen] = useState(false);
+  const [revealedCode, setRevealedCode] = useState<string | null>(null);
+  const fullCodeId = useId();
+  const showCode = useEditableTranslation("billing.transaction_code.show", "View full transaction code");
+  const hideCode = useEditableTranslation("billing.transaction_code.hide", "Hide transaction code");
   const router = useRouter();
   const hasRows = rows.length > 0;
 
   return (
-    <Dialog onOpenChange={setOpen} open={open}>
+    <Dialog onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setRevealedCode(null); }} open={open}>
       <DialogTrigger asChild>
         <Button
           aria-label={labels.trigger}
@@ -66,7 +71,7 @@ export function RechargeHistoryDialog({
           <InfoIcon className="h-4 w-4" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="w-[calc(100%_-_1.5rem)] min-w-0 max-w-3xl max-h-[calc(100dvh_-_2rem)] overflow-y-auto">
         <DialogHeader className="text-center">
           <DialogTitle>{labels.title}</DialogTitle>
           <DialogDescription className="mx-auto max-w-lg">
@@ -74,8 +79,8 @@ export function RechargeHistoryDialog({
           </DialogDescription>
         </DialogHeader>
         {hasRows ? (
-          <div className="max-h-96 overflow-auto rounded-md border">
-            <table className="w-full divide-y divide-border text-sm">
+          <div className="max-h-96 min-w-0 max-w-full overflow-auto rounded-md border" data-testid="recharge-history-scroll">
+            <table className="w-full divide-y divide-border whitespace-nowrap text-sm [&_td]:px-3 [&_th]:px-3">
               <thead className="bg-muted/50 text-muted-foreground text-xs uppercase tracking-wide">
                 <tr>
                   <th className="px-4 py-2 text-left">{labels.plan}</th>
@@ -89,11 +94,14 @@ export function RechargeHistoryDialog({
                 {rows.map((row) => (
                   <tr key={row.orderId}>
                     <td className="px-4 py-3">
-                      <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-2">
                         <span className="font-medium">{row.planLabel}</span>
-                        <span className="text-muted-foreground text-xs">
-                          {row.orderId}
-                        </span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-muted-foreground text-xs" data-testid="compact-transaction-code">{compactTransactionCode(row.orderId)}</span>
+                          <Button type="button" aria-label={revealedCode === row.orderId ? hideCode.text : showCode.text} aria-controls={fullCodeId} aria-expanded={revealedCode === row.orderId} className="h-8 w-8 shrink-0 cursor-pointer" onClick={() => setRevealedCode((current) => current === row.orderId ? null : row.orderId)} size="icon" variant="ghost">
+                            {revealedCode === row.orderId ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                          </Button>
+                        </div>
                       </div>
                     </td>
                     <td className="px-4 py-3">{row.amountLabel}</td>
@@ -135,6 +143,13 @@ export function RechargeHistoryDialog({
         ) : (
           <p className="text-muted-foreground text-sm">{labels.empty}</p>
         )}
+        {revealedCode ? (
+          <div className="min-w-0 rounded-md border p-3" id={fullCodeId}>
+            <p className="mb-2 font-medium text-xs"><EditableTranslation translationKey="billing.transaction_code.full" defaultText="Full transaction code" /></p>
+            <p className="max-w-full select-all overflow-x-auto whitespace-nowrap pb-1 font-mono text-xs" data-testid="full-transaction-code">{revealedCode}</p>
+          </div>
+        ) : null}
+        {showCode.editButton || hideCode.editButton ? <div className="flex items-center gap-2">{showCode.editButton}{hideCode.editButton}</div> : null}
         <DialogFooter>
           <DialogClose>{labels.close}</DialogClose>
         </DialogFooter>
