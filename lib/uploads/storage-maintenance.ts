@@ -13,9 +13,9 @@ export async function runChatStorageMaintenance({ dryRun = false } = {}) {
   const leaseId = randomUUID();
   const options = privateStorageOptions();
   const deadline = Date.now() + 210_000;
-  const leased = await withAdminDatabase("storage.lease", db => db.execute<{ prefix: number; cursor: string | null; inventoryCompletedAt: Date | null }>(sql`
+  const leased = await withAdminDatabase("storage.lease", db => db.execute<{ prefix: number; cursor: string | null; inventoryCompletedAt: string | null }>(sql`
     UPDATE "ChatStorageMaintenance" SET "leaseId" = ${leaseId}::uuid, "leaseUntil" = now() + interval '5 minutes'
-    WHERE "id" = 1 AND ("leaseUntil" IS NULL OR "leaseUntil" < now()) RETURNING "prefix", "cursor", "inventoryCompletedAt"
+    WHERE "id" = 1 AND ("leaseUntil" IS NULL OR "leaseUntil" < now()) RETURNING "prefix", "cursor", "inventoryCompletedAt"::text AS "inventoryCompletedAt"
   `), { retry: false });
   if (!leased[0]) return { skipped: true as const };
   const state = leased[0];
@@ -29,10 +29,10 @@ export async function runChatStorageMaintenance({ dryRun = false } = {}) {
       state.cursor = blobs.hasMore ? blobs.cursor ?? null : null;
       if (blobs.hasMore && !state.cursor) throw new Error("Storage inventory cursor unavailable.");
       if (!blobs.hasMore) {
-        if (state.prefix === 1) { result.inventoryComplete = true; state.inventoryCompletedAt = new Date(); }
+        if (state.prefix === 1) { result.inventoryComplete = true; state.inventoryCompletedAt = new Date().toISOString(); }
         state.prefix = state.prefix === 0 ? 1 : 0;
       }
-      await withAdminDatabase("storage.cursor", db => db.execute(sql`UPDATE "ChatStorageMaintenance" SET "prefix" = ${state.prefix}, "cursor" = ${state.cursor}, "inventoryCompletedAt" = ${state.inventoryCompletedAt?.toISOString() ?? null}::timestamptz WHERE "id" = 1 AND "leaseId" = ${leaseId}::uuid`), { retry: false });
+      await withAdminDatabase("storage.cursor", db => db.execute(sql`UPDATE "ChatStorageMaintenance" SET "prefix" = ${state.prefix}, "cursor" = ${state.cursor}, "inventoryCompletedAt" = ${state.inventoryCompletedAt}::timestamptz WHERE "id" = 1 AND "leaseId" = ${leaseId}::uuid`), { retry: false });
     }
     const files = await withAdminDatabase("storage.candidates", db => selectCleanupFiles(db, { dryRun }), { retry: false });
     result.eligible = files.length;

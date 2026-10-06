@@ -21,6 +21,8 @@ The **Check storage inventory** button invokes a fresh-admin-only, same-origin P
 
 The storage summary uses one validated JSON database snapshot. Four concurrent statements on the production client's single pipeline stalled during live verification; one snapshot avoids that queue interaction and keeps totals and account rows consistent without increasing timeout limits. Account sorting uses the numeric byte column before converting it to display text.
 
+Maintenance reads its persisted inventory timestamp explicitly as text and writes it back as `timestamptz`. The production pooler returns timestamps as strings; assuming a JavaScript Date caused the second inventory run to fail before saving its cursor. A repeated-run regression check covers this boundary.
+
 ## Safety and accounting
 
 Migrations `0119_chat_file_lifecycle.sql` and `0120_shared_upload_holds.sql` create private metadata, indexed references and due dates, ownership totals, a durable inventory cursor, and a maintenance lease. They index existing Message/Message_v2, Character and prompt-icon references before cleanup is deployed. Unsupported owned references abort indexing rather than silently becoming orphans. RLS and revoked public/anonymous/authenticated privileges keep this metadata server-only.

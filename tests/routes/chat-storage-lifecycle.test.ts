@@ -207,7 +207,7 @@ test("storage metadata tables have RLS enabled", async () => {
   expect(rows.every(row => row.relrowsecurity)).toBe(true);
 });
 
-function maintenanceModule(blob: Record<string, unknown>) {
+function maintenanceModule(blob: Record<string, unknown>, poolerTimestampStrings = false) {
   const require = createRequire(path.join(process.cwd(), "package.json"));
   const cache = new Map<string, Record<string, any>>();
   const load = (name: string) => {
@@ -217,7 +217,13 @@ function maintenanceModule(blob: Record<string, unknown>) {
     if (name === "@/lib/uploads/private-file-key") return fileKeys;
     if (name === "@/lib/uploads/storage-lifecycle") return lifecycle;
     if (name === "@/lib/uploads/private-documents") return { privateStorageOptions: () => ({ token: "disposable-local-fixture" }) };
-    if (name === "@/lib/db/admin-database") return { withAdminDatabase: (_: string, work: any) => work(database, client) };
+    if (name === "@/lib/db/admin-database") return { withAdminDatabase: async (label: string, work: any) => {
+      const result = await work(database, client);
+      if (poolerTimestampStrings && label === "storage.lease") for (const row of result) {
+        if (row.inventoryCompletedAt instanceof Date) row.inventoryCompletedAt = row.inventoryCompletedAt.toISOString();
+      }
+      return result;
+    } };
     if (!name.startsWith("@/lib/uploads/storage-") && name !== "@/lib/admin/chat-storage") return require(name);
     const existing = cache.get(name);
     if (existing) return existing;
@@ -283,6 +289,20 @@ test("actual maintenance dry run never calls the destructive adapter", async () 
   expect(result.deleted).toBe(0);
   expect(result.ok).toBe(true);
   expect((await client`SELECT state FROM "ChatFile" WHERE key = ${key}`)[0].state).toBe("ready");
+});
+
+test("repeated maintenance accepts timestamp strings returned by the production pooler", async () => {
+  await resetMaintenance();
+  const module = maintenanceModule({
+    list: async () => ({ blobs: [], hasMore: false }),
+    head: async () => { throw new Error("Dry run must not read deletion metadata"); },
+    del: async () => { throw new Error("Dry run must not delete"); },
+  }, true);
+  expect((await module.runChatStorageMaintenance({ dryRun: true })).ok).toBe(true);
+  expect((await module.runChatStorageMaintenance({ dryRun: true })).ok).toBe(true);
+  const row = (await client`SELECT "leaseId", "inventoryCompletedAt" FROM "ChatStorageMaintenance" WHERE id=1`)[0];
+  expect(row.leaseId).toBeNull();
+  expect(row.inventoryCompletedAt).not.toBeNull();
 });
 
 test("an inventory failure persists an unsuccessful result and deletes nothing", async () => {
