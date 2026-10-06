@@ -6,6 +6,7 @@ import { GOOGLE_ALLOWANCE_COPY } from "@/lib/web-search/google-allowance-copy";
 import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
+  { key: "subscriptions.quick_actions.receipt_help", defaultText: "Receipts are emailed after purchase and can be downloaded from Recharge history.", description: "Receipt availability in the subscription profile." },
   ...Object.values(STORAGE_COPY).map(copy => ({ key: copy.translationKey, defaultText: copy.defaultText, description: "Admin chat storage monitoring and retention." })),
   { key: "chat.popup.start", defaultText: "Send a message to get started.", description: "Empty popup conversation." },
   { key: "chat.popup.loading", defaultText: "Loading chat...", description: "Popup preparation and history loading." },

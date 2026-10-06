@@ -621,8 +621,8 @@ export default async function SubscriptionsPage({
           </p>
           <p className="text-muted-foreground text-sm">
             <EditableTranslation
-              defaultText="Prefer emailed invoices or receipts? Contact support and we'll help out."
-              translationKey="subscriptions.quick_actions.support"
+              defaultText="Receipts are emailed after purchase and can be downloaded from Recharge history."
+              translationKey="subscriptions.quick_actions.receipt_help"
             />
           </p>
         </div>
