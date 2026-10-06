@@ -6,6 +6,32 @@ import {
 
 import { contactReplyAddress } from "@/lib/email/contact-inbound";
 import { ChatSDKError } from "@/lib/errors";
+import { type ReceiptData, receiptAmount, receiptEmailKey, receiptFilename } from "@/lib/payments/receipt-data";
+
+export async function sendPaymentReceiptEmail({ receipt, pdf }: { receipt: ReceiptData; pdf: Buffer }) {
+  const apiKey = process.env.BREVO_API_KEY;
+  const senderEmail = process.env.BREVO_SENDER_EMAIL;
+  if (!apiKey || !senderEmail) throw new Error("Receipt email configuration unavailable");
+  const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST", headers: { "api-key": apiKey, "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(15_000),
+    body: JSON.stringify({
+      sender: { email: senderEmail, name: process.env.BREVO_SENDER_NAME ?? "KhasiGPT" },
+      to: [{ email: receipt.email }],
+      subject: `Your KhasiGPT receipt ${receipt.number}`,
+      headers: { idempotencyKey: receiptEmailKey(receipt.orderId) },
+      textContent: `Thank you for your purchase.\nPlan: ${receipt.planName}\nAmount paid: ${receiptAmount(receipt)}\nReceipt: ${receipt.number}\nYour PDF receipt is attached. You can also download it from Recharge history in your profile.\nhttps://khasigpt.com/subscriptions`,
+      htmlContent: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:24px"><h1>KhasiGPT</h1><h2>Payment receipt</h2><p>Thank you for your purchase.</p><p><strong>Plan:</strong> ${escapeHtml(receipt.planName)}<br><strong>Amount paid:</strong> ${escapeHtml(receiptAmount(receipt))}<br><strong>Receipt:</strong> ${receipt.number}</p><p>Your PDF receipt is attached. You can also download it from Recharge history in your profile.</p><p><a href="https://khasigpt.com/subscriptions">View recharge history</a></p></div>`,
+      attachment: [{ name: receiptFilename(receipt), content: pdf.toString("base64") }],
+    }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => null) as { code?: string } | null;
+    if (response.status === 400 && error?.code === "duplicate_parameter") return;
+    throw new Error(`Receipt email rejected (${response.status})`);
+  }
+}
 
 type VerificationEmailPayload = {
   toEmail: string;

@@ -2,6 +2,8 @@ import { format } from "date-fns";
 import Link from "next/link";
 import { type ReactNode, Suspense } from "react";
 import { InlineExpandableRows } from "@/components/admin/inline-expandable-rows";
+import { ReceiptDownloadButton } from "@/components/receipt-download-button";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 import {
   type AdminQueryResult,
@@ -676,6 +678,7 @@ function renderRechargeRow(row: RechargeTableRow) {
       </td>
       <td className="py-2 text-right">{row.currency}</td>
       <td className="py-2">{row.expiresAt ? format(row.expiresAt, "PPpp") : "-"}</td>
+      <td className="px-3 py-2 text-center"><ReceiptDownloadButton admin orderId={row.orderId} /></td>
     </tr>
   );
 }
@@ -1273,6 +1276,7 @@ async function _LegacyAdminAccountPage({
                   <th className="py-3 text-right">Amount</th>
                   <th className="py-3 text-right">Currency</th>
                   <th className="py-3 text-left">Subscription expires</th>
+              <th className="px-3 py-3 text-center"><EditableTranslation translationKey="billing.receipt.title" defaultText="Receipt" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -1280,14 +1284,14 @@ async function _LegacyAdminAccountPage({
                   <tr>
                     <td
                       className="py-6 text-center text-muted-foreground"
-                      colSpan={7}
+                      colSpan={8}
                     >
                       No paid recharges found for the selected range.
                     </td>
                   </tr>
                 ) : (
                   <InlineExpandableRows
-                    colSpan={7}
+                    colSpan={8}
                     overflowRows={rechargeRowsOverflow.map((row) =>
                       renderRechargeRow(row)
                     )}
@@ -1788,24 +1792,25 @@ async function AccountRechargeSection({
               <th className="py-3 text-right">Amount</th>
               <th className="py-3 text-right">Currency</th>
               <th className="py-3 text-left">Subscription expires</th>
+              <th className="px-3 py-3 text-center"><EditableTranslation translationKey="billing.receipt.title" defaultText="Receipt" /></th>
             </tr>
           </thead>
           <tbody>
             {!rechargeRecordsResult.ok ? (
               <tr>
-                <td className="py-6 text-center text-muted-foreground" colSpan={7}>
+                <td className="py-6 text-center text-muted-foreground" colSpan={8}>
                   Unable to load paid recharges for the selected range.
                 </td>
               </tr>
             ) : rechargeRows.length === 0 ? (
               <tr>
-                <td className="py-6 text-center text-muted-foreground" colSpan={7}>
+                <td className="py-6 text-center text-muted-foreground" colSpan={8}>
                   No paid recharges found for the selected range.
                 </td>
               </tr>
             ) : (
               <InlineExpandableRows
-                colSpan={7}
+                colSpan={8}
                 overflowRows={rechargeRowsOverflow.map((row) => renderRechargeRow(row))}
                 previewRows={rechargeRowsPreview.map((row) => renderRechargeRow(row))}
               />

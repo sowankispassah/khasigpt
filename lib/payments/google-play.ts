@@ -33,7 +33,11 @@ export async function getGooglePlayOrderTotal(orderId: string) {
   const body = await response.json().catch(() => null) as { total?: { currencyCode?: string; units?: string; nanos?: number } } | null;
   const money = body?.total;
   if (!response.ok || !money?.currencyCode || !/^[A-Z]{3}$/.test(money.currencyCode) || !/^\d+$/.test(money.units ?? "0")) throw new Error("Google Play receipt total is unavailable.");
-  const amount = Number(BigInt(money.units ?? "0") * 100n + BigInt(Math.round((money.nanos ?? 0) / 10000000)));
+  const nanos = money.nanos ?? 0;
+  if (!Number.isInteger(nanos) || nanos < 0 || nanos >= 1_000_000_000) throw new Error("Invalid Google Play receipt amount.");
+  const digits = new Intl.NumberFormat("en", { style: "currency", currency: money.currencyCode }).resolvedOptions().maximumFractionDigits ?? 2;
+  const scale = 10 ** digits;
+  const amount = Number(BigInt(money.units ?? "0") * BigInt(scale) + BigInt(Math.round(nanos * scale / 1_000_000_000)));
   if (!Number.isSafeInteger(amount) || amount <= 0 || amount > 2147483647) throw new Error("Invalid Google Play receipt amount.");
   return { amount, currency: money.currencyCode };
 }
@@ -129,6 +133,7 @@ async function getAccessToken() {
   const assertion = `${unsignedToken}.${signature}`;
 
   const response = await fetch(GOOGLE_TOKEN_URL, {
+    signal: AbortSignal.timeout(10_000),
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({

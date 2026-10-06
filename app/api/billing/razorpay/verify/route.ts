@@ -1,5 +1,4 @@
-import { NextResponse } from "next/server";
-
+import { after, NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
 import {
   completePaymentTransactionWithSubscription,
@@ -14,6 +13,7 @@ import {
   getRazorpayClient,
   verifyPaymentSignature,
 } from "@/lib/payments/razorpay";
+import { deliverReceiptEmail } from "@/lib/payments/receipts";
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -48,6 +48,7 @@ export async function POST(request: Request) {
   }
 
   if (transaction.status === "paid") {
+    after(async () => { await deliverReceiptEmail(orderId).catch(() => { console.error("[receipts] Delivery scheduling failed", { orderId }); }); });
     const balance = await getUserBalanceSummary(session.user.id);
     return NextResponse.json({
       ok: true,
@@ -104,6 +105,7 @@ export async function POST(request: Request) {
       userId: session.user.id,
       planId: transaction.planId,
     });
+    after(async () => { await deliverReceiptEmail(orderId).catch(() => { console.error("[receipts] Delivery scheduling failed", { orderId }); }); });
     await recordCouponRedemptionFromTransaction(transaction);
 
     const balance = await getUserBalanceSummary(session.user.id);

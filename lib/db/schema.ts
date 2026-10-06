@@ -696,6 +696,21 @@ export const paymentTransaction = pgTable(
 
 export type PaymentTransaction = InferSelectModel<typeof paymentTransaction>;
 
+export const paymentReceipt = pgTable("PaymentReceipt", {
+  orderId: varchar("orderId", { length: 64 }).primaryKey().notNull().references(() => paymentTransaction.orderId, { onDelete: "cascade" }),
+  userId: uuid("userId").notNull().references(() => user.id, { onDelete: "cascade" }),
+  snapshot: jsonb("snapshot").notNull(),
+  emailRequested: boolean("emailRequested").notNull().default(true),
+  emailSentAt: timestamp("emailSentAt"),
+  emailAttempts: integer("emailAttempts").notNull().default(0),
+  nextAttemptAt: timestamp("nextAttemptAt").notNull().defaultNow(),
+  leaseId: uuid("leaseId"),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+}, (table) => ({
+  userIdx: index("PaymentReceipt_user_idx").on(table.userId),
+  deliveryIdx: index("PaymentReceipt_delivery_idx").on(table.emailSentAt, table.nextAttemptAt),
+}));
+
 export const couponRedemption = pgTable(
   "CouponRedemption",
   {

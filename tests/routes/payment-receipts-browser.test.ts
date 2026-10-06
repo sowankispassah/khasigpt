@@ -1,0 +1,61 @@
+import { randomUUID } from "node:crypto";
+import { expect, test } from "@playwright/test";
+import { hashSync } from "bcrypt-ts";
+import postgres from "postgres";
+
+test.skip(process.env.ISOLATED_TEST_RUN !== "1", "Requires a disposable local audit database");
+
+test("users and admins download receipts from recharge history; mobile ownership is enforced", async ({ page, request, baseURL }) => {
+  const url = new URL(process.env.POSTGRES_URL ?? "");
+  expect(["127.0.0.1", "localhost"]).toContain(url.hostname);
+  expect(url.pathname).toMatch(/^\/khasigpt_audit_/);
+  const sql = postgres(url.toString(), { max: 2, connection: { TimeZone: "UTC" }, onnotice: () => {} });
+  const userId = randomUUID(), otherId = randomUUID(), planId = randomUUID();
+  const email = `${userId}@example.test`, password = "receipt-fixture-20261006";
+  const orderId = `order_${randomUUID()}`;
+  try {
+    await sql`insert into "User" (id,email,password,role,"dateOfBirth","firstName","lastName") values (${userId},${email},${hashSync(password, 10)},'admin','1990-01-01','Receipt','Fixture'),(${otherId},${`${otherId}@example.test`},${hashSync(password, 10)},'regular','1990-01-01','Other','Fixture')`;
+    await sql`insert into "PricingPlan" (id,name,"priceInPaise","tokenAllowance","billingCycleDays") values (${planId},'Receipt browser fixture',39900,1000,30)`;
+    await sql`insert into "PaymentTransaction" ("orderId","userId","planId",status,amount,currency) values (${orderId},${userId},${planId},'paid',39900,'INR')`;
+    const csrf = (await (await page.request.get("/api/auth/csrf")).json()).csrfToken;
+    await page.request.post("/api/auth/callback/credentials", { form: { csrfToken: csrf, email, password, callbackUrl: `${baseURL}/subscriptions` }, headers: { "X-Auth-Return-Redirect": "1" } });
+    expect((await (await page.request.get("/api/auth/session")).json()).user?.id).toBe(userId);
+    await page.goto("/subscriptions");
+    await page.getByRole("button", { name: "View recharge history" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByRole("button", { name: "Download receipt" })).toBeVisible();
+    await page.screenshot({ path: "tmp/pdfs/receipt-history-wide.png" });
+    const downloadPromise = page.waitForEvent("download");
+    await dialog.getByRole("button", { name: "Download receipt" }).click();
+    expect((await downloadPromise).suggestedFilename()).toMatch(/^KhasiGPT-receipt-KG-/);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await dialog.getByRole("button", { name: "Download receipt" }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: "tmp/pdfs/receipt-history-mobile.png" });
+    await page.goto("/admin/account");
+    const recharge = page.getByText("Recharge log", { exact: true });
+    await recharge.scrollIntoViewIfNeeded();
+    await recharge.click();
+    const adminDownload = page.getByRole("row").filter({ hasText: email }).getByRole("button", { name: "Download receipt" });
+    await adminDownload.scrollIntoViewIfNeeded();
+    const adminPromise = page.waitForEvent("download");
+    await adminDownload.click();
+    expect((await adminPromise).suggestedFilename()).toMatch(/^KhasiGPT-receipt-KG-/);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await recharge.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: "tmp/pdfs/receipt-admin-log.png" });
+    const login = await request.post("/api/mobile/auth/login", { data: { email, password } });
+    expect(login.status()).toBe(200);
+    const token = (await login.json()).token;
+    const mobile = await request.get(`/api/mobile/billing/receipts/${orderId}`, { headers: { Authorization: `Bearer ${token}` } });
+    expect(mobile.status()).toBe(200);
+    expect(mobile.headers()["content-type"]).toBe("application/pdf");
+    const other = await request.post("/api/mobile/auth/login", { data: { email: `${otherId}@example.test`, password } });
+    const otherToken = (await other.json()).token;
+    expect((await request.get(`/api/mobile/billing/receipts/${orderId}`, { headers: { Authorization: `Bearer ${otherToken}` } })).status()).toBe(404);
+  } finally {
+    await sql`delete from "AuditLog" where "actorId" in (${userId},${otherId})`;
+    await sql`delete from "User" where id in (${userId},${otherId})`;
+    await sql`delete from "PricingPlan" where id=${planId}`;
+    await sql.end();
+  }
+});

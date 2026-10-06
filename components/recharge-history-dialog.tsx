@@ -3,7 +3,8 @@
 import { InfoIcon, RefreshCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-
+import { ReceiptDownloadButton } from "@/components/receipt-download-button";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -81,6 +82,7 @@ export function RechargeHistoryDialog({
                   <th className="px-4 py-2 text-left">{labels.amount}</th>
                   <th className="px-4 py-2 text-center">{labels.status}</th>
                   <th className="px-4 py-2 text-left">{labels.date}</th>
+                  <th className="px-4 py-2 text-center"><EditableTranslation translationKey="billing.receipt.title" defaultText="Receipt" /></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border bg-background">
@@ -124,6 +126,7 @@ export function RechargeHistoryDialog({
                       </div>
                     </td>
                     <td className="px-4 py-3">{row.dateLabel}</td>
+                    <td className="px-4 py-3 text-center">{!row.canRetry ? <ReceiptDownloadButton orderId={row.orderId} /> : null}</td>
                   </tr>
                 ))}
               </tbody>

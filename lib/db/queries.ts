@@ -55,6 +55,7 @@ import { getLiteAppSettingUncached } from "@/lib/db/app-settings-lite";
 import { createManagedPool } from "@/lib/db/managed-client";
 import { claimPaidGeneration, releasePaidGeneration } from "@/lib/db/paid-generation-admission";
 import { lockUserWallet } from "@/lib/db/wallet-lock";
+import { buildReceiptData } from "@/lib/payments/receipt-data";
 import { recordReferralCommission } from "@/lib/referrals/accounting";
 import {
   assertFeatureSettingWriteAllowed,
@@ -129,6 +130,7 @@ import {
   type PaymentTransaction,
   type PricingPlan,
   passwordResetToken,
+  paymentReceipt,
   paymentTransaction,
   pricingPlan,
   type RagEntry,
@@ -10728,6 +10730,16 @@ export async function completePaymentTransactionWithSubscription({
           "Payment transaction could not be marked paid"
         );
       }
+
+      const [receiptCustomer] = await tx.select({ email: user.email, firstName: user.firstName, lastName: user.lastName }).from(user).where(eq(user.id, userId)).limit(1);
+      const [receiptPlan] = await tx.select({ name: pricingPlan.name }).from(pricingPlan).where(eq(pricingPlan.id, planId)).limit(1);
+      if (!receiptCustomer || !receiptPlan) throw new Error("Receipt customer or plan unavailable");
+      await tx.insert(paymentReceipt).values({
+        orderId, userId,
+        nextAttemptAt: now, createdAt: now,
+        snapshot: buildReceiptData({ ...paid, paidAt: now, email: receiptCustomer.email,
+          name: [receiptCustomer.firstName, receiptCustomer.lastName].filter(Boolean).join(" "), planName: receiptPlan.name }),
+      }).onConflictDoNothing();
 
       return { alreadyProcessed: false, subscription };
     });

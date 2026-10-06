@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import {
   completePaymentTransactionWithSubscription,
   createPaymentTransaction,db,
@@ -21,6 +21,7 @@ import {
   hashGooglePlayPurchaseToken,
 } from "@/lib/payments/google-play";
 import { getAndroidProductIdForPlan } from "@/lib/payments/google-play-products";
+import { deliverReceiptEmail } from "@/lib/payments/receipts";
 import { couponsAllowed } from "@/lib/referrals/settings";
 
 export const dynamic = "force-dynamic";
@@ -104,6 +105,7 @@ export async function POST(request: Request) {
       return new ChatSDKError("forbidden:api").toResponse();
     }
     if (existing?.status === "paid") {
+      after(async () => { await deliverReceiptEmail(orderId).catch(() => { console.error("[receipts] Delivery scheduling failed", { orderId }); }); });
       await recordCouponRedemptionFromTransaction(existing);
       const balance = await getUserBalanceSummary(session.user.id);
       return NextResponse.json({ alreadyProcessed: true, balance, ok: true });
@@ -132,8 +134,11 @@ export async function POST(request: Request) {
 
     const [referralAccount] = await db.select({ code: user.signupReferralCode }).from(user).where(eq(user.id, session.user.id));
     const testPurchase = purchase.purchaseType === 0;
-    const receiptTotal = referralAccount?.code && !testPurchase && !existing
-      ? await getGooglePlayOrderTotal(purchase.orderId ?? "")
+    const receiptTotal = !testPurchase && !existing
+      ? await getGooglePlayOrderTotal(purchase.orderId ?? "").catch((error) => {
+          if (referralAccount?.code) throw error;
+          return { amount: plan.priceInPaise, currency: "INR", unverified: true };
+        })
       : { amount: plan.priceInPaise, currency: "INR" };
 
     const transaction =
@@ -151,6 +156,8 @@ export async function POST(request: Request) {
         providerProductId: productId,
         providerPurchaseTokenHash: tokenHash,
         notes: {
+          testPurchase,
+          receiptAmountVerified: !("unverified" in receiptTotal),
           commissionEligible: !testPurchase,
           googleOrderId: purchase.orderId ?? null,
           packageName,
@@ -194,6 +201,7 @@ export async function POST(request: Request) {
         signature: tokenHash,
         userId: session.user.id,
       });
+      after(async () => { await deliverReceiptEmail(orderId).catch(() => { console.error("[receipts] Delivery scheduling failed", { orderId }); }); });
       const completedTransaction = await getPaymentTransactionByOrderId({ orderId });
       if (completedTransaction) await recordCouponRedemptionFromTransaction(completedTransaction);
       await consumeGooglePlayProductPurchase({

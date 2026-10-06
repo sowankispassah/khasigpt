@@ -162,6 +162,7 @@ const nextConfig: NextConfig = {
   },
   serverExternalPackages: ["@napi-rs/canvas", "pdf-parse", "mammoth"],
   outputFileTracingIncludes: {
+    "/api/**/*": ["./lib/payments/fonts/Geist-Regular.ttf"],
     "/api/chat": [
       "./scripts/chat-document-worker.cjs",
       `${pdfRuntimeRoot}/package.json`,
