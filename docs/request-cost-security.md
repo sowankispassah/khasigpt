@@ -61,6 +61,11 @@ IPC: Turbopack incorrectly resolves the filename supplied to child_process.fork
 as an import (upstream issue vercel/next.js#97952). Test both PDF and DOCX against
 the deployed upload route after changing packaging. Published jobs, admin RAG
 ingestion and study paper parsing use their existing separate extraction path.
+Trace runtime entries, CMaps, fonts and WASM assets; avoid copying unused browser
+bundles and extra source maps. Including all distribution variants exceeded Vercel's
+250 MB uncompressed function limit. The test enforces a smaller trace budget to
+leave deployment headroom. Static dependency references retain package
+aliases without initializing native parser libraries in the request process.
 
 ## Verification and remaining controls
 

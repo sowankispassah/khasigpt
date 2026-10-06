@@ -10,6 +10,7 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  writeFileSync,
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -29,6 +30,13 @@ test("traced upload package parses PDF and DOCX without the source node_modules"
   const files: string[] = JSON.parse(readFileSync(trace, "utf8")).files.map(
     (file: string) => path.resolve(path.dirname(trace), file),
   );
+  // Leave headroom below the host's 250 MB function limit. The former broad
+  // parser globs added duplicate browser builds and exceeded this trace budget.
+  const traceBytes = files.reduce(
+    (total, file) => total + statSync(file).size,
+    0,
+  );
+  expect(traceBytes).toBeLessThan(160 * 1024 * 1024);
   const prefix = path.join(os.tmpdir(), "khasigpt-document-package-");
   const stage = mkdtempSync(prefix);
   // Deliberately stage outside the repo: missing dependencies must not resolve
@@ -67,6 +75,15 @@ test("traced upload package parses PDF and DOCX without the source node_modules"
       mkdirSync(target, { recursive: true });
       symlinkSync(target, alias, "junction");
     }
+    // Expose failures only in this fixture-only copy; parsing stays identical.
+    const stagedWorker = path.join(stage, "scripts/chat-document-worker.cjs");
+    writeFileSync(
+      stagedWorker,
+      readFileSync(stagedWorker, "utf8").replace(
+        ".catch(() => {",
+        ".catch(error => { console.error(error);",
+      ),
+    );
     for (const [buffer, mediaType] of [
       [pdfFixture(), "application/pdf"],
       [
@@ -85,11 +102,15 @@ test("traced upload package parses PDF and DOCX without the source node_modules"
             cwd: stage,
             env: { NODE_ENV: "production", SystemRoot: process.env.SystemRoot },
             serialization: "advanced",
-            stdio: ["ignore", "ignore", "ignore", "ipc"],
+            stdio: ["ignore", "ignore", "pipe", "ipc"],
             windowsHide: true,
           },
         );
         let result: string | undefined;
+        let diagnostics = "";
+        child.stderr?.on("data", (data) => {
+          diagnostics = (diagnostics + data.toString()).slice(0, 3000);
+        });
         const timer = setTimeout(() => child.kill("SIGKILL"), 15_000);
         child.once("message", (message: unknown) => {
           if (
@@ -104,7 +125,12 @@ test("traced upload package parses PDF and DOCX without the source node_modules"
         child.once("exit", (code, signal) => {
           clearTimeout(timer);
           if (result) resolve(result);
-          else reject(new Error(`Traced worker failed: exit=${code}, signal=${signal}, type=${mediaType}.`));
+          else
+            reject(
+              new Error(
+                `Traced worker failed: exit=${code}, signal=${signal}, type=${mediaType}. ${diagnostics}`,
+              ),
+            );
         });
         child.send({ buffer, mediaType, maxTextChars: 32000 });
       });

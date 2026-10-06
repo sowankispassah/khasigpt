@@ -148,17 +148,35 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/chat": [
       "./scripts/chat-document-worker.cjs",
-      "./node_modules/pdf-parse/**/*",
-      "./node_modules/pdfjs-dist/**/*",
-      "./node_modules/@napi-rs/canvas/**/*",
-      "./node_modules/mammoth/**/*",
+      "./node_modules/pdf-parse/package.json",
+      "./node_modules/pdf-parse/dist/pdf-parse/cjs/*.cjs",
+      "./node_modules/pdf-parse/dist/pdf-parse/cjs/*.mjs",
+      "./node_modules/pdf-parse/dist/worker/cjs/*.cjs",
+      "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
+      "./node_modules/pdfjs-dist/cmaps/**/*",
+      "./node_modules/pdfjs-dist/standard_fonts/**/*",
+      "./node_modules/pdfjs-dist/wasm/**/*",
     ],
     "/api/files/upload": [
       "./scripts/chat-document-worker.cjs",
-      "./node_modules/pdf-parse/**/*",
-      "./node_modules/pdfjs-dist/**/*",
-      "./node_modules/@napi-rs/canvas/**/*",
-      "./node_modules/mammoth/**/*",
+      "./node_modules/pdf-parse/package.json",
+      "./node_modules/pdf-parse/dist/pdf-parse/cjs/*.cjs",
+      "./node_modules/pdf-parse/dist/pdf-parse/cjs/*.mjs",
+      "./node_modules/pdf-parse/dist/worker/cjs/*.cjs",
+      "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
+      "./node_modules/pdfjs-dist/cmaps/**/*",
+      "./node_modules/pdfjs-dist/standard_fonts/**/*",
+      "./node_modules/pdfjs-dist/wasm/**/*",
+    ],
+  },
+  outputFileTracingExcludes: {
+    "/api/chat": [
+      "./node_modules/**/pdf-parse/**/*.map",
+      "./node_modules/**/pdfjs-dist/**/*.map",
+    ],
+    "/api/files/upload": [
+      "./node_modules/**/pdf-parse/**/*.map",
+      "./node_modules/**/pdfjs-dist/**/*.map",
     ],
   },
   async headers() {
