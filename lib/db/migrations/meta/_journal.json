@@ -848,6 +848,20 @@
       "when": 1791198000002,
       "tag": "0118_mobile_oauth_handoff_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1791198000003,
+      "tag": "0119_chat_file_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1791198000004,
+      "tag": "0120_shared_upload_holds",
+      "breakpoints": true
     }
   ]
 }

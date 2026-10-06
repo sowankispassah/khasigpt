@@ -1,6 +1,7 @@
 import type { InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   date,
   doublePrecision,
@@ -1132,6 +1133,67 @@ export const message = pgTable(
 );
 
 export type DBMessage = InferSelectModel<typeof message>;
+
+export const chatFile = pgTable("ChatFile", {
+  key: text("key").primaryKey(),
+  userId: uuid("userId").notNull(),
+  bytes: bigint("bytes", { mode: "number" }).notNull().default(0),
+  createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+  observedAt: timestamp("observedAt", { withTimezone: true }).notNull().defaultNow(),
+  state: varchar("state", { length: 16, enum: ["reserved", "ready", "deleting", "deleted"] }).notNull().default("reserved"),
+  confirmed: boolean("confirmed").notNull().default(false),
+  etag: text("etag"),
+  firstAttachedAt: timestamp("firstAttachedAt", { withTimezone: true }),
+  unreferencedAt: timestamp("unreferencedAt", { withTimezone: true }).notNull().defaultNow(),
+  retryAt: timestamp("retryAt", { withTimezone: true }),
+  deletedAt: timestamp("deletedAt", { withTimezone: true }),
+  failures: integer("failures").notNull().default(0),
+  cleanupAfter: timestamp("cleanupAfter", { withTimezone: true }),
+  holdRemovedAt: timestamp("holdRemovedAt", { withTimezone: true }),
+}, (table) => ({
+  ownerIdx: index("ChatFile_owner_idx").on(table.userId, table.state),
+  cleanupIdx: index("ChatFile_cleanup_idx").on(table.state, table.createdAt).where(sql`${table.state} <> 'deleted'`),
+  dueIdx: index("ChatFile_due_idx").on(table.cleanupAfter, table.key).where(sql`${table.state} IN ('ready','reserved')`),
+  retryIdx: index("ChatFile_retry_idx").on(table.retryAt, table.key).where(sql`${table.state} = 'deleting'`),
+})).enableRLS();
+
+export const chatFileReference = pgTable("ChatFileReference", {
+  key: text("key").notNull().references(() => chatFile.key),
+  source: varchar("source", { length: 16 }).notNull(),
+  messageId: uuid("messageId").notNull(),
+  chatId: uuid("chatId").notNull().references(() => chat.id, { onDelete: "cascade" }),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.key, table.source, table.messageId] }),
+  messageIdx: index("ChatFileReference_message_idx").on(table.source, table.messageId),
+  chatIdx: index("ChatFileReference_chat_idx").on(table.chatId, table.key),
+})).enableRLS();
+
+export const chatStorageAccount = pgTable("ChatStorageAccount", {
+  userId: uuid("userId").primaryKey(),
+  bytes: bigint("bytes", { mode: "number" }).notNull().default(0),
+  files: integer("files").notNull().default(0),
+  updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({ bytesIdx: index("ChatStorageAccount_bytes_idx").on(table.bytes.desc(), table.userId) })).enableRLS();
+
+export const chatFileHold = pgTable("ChatFileHold", {
+  key: text("key").notNull().references(() => chatFile.key),
+  source: varchar("source", { length: 16 }).notNull(),
+  ownerId: text("ownerId").notNull(),
+}, table => ({
+  pk: primaryKey({ columns: [table.key, table.source, table.ownerId] }),
+  ownerIdx: index("ChatFileHold_owner_idx").on(table.source, table.ownerId),
+})).enableRLS();
+
+export const chatStorageMaintenance = pgTable("ChatStorageMaintenance", {
+  id: integer("id").primaryKey().default(1),
+  prefix: integer("prefix").notNull().default(0),
+  cursor: text("cursor"),
+  leaseId: uuid("leaseId"),
+  leaseUntil: timestamp("leaseUntil", { withTimezone: true }),
+  inventoryCompletedAt: timestamp("inventoryCompletedAt", { withTimezone: true }),
+  lastRunAt: timestamp("lastRunAt", { withTimezone: true }),
+  lastResult: jsonb("lastResult"),
+}).enableRLS();
 
 export const ragRetrievalLog = pgTable(
   "RagRetrievalLog",

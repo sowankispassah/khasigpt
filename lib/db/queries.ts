@@ -1383,8 +1383,8 @@ export async function restoreChatById({ id }: { id: string }) {
       .returning();
 
     return restored ?? null;
-  } catch (_error) {
-    throw new ChatSDKError("bad_request:database", "Failed to restore chat");
+  } catch (error) {
+    throw new ChatSDKError("bad_request:database", getErrorCause(error, "Failed to restore chat"));
   }
 }
 

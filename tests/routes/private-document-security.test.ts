@@ -38,6 +38,8 @@ function harness() {
   const token = load("lib/security/blob-token.ts");
   const documents = load("lib/uploads/document-uploads.ts", { "@/lib/feature-access": { parseFeatureAccessMode: (value: string) => value } });
   const storage = load("lib/uploads/private-documents.ts", {
+    "@/lib/uploads/private-file-key": load("lib/uploads/private-file-key.ts"),
+    "@/lib/uploads/storage-records": { reserveChatFile: async () => {}, confirmChatFile: async () => {} },
     "@/lib/uploads/document-uploads": documents,
     "@vercel/blob": {
       get: async (k: string, options: any) => {

@@ -1,10 +1,12 @@
 import { EXPLORE_PROVIDER_COPY } from "@/lib/explore/provider-copy";
 import { USER_FEATURE_DEFINITIONS } from "@/lib/feature-access-catalog";
 import { REFERRAL_COPY } from "@/lib/referrals/copy";
+import { STORAGE_COPY } from "@/lib/uploads/storage-copy";
 import { GOOGLE_ALLOWANCE_COPY } from "@/lib/web-search/google-allowance-copy";
 import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
+  ...Object.values(STORAGE_COPY).map(copy => ({ key: copy.translationKey, defaultText: copy.defaultText, description: "Admin chat storage monitoring and retention." })),
   { key: "chat.popup.start", defaultText: "Send a message to get started.", description: "Empty popup conversation." },
   { key: "chat.popup.loading", defaultText: "Loading chat...", description: "Popup preparation and history loading." },
   { key: "chat.popup.load_error", defaultText: "Unable to load this chat. Please try again.", description: "Popup history failure." },

@@ -9,9 +9,11 @@ import {
   hardDeleteChatAction,
   restoreChatAction,
 } from "@/app/(admin)/actions";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { ChatListItem } from "@/lib/db/queries";
+import { STORAGE_COPY } from "@/lib/uploads/storage-copy";
 
 type Props = {
   initialActiveChats: ChatListItem[];
@@ -328,6 +330,7 @@ export function AdminChatTables({
             Soft-deleted chats remain hidden from users. Permanently delete them
             here if they are no longer needed.
           </p>
+          <p className="text-muted-foreground text-sm"><EditableTranslation {...STORAGE_COPY.restore} /></p>
         </header>
 
         {deletedError ? (

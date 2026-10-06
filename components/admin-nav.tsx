@@ -7,6 +7,7 @@ import {
   Contact,
   Database,
   Flag,
+  HardDrive,
   Languages,
   LayoutDashboard,
   Loader2,
@@ -58,7 +59,8 @@ type AdminBadgeKey =
   | "contacts"
   | "reports"
   | "jobs"
-  | "moderation";
+  | "moderation"
+  | "storage";
 
 type AdminNavItem = {
   badgeKey?: AdminBadgeKey;
@@ -129,6 +131,7 @@ const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { href: "/admin/settings", icon: Settings, label: "Settings" },
       { href: "/admin/translations", icon: Languages, label: "Translations" },
       { href: "/admin/logs", icon: ScrollText, label: "Audit Log" },
+      { badgeKey: "storage", href: "/admin/storage", icon: HardDrive, label: "Chat storage", labelKey: "admin.storage.nav" },
       { href: "/admin/coupons", icon: Percent, label: "Coupons" },
     ],
   },
@@ -146,6 +149,35 @@ export function AdminNav({
   const { setOpenMobile } = useSidebar();
   const [badgeCounts, setBadgeCounts] =
     useState<AdminBadgeCounts>(initialBadgeCounts);
+
+  useEffect(() => {
+    let cancelled = false;
+    let controller: AbortController | undefined;
+    async function refreshStorageAlerts() {
+      if (document.visibilityState !== "visible") return;
+      controller?.abort();
+      const current = new AbortController();
+      controller = current;
+      const timeout = window.setTimeout(() => current.abort(), 15_000);
+      try {
+        const response = await fetch("/api/admin/storage", { cache: "no-store", credentials: "same-origin", signal: current.signal });
+        if (!response.ok) return;
+        const body = await response.json() as { count?: unknown };
+        if (!cancelled && !current.signal.aborted && typeof body.count === "number" && Number.isSafeInteger(body.count) && body.count >= 0) {
+          const count = body.count;
+          setBadgeCounts(previous => ({ ...previous, storage: count }));
+        }
+      } catch {
+        // Preserve the last confirmed alert count; never block navigation.
+      } finally { window.clearTimeout(timeout); }
+    }
+    const refresh = () => { void refreshStorageAlerts(); };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    const interval = window.setInterval(refresh, 120_000);
+    refresh();
+    return () => { cancelled = true; controller?.abort(); window.clearInterval(interval); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
