@@ -19,6 +19,7 @@ import { type MouseEvent, useCallback, useEffect, useState } from "react";
 import { preloadChat } from "@/components/chat-loader";
 import { PlusIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
+import { SidebarResizeHandle } from "@/components/sidebar-resize-handle";
 import {
   EditableTranslation,
   useTranslationEdit,
@@ -768,6 +769,7 @@ export function AppSidebar({
           user={activeUser ?? user}
         />
       </SidebarContent>
+      <SidebarResizeHandle />
     </Sidebar>
   );
 }

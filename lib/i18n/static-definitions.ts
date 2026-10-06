@@ -6,6 +6,9 @@ import { GOOGLE_ALLOWANCE_COPY } from "@/lib/web-search/google-allowance-copy";
 import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
+  { key: "sidebar.resize", defaultText: "Resize sidebar", description: "Accessible label for the sidebar resize edge." },
+  { key: "sidebar.resize.hint", defaultText: "Drag to resize. Use arrow keys to adjust, or double-click to reset.", description: "Help for the desktop sidebar resize edge." },
+  { key: "sidebar.resize.touch_hint", defaultText: "Drag the edge to resize the sidebar.", description: "Help for the native sidebar resize edge." },
   { key: "billing.transaction_code.show", defaultText: "View full transaction code", description: "Eye button that reveals a shortened transaction reference." },
   { key: "billing.transaction_code.hide", defaultText: "Hide transaction code", description: "Hide the full transaction reference." },
   { key: "billing.transaction_code.full", defaultText: "Full transaction code", description: "Label above the full transaction reference." },
