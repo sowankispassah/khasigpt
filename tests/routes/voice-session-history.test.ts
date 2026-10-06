@@ -89,7 +89,9 @@ test("history reads enforce ownership, expose pending state, and never re-charge
     "@/lib/security/rate-limit": { incrementRateLimit: async () => ({ allowed: true }) },
     "@/lib/utils": { convertToUIMessages: (messages: any) => messages },
     "@/lib/utils/async": { withTimeout: (value: unknown) => value },
-    "@/lib/voice/duration-session": { findOwnedVoiceSession: async () => owned },
+    "drizzle-orm": { and: () => ({}), eq: () => ({}) },
+    "@/lib/db/schema": { liveVoiceSession: { id, userId: id, status: "status", pricing: "pricing" } },
+    "@/lib/db/chat-read-database": { withChatReadDatabase: async (_label: string, fn: (db: any) => unknown) => fn({ select: () => ({ from: () => ({ where: () => ({ limit: async () => owned ? [owned] : [] }) }) }) }) },
   };
   const exports: any = {};
   vm.runInNewContext(ts.transpileModule(readFileSync("lib/voice/session-history-route.ts", "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText,
