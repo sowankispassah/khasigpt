@@ -122,3 +122,29 @@ test("the HTTP relay delivers uncompressed readiness and rejects client-controll
   expect((await exports.handleVoiceRelay(request({ sessionId: id, messages: [{ realtimeInput: { audio: { data: "AAAA", mimeType: "audio/pcm;rate=16000" } } }] }), "web")).status).toBe(200);
   expect(uploaded).toHaveLength(1);
 });
+
+
+test("relay batches enough audio to sustain a connection whose RTT exceeds eight chunk durations", async () => {
+  const uploads: any[] = [];
+  let deliver: ((line: string) => void) | undefined;
+  let finishStream: (() => void) | undefined;
+  let finishUpload: (() => void) | undefined;
+  const socket = new VoiceRelaySocket({
+    stream: async (_body, line) => { deliver = line; await new Promise<void>(resolve => { finishStream = resolve; }); },
+    upload: async body => { uploads.push(body); if (!(body as any).close) await new Promise<void>(resolve => { finishUpload = resolve; }); },
+  });
+  await expect.poll(() => Boolean(deliver)).toBe(true);
+  if (!deliver) throw new Error("Stream not ready");
+  deliver(JSON.stringify({ relayStarted: { sessionId: id } }));
+  const chunk = JSON.stringify({ realtimeInput: { audio: { data: "AAAA", mimeType: "audio/pcm;rate=16000" } } });
+  socket.send(chunk);
+  await expect.poll(() => uploads.length).toBe(1);
+  for (let i = 0; i < 24; i++) socket.send(chunk);
+  if (!finishUpload) throw new Error("Upload not ready");
+  finishUpload();
+  await expect.poll(() => uploads.length).toBe(2);
+  expect(uploads[1].messages).toHaveLength(24);
+  socket.close();
+  if (finishUpload) finishUpload();
+  if (finishStream) finishStream();
+});

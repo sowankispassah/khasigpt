@@ -13,7 +13,7 @@ import { getVoiceRelayRedis, relayInputKey, relayOwnerKey } from "@/lib/voice/re
 
 const audio = z.object({ realtimeInput: z.object({ audio: z.object({ data: z.string().max(44000).regex(/^[A-Za-z0-9+/]+={0,2}$/), mimeType: z.literal("audio/pcm;rate=16000") }).strict() }).strict() }).strict();
 const end = z.object({ realtimeInput: z.object({ audioStreamEnd: z.literal(true) }).strict() }).strict();
-const control = z.object({ sessionId: z.string().uuid(), close: z.boolean().optional(), messages: z.array(z.union([audio, end])).max(8).default([]) }).strict();
+const control = z.object({ sessionId: z.string().uuid(), close: z.boolean().optional(), messages: z.array(z.union([audio, end])).max(32).default([]) }).strict();
 
 export async function handleVoiceRelay(request: Request, platform: "web" | "native") {
   const auth = await getAuthenticatedUser(request, { allowBearer: platform === "native" });

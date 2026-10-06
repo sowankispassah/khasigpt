@@ -36,13 +36,13 @@ export class VoiceRelaySocket {
     if (this.readyState !== 1) return;
     const message = JSON.parse(raw);
     if (!message.realtimeInput?.audio && !message.realtimeInput?.audioStreamEnd) return;
-    if (this.pending.length >= 32) { this.onerror?.(); this.close(); return; }
+    if (this.pending.length >= 64) { this.onerror?.(); this.close(); return; }
     this.pending.push(message);
   }
   private async flush() {
     if (this.uploading || this.readyState !== 1 || !this.sessionId || (!this.pending.length && Date.now() - this.heartbeatAt < 5000)) return;
     this.uploading = true;
-    const messages = this.pending.splice(0, 8);
+    const messages = this.pending.splice(0, 32);
     this.heartbeatAt = Date.now();
     try { await this.io.upload({ sessionId: this.sessionId, messages }); }
     catch { this.onerror?.(); this.close(); }
