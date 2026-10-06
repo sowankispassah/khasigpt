@@ -215,12 +215,15 @@
 
   body {
     @apply bg-background text-foreground;
-    overflow-x: hidden;
+    /* Clip sideways overflow without creating a second vertical scroll container. */
+    overflow-x: clip;
     position: relative;
   }
 
   html {
-    overflow-x: hidden;
+    overflow-x: clip;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
   }
 }
 
@@ -283,34 +286,35 @@
   @apply bg-blue-200 hover:bg-blue-300 dark:hover:bg-blue-400/50 dark:text-blue-50 dark:bg-blue-500/40;
 }
 
-/* minimal scrollbar styling */
+/* Keep scroll handles visible in light and dark themes. */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--muted);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
+  background: var(--muted-foreground);
+  border: 2px solid var(--muted);
+  border-radius: 5px;
   transition: background 0.2s ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: --alpha(var(--muted-foreground) / 0.5);
+  background: var(--foreground);
 }
 
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
 
-/* firefox scrollbar styling */
+/* Standard scrollbar properties also apply in current Chromium browsers. */
 * {
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  scrollbar-width: auto;
+  scrollbar-color: var(--muted-foreground) var(--muted);
 }
 
 @theme inline {

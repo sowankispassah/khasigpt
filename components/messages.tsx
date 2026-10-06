@@ -123,7 +123,7 @@ function PureMessages({
   submitScrollSignal = 0,
   greetingTitle,
   greetingSubtitle,
-  showScrollbar = false,
+  showScrollbar = true,
 }: MessagesProps) {
   const renderMessages = useMemo(() => dedupeMessages(messages), [messages]);
   const displayMessages = useMemo(
@@ -623,7 +623,7 @@ function PureMessages({
         className={cn(
           "overscroll-behavior-contain -webkit-overflow-scrolling-touch relative flex-1 touch-pan-y [scrollbar-gutter:stable_both-edges]",
           showScrollbar
-            ? "overflow-y-auto [scrollbar-width:auto] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/80"
+            ? "overflow-y-auto [scrollbar-width:auto] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground"
             : "overflow-y-scroll [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         )}
         ref={messagesContainerRef}
@@ -672,7 +672,7 @@ function PureMessages({
       className={cn(
         "overscroll-behavior-contain -webkit-overflow-scrolling-touch relative flex-1 touch-pan-y [scrollbar-gutter:stable_both-edges]",
         showScrollbar
-          ? "overflow-y-auto [scrollbar-width:auto] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/80"
+          ? "overflow-y-auto [scrollbar-width:auto] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground"
           : "overflow-y-scroll [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       )}
       ref={messagesContainerRef}

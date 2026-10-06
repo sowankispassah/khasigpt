@@ -46,8 +46,8 @@ test("users and admins download receipts from recharge history; mobile ownership
     await dialog.getByRole("button", { name: "Download receipt" }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: "tmp/pdfs/receipt-history-mobile.png" });
     await page.goto("/admin/account");
-    const recharge = page.locator("details").filter({ has: page.locator("tr").filter({ hasText: email }) }).locator("summary");
-    await recharge.scrollIntoViewIfNeeded();
+    const recharge = page.locator("summary").filter({ hasText: "Recharge log" });
+    await expect(recharge).toBeVisible();
     await recharge.click();
     const adminDownload = page.getByRole("row").filter({ hasText: email }).getByRole("button", { name: "Download receipt" });
     await adminDownload.scrollIntoViewIfNeeded();

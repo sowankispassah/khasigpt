@@ -2291,7 +2291,7 @@ export function Chat({
         />
 
         {isJobsMode && !isReadonly ? (
-          <div data-jobs-scroll-container className="overscroll-behavior-contain -webkit-overflow-scrolling-touch relative flex-1 touch-pan-y overflow-y-scroll [scrollbar-gutter:stable_both-edges] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div data-jobs-scroll-container className="overscroll-behavior-contain -webkit-overflow-scrolling-touch relative min-h-0 flex-1 touch-pan-y overflow-y-auto [scrollbar-gutter:stable_both-edges]">
             <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 px-2 pb-6 pt-[10px] md:px-4">
               {jobsHeader}
             </div>
