@@ -279,7 +279,9 @@ export function priceCostPlusLineItems({
     (total, lineItem) => total + lineItem.rawCreditUnits,
     0
   );
-  const totalCreditUnits = Math.max(1, Math.ceil(rawTotal - Number.EPSILON));
+  // Scale the floating-point tolerance to the value; a bare EPSILON is too
+  // small at wallet-sized values and can add a unit to an exact integer.
+  const totalCreditUnits = Math.max(1, Math.ceil(rawTotal - Math.max(1, rawTotal) * Number.EPSILON * 4));
   let unitsToAllocate =
     totalCreditUnits -
     priced.reduce((total, lineItem) => total + lineItem.creditUnits, 0);

@@ -21,6 +21,7 @@ function harness() {
   const modules = new Map<string, any>();
   const model = { id: userId, providerModelId: "fixture", displayName: "fixture", voiceName: "fixture", mediaResolution: "MEDIA_RESOLUTION_MEDIUM", systemInstruction: "fixture" };
   const mocks: Record<string, any> = {
+    "@/lib/voice/duration-session": { findOwnedVoiceSession: async () => null },
     "@/lib/utils": { generateUUID: () => userId },
     "@/lib/api/auth": { getAuthenticatedUser: async () => context },
     "@/lib/db/auth-queries": { getAuthUserById: async () => { calls.lookup++; if (lookupFails) throw new Error("fixture failure"); return current; } },

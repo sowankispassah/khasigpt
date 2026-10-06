@@ -50,6 +50,7 @@ const VOICE_TOKEN_RATE_LIMIT = {
 const voiceTokenSchema = z
   .object({
     modelId: z.string().uuid().optional(),
+    supportsDurationVoice: z.boolean().optional(),
     supportsRagTool: z.boolean().optional().default(false),
   })
   .optional();
@@ -142,7 +143,6 @@ export async function POST(request: Request) {
     "mobile.voice-token.model",
     () =>
       resolveLiveVoiceModelConfig({
-        modelId: parsedBody.data?.modelId,
         platform: "native",
       }),
     { slowMs: 750 }
@@ -199,6 +199,13 @@ export async function POST(request: Request) {
       "You do not have enough credits to start a live voice chat.",
       402
     );
+  }
+
+  if (liveVoiceModel.durationPricing) {
+    if (!parsedBody.data?.supportsDurationVoice) return fallbackResponse("platform-unavailable", "Please update KhasiGPT to start voice chat.", 409);
+    return Response.json({ liveSupported: true, transport: "webrtc", sessionEndpoint: "/api/mobile/chat/voice-session",
+      token: "", liveVoiceModelConfigId: null, modelDisplayName: "", modelProviderModelId: "", voiceName: "", mediaResolution: "", systemInstruction: "", webSocketUrl: "", inputAudioMimeType: "", inputSampleRate: 0, outputSampleRate: 0, expireTime: "", newSessionExpireTime: "",
+    } satisfies GeminiVoiceTokenResponse, { headers: noStoreHeaders() });
   }
 
   const apiKey = process.env.GOOGLE_API_KEY?.trim();

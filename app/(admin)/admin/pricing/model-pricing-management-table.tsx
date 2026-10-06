@@ -60,7 +60,7 @@ export type ModelPricingRow = {
   markupMultiplier: number;
   name: string;
   providerInputCostUsd: number | null;
-  providerCostType: "per_generation" | "per_token";
+  providerCostType: "per_generation" | "per_token" | "per_minute";
   providerLabel: string;
   providerModelId: string;
   providerOutputCostUsd: number;
@@ -176,7 +176,7 @@ export function ModelPricingManagementTable({
 
   const hasCompletePricing = (model: ModelPricingRow) =>
     model.providerOutputCostUsd > 0 &&
-    (model.providerCostType === "per_generation" ||
+    (model.providerCostType !== "per_token" ||
       Number(model.providerInputCostUsd ?? 0) > 0);
 
   const closeDialog = () => {
@@ -290,7 +290,7 @@ export function ModelPricingManagementTable({
                   ) : visibleModels.map((model) => {
                     const pricingComplete = hasCompletePricing(model);
                     const tokenPriced = model.providerCostType === "per_token";
-                    const unitLabel = tokenPriced ? translate("admin.pricing.per_million", "per 1M tokens") : translate("admin.pricing.per_output", "per output");
+                    const unitLabel = model.providerCostType === "per_minute" ? translate("admin.pricing.live.per_minute", "per minute") : tokenPriced ? translate("admin.pricing.per_million", "per 1M tokens") : translate("admin.pricing.per_output", "per output");
                     return (
                       <tr className="bg-card/70 transition hover:bg-muted/20" key={model.key}>
                         <td className="max-w-[250px] px-4 py-3"><span className="font-medium">{model.name}</span><span className="block truncate font-mono text-muted-foreground text-xs">{model.providerModelId}</span></td>

@@ -52,6 +52,7 @@ import {
 } from "@/lib/settings/feature-access-settings";
 import { withTimeout } from "@/lib/utils/async";
 import { LIVE_VOICE_MODEL_CONFIG_CACHE_TAG } from "@/lib/voice/live";
+import { isDurationVoiceModel, readDurationVoicePricing } from "@/lib/voice/pricing";
 import { loadWebSearchConfig } from "@/lib/web-search/config";
 import { FeatureAccessModeControl } from "../settings/feature-access-mode-control";
 import { PlanPricingFields } from "../settings/plan-pricing-fields";
@@ -467,7 +468,9 @@ function buildModelPricingRows({
   const voiceRows = modelSnapshot
     .filter((model) => model.type === "live_voice" && !model.deletedAt)
     .map<ModelPricingRow>((model) => {
-      const markup = normalizeMarkupMultiplier(model.markupMultiplier, 3);
+      const durationModel = isDurationVoiceModel(model);
+      const duration = durationModel ? readDurationVoicePricing(model.config) : null;
+      const markup = duration ? duration.customerChargePerMinuteUsd / duration.providerCostPerMinuteUsd : normalizeMarkupMultiplier(model.markupMultiplier, 3);
       const providerInputCostUsd = Math.max(
         0,
         Number(model.inputProviderCostPerMillion ?? 0)
@@ -481,16 +484,16 @@ function buildModelPricingRows({
       const customerOutputChargeInr =
         providerOutputCostUsd * usdToInr * markup;
       return {
-        creditInputCharge: creditsForCharge(
+        creditInputCharge: duration ? null : creditsForCharge(
           customerInputChargeInr,
           walletUnitsPerInr
         ),
         creditOutputCharge: creditsForCharge(
-          customerOutputChargeInr,
+          duration ? duration.customerChargePerMinuteUsd * usdToInr : customerOutputChargeInr,
           walletUnitsPerInr
         ),
-        customerInputChargeInr,
-        customerOutputChargeInr,
+        customerInputChargeInr: duration ? null : customerInputChargeInr,
+        customerOutputChargeInr: duration ? duration.customerChargePerMinuteUsd * usdToInr : customerOutputChargeInr,
         id: model.id,
         isActive: model.isActive,
         isDefault: model.isDefault,
@@ -498,11 +501,11 @@ function buildModelPricingRows({
         key: `live_voice:${model.id}`,
         markupMultiplier: markup,
         name: model.displayName,
-        providerInputCostUsd,
-        providerCostType: "per_token",
+        providerInputCostUsd: durationModel ? null : providerInputCostUsd,
+        providerCostType: durationModel ? "per_minute" : "per_token",
         providerLabel: PROVIDER_LABELS[model.provider] ?? model.provider,
         providerModelId: model.providerModelId,
-        providerOutputCostUsd,
+        providerOutputCostUsd: durationModel ? (duration?.providerCostPerMinuteUsd ?? 0) : providerOutputCostUsd,
         type: "live_voice",
         updatedAt: toIsoString(model.updatedAt),
       };

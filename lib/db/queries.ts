@@ -8305,8 +8305,10 @@ export async function listLiveVoiceModelConfigs({
 
 export async function getDefaultLiveVoiceModelConfig({
   platform,
+  provider,
 }: {
   platform: "native" | "web";
+  provider?: "google" | "openai";
 }): Promise<LiveVoiceModelConfig | null> {
   try {
     const platformCondition =
@@ -8315,6 +8317,7 @@ export async function getDefaultLiveVoiceModelConfig({
         : eq(liveVoiceModelConfig.enabledOnNative, true);
     const commonConditions = and(
       eq(liveVoiceModelConfig.isEnabled, true),
+      provider ? eq(liveVoiceModelConfig.provider, provider) : undefined,
       gt(liveVoiceModelConfig.inputProviderCostPerMillion, 0),
       gt(liveVoiceModelConfig.outputProviderCostPerMillion, 0),
       platformCondition,
@@ -11168,7 +11171,8 @@ export async function listActiveSubscriptionSummaries({
 }
 
 export type AdditionalUsageCharge = {
-  category: "web_search";
+  category: "web_search" | "live_voice";
+  liveVoiceModelConfigId?: string | null;
   providerKey: string;
   providerCostPerUnitUsd: number;
   unitCount: number;
@@ -11519,7 +11523,9 @@ export async function recordTokenUsage({
           }
         }
         for (const additionalCharge of additionalCharges) {
-          const providerCostUsd = calculateUnitProviderCostUsd({
+          const providerCostUsd = additionalCharge.category === "live_voice"
+            ? additionalCharge.providerCostPerUnitUsd * additionalCharge.unitCount
+            : calculateUnitProviderCostUsd({
             providerCostPerUnitUsd: additionalCharge.providerCostPerUnitUsd,
             unitCount: additionalCharge.unitCount,
           });
@@ -11531,6 +11537,7 @@ export async function recordTokenUsage({
               providerKey: additionalCharge.providerKey,
               unitCount: additionalCharge.unitCount,
               metadata: additionalCharge.metadata,
+              liveVoiceModelConfigId: additionalCharge.liveVoiceModelConfigId,
             });
           }
         }

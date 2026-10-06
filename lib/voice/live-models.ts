@@ -1,7 +1,6 @@
 import "server-only";
 
 import { buildKhasiGptSystemInstruction } from "@/lib/ai/identity";
-import { hasCompleteTokenProviderPricing } from "@/lib/billing/cost-plus";
 import {
   getDefaultLiveVoiceModelConfig,
   getLiveVoiceModelConfigById,
@@ -9,6 +8,7 @@ import {
 } from "@/lib/db/queries";
 import type { LiveVoiceModelConfig } from "@/lib/db/schema";
 import { buildVoiceChatSystemInstruction } from "@/lib/voice/live";
+import { type DurationVoicePricing, hasLiveVoicePricing, readDurationVoicePricing } from "@/lib/voice/pricing";
 
 export type LiveVoicePlatform = "native" | "web";
 
@@ -21,6 +21,8 @@ export type ResolvedLiveVoiceModelConfig = {
   systemInstruction: string;
   voiceName: string;
   mediaResolution: string;
+  durationPricing: DurationVoicePricing | null;
+  markupMultiplier: number;
 };
 
 function toResolvedLiveVoiceModelConfig(
@@ -39,23 +41,28 @@ function toResolvedLiveVoiceModelConfig(
     systemInstruction,
     voiceName: config.voiceName?.trim() || "Zephyr",
     mediaResolution: config.mediaResolution?.trim() || "MEDIA_RESOLUTION_MEDIUM",
+    durationPricing: readDurationVoicePricing(config.config),
+    markupMultiplier: config.markupMultiplier,
   };
 }
 
 export async function resolveLiveVoiceModelConfig({
   modelId,
   platform,
+  provider,
 }: {
   modelId?: string | null;
   platform: LiveVoicePlatform;
+  provider?: "google" | "openai";
 }): Promise<ResolvedLiveVoiceModelConfig | null> {
   const candidate = modelId
     ? await getLiveVoiceModelConfigById({ id: modelId })
-    : await getDefaultLiveVoiceModelConfig({ platform });
+    : await getDefaultLiveVoiceModelConfig({ platform, provider });
 
   if (!candidate) {
     return null;
   }
+  if (provider && candidate.provider !== provider) return null;
 
   if (!candidate.isEnabled || candidate.deletedAt) {
     return null;
@@ -66,10 +73,7 @@ export async function resolveLiveVoiceModelConfig({
   if (platform === "native" && !candidate.enabledOnNative) {
     return null;
   }
-  if (!hasCompleteTokenProviderPricing({
-    inputCostPerMillionUsd: candidate.inputProviderCostPerMillion,
-    outputCostPerMillionUsd: candidate.outputProviderCostPerMillion,
-  })) {
+  if (!hasLiveVoicePricing(candidate)) {
     console.error("[live-voice] Configured model is missing provider pricing.", {
       modelConfigId: candidate.id,
     });

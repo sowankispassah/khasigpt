@@ -70,6 +70,7 @@ import {
 import type { VisibilityType } from "./visibility-selector";
 
 type VoiceConversationPair = {
+  voiceSessionId?: string;
   assistantText: string;
   inputTokens?: number;
   outputTokens?: number;
@@ -87,6 +88,7 @@ const VOICE_TURN_SAVE_TIMEOUT_MS = 20_000;
 
 async function postVoiceTurn(
   payload: {
+    voiceSessionId?: string;
     assistantMessageId: string;
     assistantText: string;
     chatId: string;
@@ -163,6 +165,7 @@ function buildVoiceConversationPairs(
     }
     if (pendingUserText) {
       pairs.push({
+        voiceSessionId: message.voiceSessionId,
         assistantText: text,
         inputTokens: message.usage?.inputTokens,
         outputTokens: message.usage?.outputTokens,
@@ -793,6 +796,7 @@ function PureMultimodalInput({
           try {
             const savedTurn = await postVoiceTurn(
               {
+                voiceSessionId: pair.voiceSessionId,
                 assistantMessageId: pair.assistantMessageId,
                 assistantText: pair.assistantText,
                 chatId: _chatId,
@@ -920,11 +924,12 @@ function PureMultimodalInput({
     setIsVoiceDialogOpen(true);
     try {
       const controller = await startWebGeminiVoiceTurn({
+        onCompletedSession: messages => { if (voiceSessionIdRef.current === voiceSessionId) void saveVoiceConversation(messages).catch(() => setVoiceError(translate("voice.chat.save_failed", "Unable to save this voice chat."))); },
         onError: (error) => {
           if (voiceSessionIdRef.current !== voiceSessionId) {
             return;
           }
-          setVoiceError(error.message);
+          setVoiceError("code" in error && error.code === "live_session_ended" ? translate("voice.chat.session_ended", "This voice session has ended. Start a new session to continue.") : "code" in error && error.code === "live_connection_failed" ? translate("voice.chat.connection_failed", "Voice chat could not stay connected. Please try again.") : error.message);
         },
         onInputLevel: (level) => {
           if (voiceSessionIdRef.current === voiceSessionId) {
@@ -975,6 +980,7 @@ function PureMultimodalInput({
     resetVoiceState,
     translate,
     voiceChatEnabled,
+    saveVoiceConversation,
   ]);
 
   useEffect(() => {

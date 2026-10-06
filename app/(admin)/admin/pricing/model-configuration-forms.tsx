@@ -11,14 +11,11 @@ import { EditableTranslation } from "@/components/translation-edit-provider";
 import { DEFAULT_FREE_MESSAGES_PER_DAY } from "@/lib/constants";
 import type { AdminModelPricingSnapshotRow } from "@/lib/db/queries";
 import {
-  GOOGLE_LIVE_VOICE_OPTIONS,
-  LIVE_VOICE_MEDIA_RESOLUTION_OPTIONS,
-} from "@/lib/voice/live";
-import {
   ImageCostPlusFields,
   type PricingPreviewContext,
   TokenCostPlusFields,
 } from "./cost-plus-pricing-fields";
+import { LiveVoiceConfigFields } from "./live-voice-config-fields";
 
 const PROVIDER_OPTIONS = [
   { label: "OpenAI", value: "openai" },
@@ -424,32 +421,13 @@ export function LiveVoiceModelConfigurationForm({
       action={create ? createLiveVoiceModelConfigAction : updateLiveVoiceModelConfigAction}
       className="grid gap-4 md:grid-cols-2"
     >
-      <CommonFields model={model} prefix={prefix} provider="google" />
+      <LiveVoiceConfigFields context={context} model={model} prefix={prefix} />
       <TextareaField
         defaultValue={model?.systemInstruction ?? ""}
         id={`${prefix}-system-instruction`}
         label="Live voice system instruction"
         name="systemInstruction"
         translationKey="admin.pricing.model_form.voice_instruction"
-      />
-      <label className="flex flex-col gap-2" htmlFor={`${prefix}-voice`}>
-        <FieldLabel description="Voice selector label in the Admin Pricing model editor." translationKey="admin.pricing.model_form.voice_name">Voice</FieldLabel>
-        <select className={inputClassName} defaultValue={model?.voiceName ?? "Zephyr"} id={`${prefix}-voice`} name="voiceName">
-          {GOOGLE_LIVE_VOICE_OPTIONS.map((voice) => <option key={voice.value} value={voice.value}>{voice.label} · {voice.description}</option>)}
-        </select>
-      </label>
-      <label className="flex flex-col gap-2" htmlFor={`${prefix}-resolution`}>
-        <FieldLabel description="Media-resolution selector label in the Admin Pricing model editor." translationKey="admin.pricing.model_form.media_resolution">Media resolution</FieldLabel>
-        <select className={inputClassName} defaultValue={model?.mediaResolution ?? "MEDIA_RESOLUTION_MEDIUM"} id={`${prefix}-resolution`} name="mediaResolution">
-          {LIVE_VOICE_MEDIA_RESOLUTION_OPTIONS.map((resolution) => <option key={resolution.value} value={resolution.value}>{resolution.label}</option>)}
-        </select>
-      </label>
-      <TokenCostPlusFields
-        context={context}
-        initialInputCost={Number(model?.inputProviderCostPerMillion ?? 0)}
-        initialMarkup={Number(model?.markupMultiplier ?? 3)}
-        initialOutputCost={Number(model?.outputProviderCostPerMillion ?? 0)}
-        prefix={prefix}
       />
       <CheckboxField defaultChecked={model?.isEnabled ?? true} id={`${prefix}-enabled`} label="Enabled" name="isEnabled" translationKey="admin.pricing.model_form.enabled" />
       <CheckboxField defaultChecked={model?.enabledOnWeb ?? true} id={`${prefix}-web`} label="Enabled on web" name="enabledOnWeb" translationKey="admin.pricing.model_form.enabled_web" />

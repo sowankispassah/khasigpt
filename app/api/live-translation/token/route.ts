@@ -177,6 +177,7 @@ export async function POST(request: Request) {
       "web.live-translation-token.model",
       () =>
         resolveLiveVoiceModelConfig({
+          provider: "google",
           modelId: parsedBody.data.modelId,
           platform: "web",
         }),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { calculateCostPlusPreview } from "@/lib/billing/cost-plus";
@@ -48,7 +48,7 @@ export function CostPlusPreviewCard({
   context: PricingPreviewContext | null;
   providerCostUsd: number;
   markupMultiplier: number;
-  title: string;
+  title: ReactNode;
 }) {
   const { translate } = useTranslation();
   const preview = useMemo(

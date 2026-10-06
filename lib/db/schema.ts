@@ -359,6 +359,20 @@ export type LiveVoiceModelConfig = InferSelectModel<
   typeof liveVoiceModelConfig
 >;
 
+export const liveVoiceSession = pgTable("LiveVoiceSession", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("userId").notNull().references(() => user.id),
+  modelConfigId: uuid("modelConfigId").notNull().references(() => liveVoiceModelConfig.id),
+  providerSessionId: text("providerSessionId").unique(),
+  platform: varchar("platform", { length: 16 }).notNull(),
+  status: varchar("status", { length: 24 }).notNull().default("pending"),
+  pricing: jsonb("pricing").$type<Record<string, unknown>>().notNull(),
+  billedSeconds: doublePrecision("billedSeconds").notNull().default(0),
+  observedSeconds: doublePrecision("observedSeconds").notNull().default(0),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+}, table => ({ userStatusIdx: index("LiveVoiceSession_user_status_idx").on(table.userId, table.status, table.createdAt) }));
+
 export type CharacterRefImage = {
   imageId?: string | null;
   storageKey?: string | null;

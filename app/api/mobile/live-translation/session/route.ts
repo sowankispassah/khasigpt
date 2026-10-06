@@ -139,6 +139,7 @@ export async function POST(request: Request) {
 
   const liveVoiceModel = await withTimeout(
     resolveLiveVoiceModelConfig({
+          provider: "google",
       platform: "native",
     }),
     LIVE_TRANSLATION_MODEL_CONFIG_TIMEOUT_MS

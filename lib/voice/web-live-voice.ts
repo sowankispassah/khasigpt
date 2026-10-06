@@ -14,6 +14,7 @@ export type WebGeminiVoiceTurnStatus =
   | "speaking";
 
 export type WebGeminiVoiceConversationMessage = {
+  voiceSessionId?: string;
   id: string;
   role: "assistant" | "user";
   text: string;
@@ -30,12 +31,14 @@ export type WebGeminiVoiceTurnUsage = {
 };
 
 export type WebGeminiVoiceTurnController = {
+  serverMetered?: boolean;
   cancel: () => void;
   getMessages: () => WebGeminiVoiceConversationMessage[];
   stop: () => Promise<WebGeminiVoiceTurnResult>;
 };
 
-type WebGeminiVoiceCallbacks = {
+export type WebGeminiVoiceCallbacks = {
+  onCompletedSession?: (messages: WebGeminiVoiceConversationMessage[]) => void;
   onAssistantTranscript?: (text: string) => void;
   onError?: (error: Error) => void;
   onInputLevel?: (level: number) => void;
@@ -301,6 +304,7 @@ async function requestVoiceToken({
 }
 
 export async function startWebGeminiVoiceTurn({
+  onCompletedSession,
   onAssistantTranscript,
   onError,
   onInputLevel,
@@ -317,10 +321,14 @@ export async function startWebGeminiVoiceTurn({
 
   onStatus?.("connecting");
   const tokenResponse = await requestVoiceToken({
-    tokenBody,
+    tokenBody: { ...tokenBody, supportsDurationVoice: true },
     tokenEndpoint,
     unavailableMessage,
   });
+  if (tokenResponse.transport === "webrtc") {
+    const { startDurationWebVoice } = await import("@/lib/voice/web-duration-voice");
+    return startDurationWebVoice({ onCompletedSession, onAssistantTranscript, onError, onInputLevel, onMessages, onStatus, onUserTranscript }, tokenResponse.sessionEndpoint ?? "/api/chat/voice-session");
+  }
   const audioContext = new AudioContext();
   const mediaStream = await navigator.mediaDevices.getUserMedia({
     audio: {

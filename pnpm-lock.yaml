@@ -294,6 +294,9 @@ importers:
       usehooks-ts:
         specifier: ^3.1.0
         version: 3.1.1(react@19.2.8)
+      ws:
+        specifier: 8.21.0
+        version: 8.21.0(bufferutil@4.0.9)
       zod:
         specifier: ^3.25.76
         version: 3.25.76
@@ -331,6 +334,9 @@ importers:
       '@types/react-syntax-highlighter':
         specifier: ^15.5.13
         version: 15.5.13
+      '@types/ws':
+        specifier: 8.18.1
+        version: 8.18.1
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10

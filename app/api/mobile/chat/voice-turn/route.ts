@@ -18,6 +18,7 @@ import { isFeatureEnabledForUser } from "@/lib/settings/user-feature-access";
 import { generateUUID } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
 import { getVoiceChatAccessModeForPlatform } from "@/lib/voice/config";
+import { findOwnedVoiceSession } from "@/lib/voice/duration-session";
 import { resolveLiveVoiceModelConfig } from "@/lib/voice/live-models";
 import { enforceLiveSessionLaunchAccess } from "@/lib/voice/live-session-access";
 import { normalizeKhasiVoiceTranscript } from "@/lib/voice/transcript-normalization";
@@ -31,6 +32,7 @@ const VOICE_TURN_SAVE_TIMEOUT_MS = 12_000;
 const MAX_VOICE_TURN_TEXT_LENGTH = 20_000;
 
 const voiceTurnSchema = z.object({
+  voiceSessionId: z.string().uuid().optional(),
   assistantMessageId: z.string().uuid().optional(),
   assistantText: z.string().trim().min(1).max(MAX_VOICE_TURN_TEXT_LENGTH),
   chatId: z.string().uuid(),
@@ -112,7 +114,9 @@ export async function POST(request: Request) {
     );
   }
 
-  const liveVoiceModel = await withTimeout(
+  const ownedSession = parsedBody.data.voiceSessionId ? await findOwnedVoiceSession(parsedBody.data.voiceSessionId, authContext.user.id) : null;
+  if (parsedBody.data.voiceSessionId && (!ownedSession?.providerSessionId || ownedSession.status === "failed")) return Response.json({ message: "Voice session could not be confirmed." }, { status: 403, headers: noStoreHeaders() });
+  const liveVoiceModel = ownedSession ? { id: ownedSession.modelConfigId, durationPricing: true } : await withTimeout(
     resolveLiveVoiceModelConfig({
       platform: "native",
     }),
@@ -133,6 +137,8 @@ export async function POST(request: Request) {
       { headers: noStoreHeaders(), status: 404 }
     );
   }
+
+  if (!ownedSession && liveVoiceModel.durationPricing) return Response.json({ message: "A confirmed voice session is required." }, { status: 409, headers: noStoreHeaders() });
 
   const {
     assistantText,
@@ -258,7 +264,7 @@ export async function POST(request: Request) {
   let usageError: string | null = null;
 
   try {
-    await withTimeout(
+    if (!ownedSession) await withTimeout(
       recordTokenUsage({
         chatId,
         inputTokens,

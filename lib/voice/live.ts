@@ -67,6 +67,8 @@ export const LIVE_VOICE_MEDIA_RESOLUTION_OPTIONS = [
 export type GeminiVoiceTokenResponse =
   | {
       liveSupported: true;
+      transport?: "webrtc";
+      sessionEndpoint?: string;
       token: string;
       liveVoiceModelConfigId: string | null;
       modelDisplayName: string;

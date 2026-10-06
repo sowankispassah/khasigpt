@@ -3,7 +3,6 @@
 import { put } from "@vercel/blob";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
-
 import {
   ADMIN_SETTINGS_CACHE_TAG,
   ADMIN_SETTINGS_IMAGE_MODELS_CACHE_TAG,
@@ -189,9 +188,11 @@ import {
 } from "@/lib/uploads/document-uploads";
 import { generateUUID } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
+import { parseLiveVoiceForm } from "@/lib/voice/admin-model-form";
 import {
   LIVE_VOICE_MODEL_CONFIG_CACHE_TAG,
 } from "@/lib/voice/live";
+import { hasLiveVoicePricing } from "@/lib/voice/pricing";
 
 async function requireAdmin() {
   const session = await getActiveAdminSession();
@@ -1745,6 +1746,8 @@ export async function createLiveVoiceModelConfigAction(formData: FormData) {
   "use server";
   const actor = await requireAdmin();
 
+  let liveFields: ReturnType<typeof parseLiveVoiceForm>;
+  try { liveFields = parseLiveVoiceForm(formData); } catch { redirect("/admin/pricing?notice=model-provider-cost-required"); }
   const key = formData.get("key")?.toString().trim();
   const provider = formData.get("provider")?.toString().trim();
   const providerModelId = formData.get("providerModelId")?.toString().trim();
@@ -1787,24 +1790,18 @@ export async function createLiveVoiceModelConfigAction(formData: FormData) {
   try {
     created = await createLiveVoiceModelConfig({
       key,
-      provider: provider as any,
-      providerModelId,
       displayName,
       description: formData.get("description")?.toString() ?? "",
       systemInstruction:
         formData.get("systemInstruction")?.toString().trim() ?? "",
-      voiceName: formData.get("voiceName")?.toString().trim() || "Zephyr",
       mediaResolution:
         formData.get("mediaResolution")?.toString().trim() ||
         "MEDIA_RESOLUTION_MEDIUM",
-      markupMultiplier,
-      inputProviderCostPerMillion,
-      outputProviderCostPerMillion,
-      config: parseJson(formData.get("configJson")),
       isEnabled: parseBoolean(formData.get("isEnabled")),
       enabledOnWeb: parseBoolean(formData.get("enabledOnWeb")),
       enabledOnNative: parseBoolean(formData.get("enabledOnNative")),
       isDefault: parseBoolean(formData.get("isDefault")),
+      ...liveFields,
     });
   } catch (error) {
     console.error("Failed to create live voice model configuration", error);
@@ -1832,6 +1829,8 @@ export async function updateLiveVoiceModelConfigAction(formData: FormData) {
     throw new Error("Missing live voice model configuration id");
   }
 
+  let liveFields: ReturnType<typeof parseLiveVoiceForm>;
+  try { liveFields = parseLiveVoiceForm(formData); } catch { redirect("/admin/pricing?notice=model-provider-cost-required"); }
   const patch: Parameters<typeof updateLiveVoiceModelConfig>[0] = { id };
 
   const provider = formData.get("provider");
@@ -1907,6 +1906,7 @@ export async function updateLiveVoiceModelConfigAction(formData: FormData) {
 
   let updated: Awaited<ReturnType<typeof updateLiveVoiceModelConfig>>;
   try {
+    Object.assign(patch, liveFields);
     updated = await updateLiveVoiceModelConfig(patch);
     if (!updated) {
       redirect("/admin/pricing?notice=live-voice-model-update-missing");
@@ -1990,8 +1990,7 @@ export async function setDefaultLiveVoiceModelConfigAction(formData: FormData) {
   const model = await getLiveVoiceModelConfigById({ id });
   if (
     !model ||
-    Number(model.inputProviderCostPerMillion ?? 0) <= 0 ||
-    Number(model.outputProviderCostPerMillion ?? 0) <= 0
+    !hasLiveVoicePricing(model)
   ) {
     redirect("/admin/pricing?notice=model-provider-cost-required");
   }
