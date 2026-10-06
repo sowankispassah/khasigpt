@@ -51,13 +51,14 @@ export async function createReceiptPdf(receipt: ReceiptData) {
   y -= 12;
   page.drawRectangle({ x: 48, y: y - 56, width: 499, height: 70, color: rgb(0.93, 0.97, 0.95) });
   y -= 25;
-  text(`Amount paid: ${receiptAmount(receipt)}`, 21);
+  text(`${receipt.amountSource === "recorded" ? "Recorded amount" : "Amount paid"}: ${receiptAmount(receipt)}`, 21);
   y -= 33;
   text(`Order reference: ${receipt.orderId}`, 10, muted);
   if (receipt.paymentId) text(`Payment reference: ${receipt.paymentId}`, 10, muted);
   y -= 24;
   text("Thank you for your purchase.", 11);
   text("Keep this receipt for your records.", 10, muted);
+  if (receipt.amountSource === "recorded") text("Historical receipt based on the saved recharge record.", 10, muted);
   text("khasigpt.com", 10, muted);
   document.setTitle(`KhasiGPT receipt ${receipt.number}`);
   document.setAuthor("KhasiGPT");

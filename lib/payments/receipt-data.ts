@@ -13,6 +13,7 @@ export const receiptDataSchema = z.object({
   currency: z.string().regex(/^[A-Z]{3}$/),
   provider: z.string(),
   amountVerified: z.boolean(),
+  amountSource: z.enum(["verified", "recorded"]).default("verified"),
   testPurchase: z.boolean(),
 });
 

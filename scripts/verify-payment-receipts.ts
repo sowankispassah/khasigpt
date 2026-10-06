@@ -30,7 +30,8 @@ const queries = load("lib/db/queries.ts", {
 });
 let failEmail = true;
 let emails = 0;
-const receipts = load("lib/payments/receipts.ts", { "server-only": {}, "@/lib/db/queries": { db: database }, "@/lib/email/brevo": { sendPaymentReceiptEmail: async () => { emails++; if (failEmail) throw new Error("Fixture email outage"); } }, "./google-play": { getGooglePlayOrderTotal: async () => ({ amount: 12345, currency: "INR" }) } });
+let googleLookups = 0;
+const receipts = load("lib/payments/receipts.ts", { "server-only": {}, "@/lib/db/queries": { db: database }, "@/lib/email/brevo": { sendPaymentReceiptEmail: async () => { emails++; if (failEmail) throw new Error("Fixture email outage"); } }, "./google-play": { getGooglePlayOrderTotal: async () => { googleLookups++; return { amount: 12345, currency: "INR" }; } } });
 const response = load("lib/payments/receipt-response.ts", { "./receipts": receipts, "@/lib/security/rate-limit": { incrementRateLimit: async () => ({ allowed: true }) } });
 let session: { user: { id: string } } | null = null;
 let admin: { id: string } | null = null;
@@ -91,8 +92,17 @@ async function main() {
   console.info("PASS: web/mobile ownership, admin access, private PDF headers and invalid input behavior");
 
   await client`insert into "PaymentTransaction" ("orderId","userId","planId",status,amount,currency,provider,"paymentId") values (${googleId},${userId},${planId},'paid',99900,'INR','google_play','GPA.fixture')`;
-  assert.equal((await receipts.getOwnedReceipt(googleId, userId)).amount, 12345);
-  console.info("PASS: historical Google Play receipt uses confirmed total instead of catalogue price");
+  const historical = await receipts.getOwnedReceipt(googleId, userId);
+  assert.equal(historical.amount, 99900);
+  assert.equal(historical.amountSource, "recorded");
+  assert.equal(googleLookups, 0);
+  console.info("PASS: historical receipt preserves the recorded amount without checkout credentials");
+  const newGoogleId = `new_google_${randomUUID()}`;
+  await client`insert into "PaymentTransaction" ("orderId","userId","planId",status,amount,currency,provider) values (${newGoogleId},${userId},${planId},'processing',99900,'INR','google_play')`;
+  await queries.completePaymentTransactionWithSubscription({ orderId: newGoogleId, userId, planId, paymentId: 'GPA.new-fixture', signature: 'fixture' });
+  assert.equal((await receipts.getOwnedReceipt(newGoogleId, userId)).amount, 12345);
+  assert.equal(googleLookups, 1);
+  console.info("PASS: new Google Play receipts resolve the confirmed total before email or download");
   assert.equal((await client`select has_table_privilege('anon','"PaymentReceipt"','SELECT') as allowed`)[0].allowed, false);
   assert.equal((await client`select has_table_privilege('authenticated','"PaymentReceipt"','INSERT') as allowed`)[0].allowed, false);
   console.info("PASS: receipt table denies Supabase client access");

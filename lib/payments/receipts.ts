@@ -26,6 +26,13 @@ export async function getOwnedReceipt(orderId: string, userId: string) {
   }
   if (!record) throw new Error("Receipt could not be created");
   const receipt = receiptDataSchema.parse(record.snapshot);
+  if (!record.emailRequested && !receipt.amountVerified) {
+    // Historical purchases contain only the app's saved recharge amount.
+    // Preserve it explicitly as a ledger receipt, independent of checkout APIs.
+    const historical = { ...receipt, amountVerified: true, amountSource: "recorded" as const };
+    await db.update(paymentReceipt).set({ snapshot: historical }).where(and(eq(paymentReceipt.orderId, orderId), eq(paymentReceipt.userId, userId)));
+    return historical;
+  }
   if (!receipt.amountVerified) {
     // Never show the configured catalogue price as a Google Play receipt total.
     const total = await getGooglePlayOrderTotal(receipt.paymentId ?? "");
