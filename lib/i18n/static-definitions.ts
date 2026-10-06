@@ -6,6 +6,8 @@ import { GOOGLE_ALLOWANCE_COPY } from "@/lib/web-search/google-allowance-copy";
 import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
+  { key: "explore.location.approximate", defaultText: "Your device returned a very approximate location. We couldn't confirm your current area. Try again or enter your location manually.", description: "A coarse location estimate cannot confirm the user's area." },
+  { key: "explore.location.unconfirmed", defaultText: "We couldn't confirm your current area.", description: "Location lookup failed after permission was granted." },
   { key: "sidebar.resize", defaultText: "Resize sidebar", description: "Accessible label for the sidebar resize edge." },
   { key: "sidebar.resize.hint", defaultText: "Drag to resize. Use arrow keys to adjust, or double-click to reset.", description: "Help for the desktop sidebar resize edge." },
   { key: "sidebar.resize.touch_hint", defaultText: "Drag the edge to resize the sidebar.", description: "Help for the native sidebar resize edge." },

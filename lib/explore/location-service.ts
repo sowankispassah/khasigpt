@@ -1,6 +1,7 @@
 import "server-only";
 
 import { isInsideMeghalaya } from "@/lib/explore/geo";
+import { LOCATION_ACCURACY_COPY, LOCATION_ACCURACY_ERROR } from "@/lib/explore/location-acquisition";
 import type { ExploreLocationInput } from "@/lib/explore/types";
 
 const NOMINATIM_BASE_URL = "https://nominatim.openstreetmap.org";
@@ -48,6 +49,7 @@ export class ExploreLocationError extends Error {
     readonly code:
       | "location_not_found"
       | "location_outside_meghalaya"
+      | "location_accuracy_insufficient"
       | "location_provider_unavailable",
     message: string,
   ) {
@@ -282,6 +284,11 @@ export async function reverseGeocodeExploreLocation({
   try {
     const normalizedLatitude = Number(latitude.toFixed(5));
     const normalizedLongitude = Number(longitude.toFixed(5));
+    // An outside centre with a very large uncertainty radius does not establish
+    // that the person is outside Meghalaya. Ask for a better reading instead.
+    if (accuracy !== null && accuracy > 10_000 && !isInsideMeghalaya({ latitude, longitude })) {
+      throw new ExploreLocationError(LOCATION_ACCURACY_ERROR, LOCATION_ACCURACY_COPY);
+    }
     return (
       (await reverseWithGoogle(
         normalizedLatitude,
@@ -295,6 +302,9 @@ export async function reverseGeocodeExploreLocation({
       ))
     );
   } catch (error) {
+    if (error instanceof ExploreLocationError && error.code === "location_outside_meghalaya" && accuracy !== null && accuracy > 10_000) {
+      throw new ExploreLocationError(LOCATION_ACCURACY_ERROR, LOCATION_ACCURACY_COPY);
+    }
     if (error instanceof ExploreLocationError) throw error;
     console.error("[explore/location] Reverse geocoding failed.", error);
     throw new ExploreLocationError(

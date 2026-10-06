@@ -30,6 +30,7 @@ import {
   useEditableTranslation,
 } from "@/components/translation-edit-provider";
 import { mergeExploreDetails } from "@/lib/explore/details";
+import { acquireCurrentLocation, LOCATION_ACCURACY_COPY, LOCATION_ACCURACY_ERROR, LOCATION_UNCONFIRMED_COPY, LocationResolutionError } from "@/lib/explore/location-acquisition";
 import { loadExplorePhoto } from "@/lib/explore/photo-client";
 import {
   createExploreSearchKey,
@@ -138,7 +139,7 @@ export function ExplorePageClient({
   const [query, setQuery] = useState("");
   const [location, setLocation] = useState<ExploreLocationInput | null>(null);
   const [locationStage, setLocationStage] = useState<
-    "choose" | "manual" | "denied"
+    "choose" | "manual" | "denied" | "unconfirmed"
   >("choose");
   const [sessionRestored, setSessionRestored] = useState(false);
   const [manualLocation, setManualLocation] = useState("");
@@ -478,18 +479,22 @@ export function ExplorePageClient({
       message?: string;
     };
     if (!(res.ok && body.location)) {
-      throw new Error(
-        body.message ||
+      throw new LocationResolutionError(
+        body.error === LOCATION_ACCURACY_ERROR
+          ? translate("explore.location.approximate", LOCATION_ACCURACY_COPY)
+          : body.message ||
           translate(
             "explore.location.resolve_error",
             "We couldn't resolve that location. Please try again.",
           ),
+        body.error,
       );
     }
     establishLocation(body.location);
   };
 
   const captureCurrentLocation = async () => {
+    if (locationPending) return;
     if (!navigator.geolocation) {
       setLocationStage("denied");
       setLocationError(
@@ -522,39 +527,23 @@ export function ExplorePageClient({
         // Permissions API support varies; getCurrentPosition remains canonical.
       }
     }
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        void resolveLocation({
-          mode: "reverse",
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-        })
-          .catch((locationFailure) => {
-            setLocationStage("denied");
-            setLocationError(
-              locationFailure instanceof Error
-                ? locationFailure.message
-                : translate(
-                    "explore.location.access_failed",
-                    "We couldn't access your current location.",
-                  ),
-            );
-          })
-          .finally(() => setLocationPending(false));
-      },
-      () => {
-        setLocationPending(false);
-        setLocationStage("denied");
-        setLocationError(
-          translate(
-            "explore.location.access_failed",
-            "We couldn't access your current location.",
-          ),
-        );
-      },
-      { enableHighAccuracy: true, maximumAge: 60_000, timeout: 12_000 },
-    );
+    try {
+      await acquireCurrentLocation(
+        () => new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(
+          position => resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy: position.coords.accuracy }),
+          reject,
+          { enableHighAccuracy: true, maximumAge: 0, timeout: 12_000 },
+        )),
+        position => resolveLocation({ mode: "reverse", ...position }),
+        failure => failure instanceof LocationResolutionError && failure.code === LOCATION_ACCURACY_ERROR,
+      );
+    } catch (failure) {
+      const permissionDenied = !(failure instanceof LocationResolutionError) && (failure as { code?: number })?.code === 1;
+      setLocationStage(permissionDenied ? "denied" : "unconfirmed");
+      setLocationError(failure instanceof LocationResolutionError ? failure.message : permissionDenied
+        ? translate("explore.location.access_failed", "We couldn't access your current location.")
+        : translate("explore.location.unconfirmed", LOCATION_UNCONFIRMED_COPY));
+    } finally { setLocationPending(false); }
   };
 
   const submitManualLocation = async (event: FormEvent) => {
@@ -774,12 +763,12 @@ export function ExplorePageClient({
             </form>
           ) : null}
 
-          {locationStage === "denied" ? (
+          {locationStage === "denied" || locationStage === "unconfirmed" ? (
             <div className="space-y-4">
               <p className="font-medium text-destructive">
                 <EditableTranslation
-                  defaultText="We couldn't access your current location."
-                  translationKey="explore.location.access_failed"
+                  defaultText={locationStage === "denied" ? "We couldn't access your current location." : LOCATION_UNCONFIRMED_COPY}
+                  translationKey={locationStage === "denied" ? "explore.location.access_failed" : "explore.location.unconfirmed"}
                 />
               </p>
               <div className="flex flex-col gap-2 sm:flex-row">

@@ -42,7 +42,7 @@ test.beforeAll(async () => {
   bundle = output.outputFiles[0].text;
 });
 
-async function mountExplore(page: Page, options: { categories?: unknown[]; partial?: boolean; imageSearch?: boolean; photoRequests?: string[]; progressive?: boolean; failDetails?: boolean; photos?: boolean; imageGate?: Promise<void>; failImage?: boolean; contextRequests?: any[]; contextGate?: Promise<void>; contextFailure?: () => boolean; detailsGate?: (query: string) => Promise<void> } = {}) {
+async function mountExplore(page: Page, options: { noLocation?: boolean; locationFailure?: string; locationRequests?: any[]; categories?: unknown[]; partial?: boolean; imageSearch?: boolean; photoRequests?: string[]; progressive?: boolean; failDetails?: boolean; photos?: boolean; imageGate?: Promise<void>; failImage?: boolean; contextRequests?: any[]; contextGate?: Promise<void>; contextFailure?: () => boolean; detailsGate?: (query: string) => Promise<void> } = {}) {
   const requests: Array<{radiusKm: number; searchMode: string; detailMode: string}> = [];
   const location = {id:"test",label:"Shangpung, Meghalaya",latitude:25.48,longitude:92.36,source:"manual",accuracy:null};
   await page.route("https://images.explore.test/**", async (route) => {
@@ -50,6 +50,13 @@ async function mountExplore(page: Page, options: { categories?: unknown[]; parti
     await route.fulfill(options.failImage ? {status:503,body:"Unavailable"} : {contentType:"image/png",body:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6pQAAAAASUVORK5CYII=","base64")}).catch(() => {});
   });
   await page.route("https://explore.test/**", async (route) => {
+    if (route.request().url().endsWith("/api/explore/location")) {
+      const position = route.request().postDataJSON();
+      options.locationRequests?.push(position);
+      const code = options.locationFailure ?? (position.latitude > 26.2 ? "location_accuracy_insufficient" : null);
+      await route.fulfill(code ? { status: code === "location_provider_unavailable" ? 503 : 422, json: { error: code, message: code === "location_provider_unavailable" ? "Location search is temporarily unavailable." : "Choose a location within Meghalaya." } } : { json: { location } });
+      return;
+    }
     if (route.request().url().endsWith("/api/explore/context")) {
       options.contextRequests?.push(route.request().postDataJSON());
       await options.contextGate;
@@ -82,11 +89,11 @@ async function mountExplore(page: Page, options: { categories?: unknown[]; parti
     await route.fulfill({contentType:"text/html",body:'<div id="root"></div>'});
   });
   await page.goto("https://explore.test/");
-  await page.evaluate((selectedLocation) => sessionStorage.setItem("explore.locationSession.v2",JSON.stringify({location:selectedLocation,query:"restaurant",radiusKm:10,categoryId:null,subcategoryId:null})),location);
+  if (!options.noLocation) await page.evaluate((selectedLocation) => sessionStorage.setItem("explore.locationSession.v2",JSON.stringify({location:selectedLocation,query:"restaurant",radiusKm:10,categoryId:null,subcategoryId:null})),location);
   await page.evaluate(categories => { (window as any).testCategories = categories; },options.categories ?? []);
   await page.addScriptTag({content:bundle});
-  await expect(page.getByRole("heading", {name:"Place 1",exact:true})).toBeVisible();
-  expect(requests).toHaveLength(options.progressive ? 2 : 1);
+  if (!options.noLocation) await expect(page.getByRole("heading", {name:"Place 1",exact:true})).toBeVisible();
+  expect(requests).toHaveLength(options.noLocation ? 0 : options.progressive ? 2 : 1);
   return requests;
 }
 
@@ -284,4 +291,57 @@ test("Explore opening is write-free and first submission blocks repeat clicks an
   expect(contexts[0].chatId).toBe(contexts[1].chatId);
   await page.getByRole("button",{name:"Send message",exact:true}).click();
   expect(contexts).toHaveLength(2);
+});
+
+async function mockCurrentLocation(page: Page, { recover = false, denied = false } = {}) {
+  await page.addInitScript(({ recover, denied }) => {
+    let reads = 0;
+    (window as any).gpsOptions = [];
+    Object.defineProperty(navigator, "permissions", { configurable: true, value: { query: async () => ({ state: denied ? "denied" : "granted" }) } });
+    Object.defineProperty(navigator, "geolocation", { configurable: true, value: {
+      getCurrentPosition(success: (value: unknown) => void, _failure: unknown, options: unknown) {
+        (window as any).gpsOptions.push(options);
+        const precise = recover && ++reads > 1;
+        success({ coords: { latitude: precise ? 25.48 : 26.8, longitude: 92.36, accuracy: precise ? 30 : 200000 } });
+      },
+    } });
+  }, { recover, denied });
+}
+
+test("current location recovers a coarse rejected estimate with one fresh reading", async ({ page }) => {
+  await mockCurrentLocation(page, { recover: true });
+  const locations: any[] = [];
+  await mountExplore(page, { noLocation: true, locationRequests: locations });
+  await page.getByRole("button", { name: "Use My Current Location", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Place 1", exact: true })).toBeVisible();
+  expect(locations).toHaveLength(2);
+  expect(await page.evaluate(() => (window as any).gpsOptions.every((options: any) => options.maximumAge === 0))).toBe(true);
+});
+
+test("a repeated coarse estimate is unconfirmed and never claims permission denial or an outside location", async ({ page }) => {
+  await mockCurrentLocation(page);
+  const locations: any[] = [];
+  await mountExplore(page, { noLocation: true, locationRequests: locations });
+  await page.getByRole("button", { name: "Use My Current Location", exact: true }).click();
+  await expect(page.getByText("We couldn't confirm your current area.", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Your device returned a very approximate location/)).toBeVisible();
+  await expect(page.getByText("We couldn't access your current location.", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Choose a location within Meghalaya.", { exact: true })).toHaveCount(0);
+  expect(locations).toHaveLength(2);
+  await expect(page.getByRole("button", { name: "Try Again", exact: true })).toBeEnabled();
+});
+
+test("permission denial never sends coordinates, and location-service failures do not retry GPS", async ({ page }) => {
+  await mockCurrentLocation(page, { denied: true });
+  const deniedRequests: any[] = [];
+  await mountExplore(page, { noLocation: true, locationRequests: deniedRequests });
+  await page.getByRole("button", { name: "Use My Current Location", exact: true }).click();
+  await expect(page.getByText("We couldn't access your current location.", { exact: true }).first()).toBeVisible();
+  expect(deniedRequests).toHaveLength(0);
+  await mockCurrentLocation(page);
+  const serviceRequests: any[] = [];
+  await mountExplore(page, { noLocation: true, locationRequests: serviceRequests, locationFailure: "location_provider_unavailable" });
+  await page.getByRole("button", { name: "Use My Current Location", exact: true }).click();
+  await expect(page.getByText("Location search is temporarily unavailable.", { exact: true })).toBeVisible();
+  expect(serviceRequests).toHaveLength(1);
 });
