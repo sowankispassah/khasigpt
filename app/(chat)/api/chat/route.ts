@@ -18,7 +18,9 @@ import { getUsage } from "tokenlens/helpers";
 import { z } from "zod";
 import type { UserRole } from "@/app/(auth)/auth";
 import type { VisibilityType } from "@/components/visibility-selector";
+import { boundedChatModel } from "@/lib/ai/bounded-chat-model";
 import { budgetedModel } from "@/lib/ai/budgeted-model";
+import { generateTitleFromUserMessage } from "@/lib/ai/chat-title";
 import { entitlementsByUserRole } from "@/lib/ai/entitlements";
 import { safeAiErrorDiagnostics } from "@/lib/ai/error-diagnostics";
 import { KHASIGPT_IDENTITY_FINAL_REMINDER, KHASIGPT_RESPONSE_LANGUAGE_INSTRUCTION } from "@/lib/ai/identity";
@@ -129,7 +131,9 @@ import {
   shouldSkipRagQuery,
 } from "@/lib/rag/query-policy";
 import { retrieveRagContext } from "@/lib/rag/retrieval";
+import { CHAT_FREE_MAX_OUTPUT_TOKENS, CHAT_MAX_ATTACHMENTS, CHAT_MAX_BODY_BYTES, CHAT_PAID_MAX_OUTPUT_TOKENS } from "@/lib/security/chat-limits";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
+import { RequestBodyLimitError, readBoundedJson, requestLimitResponse } from "@/lib/security/request-body";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import {
   getFeatureAccessModeSettingValue,
@@ -158,8 +162,9 @@ import {
 } from "@/lib/study/service";
 import type { QuestionPaperRecord } from "@/lib/study/types";
 import type { ChatMessage } from "@/lib/types";
+import { extractChatDocument } from "@/lib/uploads/chat-document-parser";
 import { resolveDocumentBlobUrl } from "@/lib/uploads/document-access";
-import { extractDocumentText, extractDocumentTextFromBuffer } from "@/lib/uploads/document-parser";
+import { extractDocumentText } from "@/lib/uploads/document-parser";
 import {
   isDocumentMimeType,
   parseDocumentUploadsAccessModeSetting,
@@ -193,7 +198,6 @@ import type {
   WebSearchAnswer,
   WebSearchStatusData,
 } from "@/lib/web-search/types";
-import { generateTitleFromUserMessage } from "../../actions";
 import { type PostRequestBody, postRequestBodySchema } from "./schema";
 
 export const dynamic = "force-dynamic";
@@ -1107,9 +1111,10 @@ export async function POST(request: Request) {
   let requestBody: PostRequestBody;
 
   try {
-    const json = await request.json();
+    const json = await readBoundedJson(request, CHAT_MAX_BODY_BYTES);
     requestBody = postRequestBodySchema.parse(json);
-  } catch (_) {
+  } catch (error) {
+    if (error instanceof RequestBodyLimitError) return requestLimitResponse();
     return new ChatSDKError("bad_request:api").toResponse();
   }
 
@@ -1305,11 +1310,13 @@ export async function POST(request: Request) {
       ? await getTextGenerationPricing(modelConfig.id)
       : undefined;
     let reservedSearchCredits = 0;
-    const paidLanguageModel = generationPricing && generationLease
+    const walletLanguageModel = generationPricing && generationLease
       ? budgetedModel({ model: resolveLanguageModel(modelConfig), provider: modelConfig.provider,
           modelId: modelConfig.providerModelId, pricing: generationPricing,
           balance: () => (generationLease?.balance ?? 0) - reservedSearchCredits })
       : resolveLanguageModel(modelConfig);
+    const paidLanguageModel = boundedChatModel(walletLanguageModel,
+      generationLease ? CHAT_PAID_MAX_OUTPUT_TOKENS : CHAT_FREE_MAX_OUTPUT_TOKENS);
 
     const perModelAllowance = Math.max(
       0,
@@ -2755,7 +2762,7 @@ export async function POST(request: Request) {
                   part.type === "file" &&
                   isDocumentMimeType(part.mediaType ?? "")
               )
-            );
+            ).slice(0, CHAT_MAX_ATTACHMENTS);
 
     if (documentParts.length > 0 && !documentUploadsEnabled) {
       return new ChatSDKError(
@@ -2830,15 +2837,18 @@ export async function POST(request: Request) {
       }
 
       try {
-        const parsedDocuments = await Promise.all(
-          resolvedParts.map(async (part) =>
-            extractDocumentTextFromBuffer({
+        const parsedDocuments = [];
+        const seenDocuments = new Set<string>();
+        for (const part of resolvedParts) {
+          if (seenDocuments.has(part.storageKey)) continue;
+          seenDocuments.add(part.storageKey);
+          parsedDocuments.push(await extractChatDocument({
+              ownerId: session.user.id,
               name: part.name,
               buffer: await readPrivateDocument(part.storageKey),
               mediaType: part.mediaType,
-            })
-          )
-        );
+            }));
+        }
 
         const blocks = parsedDocuments.map((doc) => {
           const suffix = doc.truncated ? "\n[Content truncated]" : "";
@@ -2848,8 +2858,8 @@ export async function POST(request: Request) {
           "The user uploaded document content. Use it to answer the question.",
           ...blocks,
         ].join("\n\n");
-      } catch (error) {
-        console.warn("Failed to extract document text", error);
+      } catch {
+        console.warn("[chat] Document extraction rejected.");
         return new ChatSDKError(
           "bad_request:api",
           "Unable to read the uploaded document."

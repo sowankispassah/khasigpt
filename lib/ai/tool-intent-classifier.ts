@@ -191,6 +191,7 @@ export async function classifyToolIntent(
         prompt: JSON.stringify(compactClassifierInput(input)),
         temperature: 0,
         maxOutputTokens: 512,
+        maxRetries: 0,
       }),
       TOOL_INTENT_TIMEOUT_MS
     );

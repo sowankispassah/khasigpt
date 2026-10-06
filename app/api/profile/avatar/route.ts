@@ -8,6 +8,13 @@ import {
   setActiveUserProfileImage,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import { enforceAvatarUploadLimit } from "@/lib/security/avatar-upload-limit";
+import {
+  RequestBodyLimitError,
+  readBoundedFormData,
+  requestLimitResponse,
+} from "@/lib/security/request-body";
+import { validateImageBytes } from "@/lib/uploads/image-validation";
 
 const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
 const ALLOWED_IMAGE_TYPES = new Set([
@@ -31,29 +38,51 @@ export async function POST(request: Request) {
     return new ChatSDKError("unauthorized:api").toResponse();
   }
 
-  const formData = await request.formData();
+  const limited = await enforceAvatarUploadLimit(session.user.id);
+  if (limited) return limited;
+  let formData: FormData;
+  try {
+    formData = await readBoundedFormData(
+      request,
+      MAX_IMAGE_SIZE_BYTES + 16 * 1024,
+    );
+  } catch (error) {
+    return error instanceof RequestBodyLimitError
+      ? requestLimitResponse()
+      : new ChatSDKError("bad_request:api").toResponse();
+  }
+  if ([...formData.keys()].length !== 1)
+    return new ChatSDKError("bad_request:api").toResponse();
   const file = formData.get("image");
 
   if (!(file instanceof Blob)) {
     return new ChatSDKError(
       "bad_request:api",
-      "A valid image file is required."
+      "A valid image file is required.",
     ).toResponse();
   }
 
   if (file.size > MAX_IMAGE_SIZE_BYTES) {
     return new ChatSDKError(
       "bad_request:api",
-      "Profile images must be 2MB or smaller."
+      "Profile images must be 2MB or smaller.",
     ).toResponse();
   }
 
-  const mimeType = file.type || "image/png";
+  let mimeType: string;
+  try {
+    mimeType = await validateImageBytes(
+      Buffer.from(await file.arrayBuffer()),
+      true,
+    );
+  } catch {
+    return new ChatSDKError("bad_request:api").toResponse();
+  }
 
   if (!ALLOWED_IMAGE_TYPES.has(mimeType)) {
     return new ChatSDKError(
       "bad_request:api",
-      "Only PNG, JPG, or WEBP images are supported."
+      "Only PNG, JPG, or WEBP images are supported.",
     ).toResponse();
   }
 
@@ -153,6 +182,6 @@ export async function GET() {
     updatedAt:
       activeImage?.createdAt instanceof Date
         ? activeImage.createdAt.toISOString()
-        : activeImage?.createdAt ?? null,
+        : (activeImage?.createdAt ?? null),
   });
 }

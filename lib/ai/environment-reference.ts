@@ -233,6 +233,8 @@ async function classifyEnvironmentEntity({
   const result = await generateText({
     model,
     temperature: 0,
+    maxOutputTokens: 512,
+    maxRetries: 0,
     abortSignal,
     messages: [
       {

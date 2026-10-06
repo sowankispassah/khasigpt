@@ -12,6 +12,7 @@ const stranger = "22222222-2222-4222-8222-222222222222";
 const key = `uploads/${owner}/document-example.pdf`;
 const blobUrl = `https://example.private.blob.vercel-storage.com/${key}`;
 const secret = "disposable-document-test-secret";
+const pngFixture = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAD0lEQVQImWNgaGAAIQgFAA4OAgHj5clFAAAAAElFTkSuQmCC", "base64");
 
 function harness() {
   const env: Record<string, string> = { AUTH_SECRET: secret, CHAT_DOCUMENT_BLOB_STORE_ID: "store_example" };
@@ -26,7 +27,7 @@ function harness() {
   function load(file: string, mocks: Record<string, any> = {}) {
     const exports: Record<string, any> = {};
     vm.runInNewContext(ts.transpileModule(readFileSync(file, "utf8"), {
-      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
     }).outputText, {
       exports, process: { env }, Buffer, URL, Request, Response, Headers, AbortSignal,
       console, Date, ReadableStream, Blob, File, setTimeout, clearTimeout, crypto: requireModule("node:crypto"),
@@ -55,6 +56,7 @@ function harness() {
   });
   const errors = load("lib/errors.ts");
   const images = load("lib/uploads/private-images.ts", {
+    "@/lib/uploads/image-validation": load("lib/uploads/image-validation.ts"),
     "@/lib/uploads/document-access": access,
     "@/lib/uploads/private-documents": storage,
   });
@@ -71,6 +73,11 @@ function harness() {
   });
   const downloadUrl = access.buildDocumentDownloadUrl({ blobUrl, userId: owner, baseUrl: "https://app.example.test" });
   const upload = load("app/(chat)/api/files/upload/route.ts", {
+    "@/lib/security/request-body": load("lib/security/request-body.ts"),
+    "@/lib/uploads/image-validation": load("lib/uploads/image-validation.ts"),
+    // Storage ownership tests isolate parsing; real parser/file fixtures are
+    // exercised separately by request-budget-security/http tests.
+    "@/lib/uploads/chat-document-parser": { extractChatDocument: async () => ({ text: "fixture", truncated: false }) },
     "@vercel/blob": { put: () => { throw new Error("Documents must not use public uploads"); } },
     "next/server": { NextResponse: { json: Response.json } },
     "@/lib/constants": { DOCUMENT_UPLOADS_FEATURE_FLAG_KEY: "documents" },
@@ -85,7 +92,7 @@ function harness() {
   });
   const request = () => new Request(downloadUrl);
   return { token, storage, access, images, route, upload, downloadUrl, request, env, getCalls, putCalls,
-    image: () => { data = Buffer.from([137,80,78,71,13,10,26,10,1,2,3]); },
+    image: () => { data = pngFixture; },
     largeGeneratedImage: () => { data = Buffer.alloc(9 * 1024 * 1024); },
     anonymous: () => { session = null; },
     stranger: () => { session.user.id = stranger; user.id = stranger; },
@@ -166,7 +173,7 @@ test("cross-origin token links, traversal, and untrusted remote URLs cannot reso
 
 test("image uploads and owner previews stay private while anonymous and other-user reads are denied", async () => {
   const h = harness(); h.image();
-  const form = new FormData(); form.set("file", new File([Buffer.from([137,80,78,71,13,10,26,10,1,2,3])], "test.png", {type:"image/png"}));
+  const form = new FormData(); form.set("file", new File([pngFixture], "test.png", {type:"image/png"}));
   const uploaded = await h.upload.POST(new Request("https://app.example.test/api/files/upload", {method:"POST",body:form}));
   expect(uploaded.status).toBe(200);
   const data = await uploaded.json();

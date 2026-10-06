@@ -481,6 +481,8 @@ async function maybeTranslateImagePrompt({
     const model = await resolveImagePromptTranslationModel();
     const result = await generateText({
       model,
+      maxOutputTokens: 2048,
+      maxRetries: 0,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: prompt },

@@ -4,12 +4,17 @@ import { z } from "zod";
 import { DOCUMENT_UPLOADS_FEATURE_FLAG_KEY } from "@/lib/constants";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
-import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
+import {
+  RequestBodyLimitError,
+  readBoundedFormData,
+  requestLimitResponse,
+} from "@/lib/security/request-body";
 import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
 } from "@/lib/settings/feature-access-settings";
 import { isFeatureEnabledForUser } from "@/lib/settings/user-feature-access";
+import { extractChatDocument } from "@/lib/uploads/chat-document-parser";
 import { buildDocumentDownloadUrl } from "@/lib/uploads/document-access";
 import {
   DOCUMENT_EXTENSION_BY_MIME,
@@ -18,6 +23,7 @@ import {
   IMAGE_MIME_TYPES,
   parseDocumentUploadsAccessModeSetting,
 } from "@/lib/uploads/document-uploads";
+import { validateImageBytes } from "@/lib/uploads/image-validation";
 import { putPrivateFile } from "@/lib/uploads/private-documents";
 
 const MAX_FILE_SIZE_BYTES = DOCUMENT_UPLOADS_MAX_BYTES;
@@ -28,33 +34,10 @@ const FILE_UPLOAD_RATE_LIMIT = {
   windowMs: 10 * 60 * 1000,
 };
 
-function detectImageMime(buffer: ArrayBuffer) {
-  const bytes = new Uint8Array(buffer);
-  const isPng =
-    bytes.length >= 8 &&
-    bytes[0] === 0x89 &&
-    bytes[1] === 0x50 &&
-    bytes[2] === 0x4e &&
-    bytes[3] === 0x47 &&
-    bytes[4] === 0x0d &&
-    bytes[5] === 0x0a &&
-    bytes[6] === 0x1a &&
-    bytes[7] === 0x0a;
-  const isJpeg =
-    bytes.length >= 3 &&
-    bytes[0] === 0xff &&
-    bytes[1] === 0xd8 &&
-    bytes[2] === 0xff;
-
-  const detected = isPng ? "image/png" : isJpeg ? "image/jpeg" : null;
-  return detected;
-}
-
-async function enforceFileUploadRateLimit(request: Request, userId: string) {
-  const clientKey = getClientKeyFromHeaders(request.headers);
+async function enforceFileUploadRateLimit(userId: string) {
   const { allowed, resetAt } = await incrementRateLimit(
-    `file-upload:${userId}:${clientKey}`,
-    FILE_UPLOAD_RATE_LIMIT
+    `file-upload:${userId}`,
+    FILE_UPLOAD_RATE_LIMIT,
   );
 
   if (allowed) {
@@ -69,10 +52,10 @@ async function enforceFileUploadRateLimit(request: Request, userId: string) {
         "Cache-Control": "no-store",
         "Retry-After": Math.max(
           Math.ceil((resetAt - Date.now()) / 1000),
-          1
+          1,
         ).toString(),
       },
-    }
+    },
   );
 }
 
@@ -83,10 +66,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const rateLimited = await enforceFileUploadRateLimit(
-    request,
-    session.user.id
-  );
+  const rateLimited = await enforceFileUploadRateLimit(session.user.id);
   if (rateLimited) {
     return rateLimited;
   }
@@ -96,20 +76,37 @@ export async function POST(request: Request) {
   }
 
   try {
+    let formData: FormData;
+    try {
+      formData = await readBoundedFormData(
+        request,
+        MAX_FILE_SIZE_BYTES + 16 * 1024,
+      );
+    } catch (error) {
+      if (error instanceof RequestBodyLimitError) return requestLimitResponse();
+      return NextResponse.json(
+        { error: "Failed to process request" },
+        { status: 400, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    if ([...formData.keys()].length !== 1)
+      return NextResponse.json(
+        { error: "Unsupported file type" },
+        { status: 400 },
+      );
     const featureAccessSettings = await loadFeatureAccessSettingsByKeys(
       [DOCUMENT_UPLOADS_FEATURE_FLAG_KEY],
       {
         source: "api.files.upload.feature-access",
         timeoutMs: UPLOAD_FEATURE_ACCESS_TIMEOUT_MS,
-      }
+      },
     );
-    const documentUploadsSetting =
-      getFeatureAccessModeSettingValue(
-        featureAccessSettings,
-        DOCUMENT_UPLOADS_FEATURE_FLAG_KEY
-      );
+    const documentUploadsSetting = getFeatureAccessModeSettingValue(
+      featureAccessSettings,
+      DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+    );
     const documentUploadsMode = parseDocumentUploadsAccessModeSetting(
-      documentUploadsSetting
+      documentUploadsSetting,
     );
     const documentUploadsEnabled = await isFeatureEnabledForUser({
       featureKey: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
@@ -134,7 +131,6 @@ export async function POST(request: Request) {
         }),
     });
 
-    const formData = await request.formData();
     const fileField = formData.get("file");
 
     if (!(fileField instanceof Blob)) {
@@ -155,12 +151,29 @@ export async function POST(request: Request) {
 
     const fileBuffer = await file.arrayBuffer();
     const isImage = ALLOWED_IMAGE_MIME_TYPES.includes(file.type as any);
-    const mimeType = isImage ? detectImageMime(fileBuffer) : file.type;
+    let mimeType: string;
+    try {
+      mimeType = isImage
+        ? await validateImageBytes(Buffer.from(fileBuffer))
+        : file.type;
+      if (!isImage)
+        await extractChatDocument({
+          ownerId: session.user.id,
+          name: "document",
+          buffer: Buffer.from(fileBuffer),
+          mediaType: mimeType,
+        });
+    } catch {
+      return NextResponse.json(
+        { error: "Failed to process request" },
+        { status: 400, headers: { "Cache-Control": "no-store" } },
+      );
+    }
 
     if (!mimeType) {
       return NextResponse.json(
         { error: "Only valid PNG or JPG images are allowed" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -168,12 +181,14 @@ export async function POST(request: Request) {
       ? mimeType === "image/png"
         ? "png"
         : "jpg"
-      : DOCUMENT_EXTENSION_BY_MIME[mimeType as keyof typeof DOCUMENT_EXTENSION_BY_MIME];
+      : DOCUMENT_EXTENSION_BY_MIME[
+          mimeType as keyof typeof DOCUMENT_EXTENSION_BY_MIME
+        ];
 
     if (!extension) {
       return NextResponse.json(
         { error: "Unsupported file type" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -183,7 +198,7 @@ export async function POST(request: Request) {
         isImage && mimeType === "image/jpeg"
           ? new URL(
               "/images/mouth%20of%20the%20seine%2C%20monet.jpg",
-              request.url
+              request.url,
             ).toString()
           : new URL(`/playwright-upload.${extension}`, request.url).toString();
       return NextResponse.json({
@@ -196,7 +211,11 @@ export async function POST(request: Request) {
     const objectKey = `uploads/${session.user.id}/${crypto.randomUUID()}.${extension}`;
 
     try {
-      const data = await putPrivateFile(objectKey, Buffer.from(fileBuffer), mimeType);
+      const data = await putPrivateFile(
+        objectKey,
+        Buffer.from(fileBuffer),
+        mimeType,
+      );
 
       const downloadUrl = buildDocumentDownloadUrl({
         blobUrl: data.url,
@@ -216,10 +235,11 @@ export async function POST(request: Request) {
     } catch (_error) {
       return NextResponse.json({ error: "Upload failed" }, { status: 500 });
     }
-  } catch (_error) {
+  } catch (error) {
+    if (error instanceof RequestBodyLimitError) return requestLimitResponse();
     return NextResponse.json(
       { error: "Failed to process request" },
-      { status: 500 }
+      { status: 503, headers: { "Cache-Control": "no-store" } },
     );
   }
 }

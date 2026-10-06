@@ -8,6 +8,13 @@ import {
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { getMobileSession } from "@/lib/mobile-auth-session";
+import { enforceAvatarUploadLimit } from "@/lib/security/avatar-upload-limit";
+import {
+  RequestBodyLimitError,
+  readBoundedJson,
+  requestLimitResponse,
+} from "@/lib/security/request-body";
+import { validateImageBytes } from "@/lib/uploads/image-validation";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -21,9 +28,13 @@ const ALLOWED_IMAGE_TYPES = new Set([
 ]);
 
 const avatarUploadSchema = z.object({
-  base64: z.string().min(1),
-  fileName: z.string().trim().min(1),
-  mimeType: z.string().trim().min(1),
+  base64: z
+    .string()
+    .min(1)
+    .max(Math.ceil(MAX_IMAGE_SIZE_BYTES / 3) * 4)
+    .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/),
+  fileName: z.string().trim().min(1).max(255),
+  mimeType: z.string().trim().min(1).max(100),
 });
 
 function shouldDeleteBlob(url: string | null): url is string {
@@ -33,36 +44,38 @@ function shouldDeleteBlob(url: string | null): url is string {
   return url.startsWith("https://") && url.includes("vercel-storage.com");
 }
 
-function detectExtension(fileName: string, mimeType: string) {
-  const normalizedName = fileName.toLowerCase();
-  if (normalizedName.endsWith(".png") || mimeType === "image/png") {
-    return "png";
-  }
-  if (normalizedName.endsWith(".webp") || mimeType === "image/webp") {
-    return "webp";
-  }
-  return "jpg";
-}
-
 export async function POST(request: Request) {
   const session = await getMobileSession(request);
   if (!session?.user) {
     return new ChatSDKError("unauthorized:api").toResponse();
   }
 
-  const parsed = avatarUploadSchema.safeParse(await request.json());
+  const limited = await enforceAvatarUploadLimit(session.user.id);
+  if (limited) return limited;
+  let json: unknown;
+  try {
+    json = await readBoundedJson(
+      request,
+      Math.ceil(MAX_IMAGE_SIZE_BYTES / 3) * 4 + 4096,
+    );
+  } catch (error) {
+    return error instanceof RequestBodyLimitError
+      ? requestLimitResponse()
+      : new ChatSDKError("bad_request:api").toResponse();
+  }
+  const parsed = avatarUploadSchema.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues.at(0)?.message ?? "Invalid image payload." },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
-  const mimeType = parsed.data.mimeType || "image/jpeg";
+  let mimeType = parsed.data.mimeType;
   if (!ALLOWED_IMAGE_TYPES.has(mimeType)) {
     return NextResponse.json(
       { error: "Only PNG, JPG, or WEBP images are supported." },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -70,14 +83,26 @@ export async function POST(request: Request) {
   if (bytes.length > MAX_IMAGE_SIZE_BYTES) {
     return NextResponse.json(
       { error: "Profile images must be 2MB or smaller." },
-      { status: 400 }
+      { status: 400 },
     );
   }
+  try {
+    mimeType = await validateImageBytes(bytes, true);
+  } catch {
+    return new ChatSDKError("bad_request:api").toResponse();
+  }
 
-  const extension = detectExtension(parsed.data.fileName, mimeType);
+  const extension =
+    mimeType === "image/png"
+      ? "png"
+      : mimeType === "image/webp"
+        ? "webp"
+        : "jpg";
   const objectKey = `avatars/${session.user.id}/${crypto.randomUUID()}.${extension}`;
 
-  const activeImage = await getActiveUserProfileImage({ userId: session.user.id });
+  const activeImage = await getActiveUserProfileImage({
+    userId: session.user.id,
+  });
   const previousImage = activeImage?.imageUrl ?? null;
 
   const blob = await put(objectKey, bytes, {
@@ -114,7 +139,9 @@ export async function DELETE(request: Request) {
     return new ChatSDKError("unauthorized:api").toResponse();
   }
 
-  const activeImage = await getActiveUserProfileImage({ userId: session.user.id });
+  const activeImage = await getActiveUserProfileImage({
+    userId: session.user.id,
+  });
   await clearActiveUserProfileImage({ userId: session.user.id });
 
   const imageToDelete = activeImage?.imageUrl ?? null;

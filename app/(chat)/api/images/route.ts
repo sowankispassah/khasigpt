@@ -44,6 +44,7 @@ import {
 import { ChatSDKError } from "@/lib/errors";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
+import { RequestBodyLimitError, readBoundedJson, requestLimitResponse } from "@/lib/security/request-body";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { loadUserFeatureAccessOverride } from "@/lib/settings/user-feature-access";
 import type { ChatMessage } from "@/lib/types";
@@ -74,10 +75,10 @@ const imageRequestSchema = z.object({
   prompt: z.string().trim().min(1).max(2000),
   displayPrompt: z.string().trim().min(1).max(2000).optional(),
   userMessageId: z.string().uuid().optional(),
-  imageUrl: z.string().url().nullable().optional(),
-  imageUrls: z.array(z.string().url()).max(4).optional(),
+  imageUrl: z.string().max(4096).url().nullable().optional(),
+  imageUrls: z.array(z.string().max(4096).url()).max(4).optional(),
   intent: z.enum(["image_generate", "image_edit"]).optional(),
-  decisionToken: z.string().min(1).optional(),
+  decisionToken: z.string().min(1).max(4000).optional(),
 });
 
 const DEFAULT_IMAGE_FILENAME_PREFIX = "khasigpt-image";
@@ -227,7 +228,9 @@ export async function POST(request: Request) {
     return new ChatSDKError("unauthorized:auth").toResponse();
   }
 
-  const json = await request.json().catch(() => null);
+  let json: unknown;
+  try { json = await readBoundedJson(request, 128*1024); }
+  catch (error) { return error instanceof RequestBodyLimitError ? requestLimitResponse() : new ChatSDKError("bad_request:api").toResponse(); }
   const parsed = imageRequestSchema.safeParse(json);
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Invalid request.";

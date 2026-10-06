@@ -2,6 +2,7 @@ import "server-only";
 
 import type { ChatMessage } from "@/lib/types";
 import { resolveDocumentBlobUrl } from "@/lib/uploads/document-access";
+import { validateImageBytes } from "@/lib/uploads/image-validation";
 import { isPrivateImageStorageKey, readPrivateFile } from "@/lib/uploads/private-documents";
 
 export function imageMimeFromBytes(bytes: Uint8Array) {
@@ -19,7 +20,7 @@ export async function readOwnedImage(sourceUrl: string, userId: string, baseUrl:
   const resolved = resolveOwnedImage(sourceUrl, userId, baseUrl, allowHistorical);
   if (!resolved) throw new Error("Invalid image attachment.");
   const bytes = await readPrivateFile(resolved.storageKey);
-  const mediaType = imageMimeFromBytes(bytes);
+  const mediaType = await validateImageBytes(bytes);
   if (!mediaType) throw new Error("Invalid image attachment.");
   return { bytes, mediaType };
 }

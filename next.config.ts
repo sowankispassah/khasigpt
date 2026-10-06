@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import type { NextConfig } from "next";
 import { contactImageOrigin } from "./lib/security/contact-image-origin";
-import { PRELOAD_PROGRESS_SCRIPT, THEME_COLOR_SCRIPT } from "./lib/security/inline-scripts";
+import {
+  PRELOAD_PROGRESS_SCRIPT,
+  THEME_COLOR_SCRIPT,
+} from "./lib/security/inline-scripts";
 import { buildStructuredData, getSiteUrl } from "./lib/seo/site";
 
 const isDevelopment = process.env.NODE_ENV !== "production";
@@ -14,7 +17,7 @@ const inlineScriptHashes = [
   JSON.stringify(buildStructuredData(getSiteUrl())),
 ].map(
   (content) =>
-    `'sha256-${createHash("sha256").update(content).digest("base64")}'`
+    `'sha256-${createHash("sha256").update(content).digest("base64")}'`,
 );
 
 const scriptSrc = isDevelopment
@@ -141,7 +144,23 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  serverExternalPackages: ["@napi-rs/canvas", "pdf-parse"],
+  serverExternalPackages: ["@napi-rs/canvas", "pdf-parse", "mammoth"],
+  outputFileTracingIncludes: {
+    "/api/chat": [
+      "./scripts/chat-document-worker.cjs",
+      "./node_modules/pdf-parse/**/*",
+      "./node_modules/pdfjs-dist/**/*",
+      "./node_modules/@napi-rs/canvas/**/*",
+      "./node_modules/mammoth/**/*",
+    ],
+    "/api/files/upload": [
+      "./scripts/chat-document-worker.cjs",
+      "./node_modules/pdf-parse/**/*",
+      "./node_modules/pdfjs-dist/**/*",
+      "./node_modules/@napi-rs/canvas/**/*",
+      "./node_modules/mammoth/**/*",
+    ],
+  },
   async headers() {
     return [
       {

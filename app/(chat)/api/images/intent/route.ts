@@ -9,6 +9,7 @@ import {
 } from "@/lib/image-intent";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
+import { RequestBodyLimitError, readBoundedJson, requestLimitResponse } from "@/lib/security/request-body";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 
 export const dynamic = "force-dynamic";
@@ -49,7 +50,9 @@ export async function POST(request: Request) {
     );
   }
 
-  const json = await request.json().catch(() => null);
+  let json: unknown;
+  try { json = await readBoundedJson(request, 64*1024); }
+  catch (error) { return error instanceof RequestBodyLimitError ? requestLimitResponse() : new ChatSDKError("bad_request:api").toResponse(); }
   const parsed = intentRequestSchema.safeParse(json);
   if (!parsed.success) {
     return Response.json(
