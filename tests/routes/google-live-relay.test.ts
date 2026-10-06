@@ -91,3 +91,34 @@ test("relay adapter ignores client setup/usage, preserves audio ordering and clo
   socket.close(); socket.close(); if (!end) throw new Error("Relay stream did not start"); end();
   expect(uploads.filter(u => u.close)).toHaveLength(1);
 });
+
+
+test("the HTTP relay delivers uncompressed readiness and rejects client-controlled configuration", async () => {
+  const uploaded: any[] = [];
+  const mocks: Record<string, any> = {
+    "server-only": {},
+    "@/lib/api/auth": { getAuthenticatedUser: async () => ({ user: { id, role: "regular" } }) },
+    "@/lib/api/cache": { noStoreHeaders: () => ({ "Cache-Control": "no-store" }) },
+    "@/lib/constants": { VOICE_CHAT_WEB_FEATURE_FLAG_KEY: "voice.web", VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY: "voice.android" },
+    "@/lib/security/rate-limit": { incrementRateLimit: async () => ({ allowed: true }) },
+    "@/lib/settings/user-feature-access": { isFeatureEnabledForUser: async () => true },
+    "@/lib/voice/config": { getVoiceChatAccessModeForPlatform: async () => "enabled" },
+    "@/lib/voice/live-models": { resolveLiveVoiceModelConfig: async () => model },
+    "@/lib/voice/live-session-access": { enforceLiveSessionLaunchAccess: async () => null },
+    "@/lib/voice/google-relay-session": { createGoogleRelaySession: async () => new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode('{"setupComplete":{}}\\n')); controller.close(); } }) },
+    "@/lib/voice/relay-redis": { getVoiceRelayRedis: async () => ({ get: async () => id, xAdd: async (_key: string, _marker: string, payload: any) => uploaded.push(JSON.parse(payload.body)) }), relayOwnerKey: (value: string) => value, relayInputKey: (value: string) => value },
+  };
+  const exports: any = {};
+  vm.runInNewContext(ts.transpileModule(readFileSync("lib/voice/relay-route.ts", "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText,
+    { exports, require: (name: string) => mocks[name] ?? requireModule(name), Request, Response, Headers, ReadableStream, TextEncoder, console });
+  const request = (body: object) => new Request("https://fixture.test/api/chat/voice-relay", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const response = await exports.handleVoiceRelay(request({}), "web");
+  expect(response.status).toBe(200);
+  expect(response.headers.get("Content-Encoding")).toBe("identity");
+  expect(response.headers.get("Cache-Control")).toContain("no-transform");
+  expect(await response.text()).toContain("setupComplete");
+  expect((await exports.handleVoiceRelay(request({ sessionId: id, messages: [{ setup: { model: "expensive-client-model" } }] }), "web")).status).toBe(400);
+  expect(uploaded).toHaveLength(0);
+  expect((await exports.handleVoiceRelay(request({ sessionId: id, messages: [{ realtimeInput: { audio: { data: "AAAA", mimeType: "audio/pcm;rate=16000" } } }] }), "web")).status).toBe(200);
+  expect(uploaded).toHaveLength(1);
+});
