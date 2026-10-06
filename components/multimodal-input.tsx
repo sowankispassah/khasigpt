@@ -33,6 +33,7 @@ import type { ToolIntentResolution } from "@/lib/tool-intent";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { getAttachmentAcceptValue } from "@/lib/uploads/document-uploads";
 import { cn, generateUUID } from "@/lib/utils";
+import { confirmVoiceHistory } from "@/lib/voice/confirmed-history";
 import { groupDurationVoicePairs } from "@/lib/voice/duration-transcripts";
 import {
   startWebGeminiVoiceTurn,
@@ -467,6 +468,7 @@ function PureMultimodalInput({
     null
   );
   const voiceSessionIdRef = useRef(0);
+  const serverVoiceHistoryIdRef = useRef<string | null>(null);
   const [uploadQueue, setUploadQueue] = useState<string[]>([]);
   const [isResolvingIntent, setIsResolvingIntent] = useState(false);
   const isResolvingIntentRef = useRef(false);
@@ -737,14 +739,6 @@ function PureMultimodalInput({
     }
   }, [isVoiceDialogOpen, voiceStatus]);
 
-  const cancelVoiceChat = useCallback(() => {
-    voiceSessionIdRef.current += 1;
-    voiceTurnControllerRef.current?.cancel();
-    voiceTurnControllerRef.current = null;
-    setIsVoiceDialogOpen(false);
-    resetVoiceState();
-  }, [resetVoiceState]);
-
   useEffect(
     () => () => {
       voiceSessionIdRef.current += 1;
@@ -756,6 +750,20 @@ function PureMultimodalInput({
 
   const saveVoiceConversation = useCallback(
     async (conversationMessages: WebGeminiVoiceConversationMessage[]) => {
+      if (serverVoiceHistoryIdRef.current) {
+        const sessionId = serverVoiceHistoryIdRef.current;
+        setIsVoiceSaving(true);
+        try {
+          const saved = await confirmVoiceHistory(async () => {
+            const response = await fetch(`/api/chat/voice-history?sessionId=${encodeURIComponent(sessionId)}`, { cache: "no-store", signal: AbortSignal.timeout(10000) });
+            if (!response.ok) throw new Error(translate("voice.chat.save_failed", "Unable to save this voice chat."));
+            return await response.json() as { pending?: boolean; messages?: ChatMessage[] };
+          }, translate("voice.chat.save_failed", "Unable to save this voice chat."));
+          if (saved.messages) setMessages(saved.messages);
+          onVoiceTurnSaved?.();
+        } finally { setIsVoiceSaving(false); }
+        return;
+      }
       const pairs = buildVoiceConversationPairs(conversationMessages);
       if (pairs.length === 0) {
         return;
@@ -851,6 +859,17 @@ function PureMultimodalInput({
     ]
   );
 
+  const cancelVoiceChat = useCallback(() => {
+    voiceSessionIdRef.current += 1;
+    const controller = voiceTurnControllerRef.current;
+    const snapshot = controller?.getMessages() ?? [];
+    controller?.cancel();
+    voiceTurnControllerRef.current = null;
+    setIsVoiceDialogOpen(false);
+    resetVoiceState();
+    if (serverVoiceHistoryIdRef.current) void saveVoiceConversation(snapshot).catch(() => toast.error(translate("voice.chat.save_failed", "Unable to save this voice chat.")));
+  }, [resetVoiceState, saveVoiceConversation, translate]);
+
   const finishVoiceChat = useCallback(async () => {
     const controller = voiceTurnControllerRef.current;
     if (!controller || isVoiceSaving) {
@@ -923,9 +942,12 @@ function PureMultimodalInput({
     const voiceSessionId = voiceSessionIdRef.current + 1;
     voiceSessionIdRef.current = voiceSessionId;
     resetVoiceState();
+    serverVoiceHistoryIdRef.current = null;
     setIsVoiceDialogOpen(true);
     try {
       const controller = await startWebGeminiVoiceTurn({
+        tokenBody: { chatId: _chatId },
+        onHistoryReady: sessionId => { serverVoiceHistoryIdRef.current = sessionId; onVoiceTurnSaved?.(); },
         onCompletedSession: messages => { if (voiceSessionIdRef.current === voiceSessionId) void saveVoiceConversation(messages).catch(() => setVoiceError(translate("voice.chat.save_failed", "Unable to save this voice chat."))); },
         onError: (error) => {
           if (voiceSessionIdRef.current !== voiceSessionId) {
@@ -983,6 +1005,8 @@ function PureMultimodalInput({
     translate,
     voiceChatEnabled,
     saveVoiceConversation,
+    _chatId,
+    onVoiceTurnSaved,
   ]);
 
   useEffect(() => {

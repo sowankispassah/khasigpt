@@ -38,6 +38,7 @@ export type WebGeminiVoiceTurnController = {
 };
 
 export type WebGeminiVoiceCallbacks = {
+  onHistoryReady?: (sessionId: string) => void;
   onCompletedSession?: (messages: WebGeminiVoiceConversationMessage[]) => void;
   onAssistantTranscript?: (text: string) => void;
   onError?: (error: Error) => void;
@@ -305,6 +306,7 @@ async function requestVoiceToken({
 
 export async function startWebGeminiVoiceTurn({
   onCompletedSession,
+  onHistoryReady,
   onAssistantTranscript,
   onError,
   onInputLevel,
@@ -327,7 +329,7 @@ export async function startWebGeminiVoiceTurn({
   });
   if (tokenResponse.transport === "webrtc") {
     const { startDurationWebVoice } = await import("@/lib/voice/web-duration-voice");
-    return startDurationWebVoice({ onCompletedSession, onAssistantTranscript, onError, onInputLevel, onMessages, onStatus, onUserTranscript }, tokenResponse.sessionEndpoint ?? "/api/chat/voice-session");
+    return startDurationWebVoice({ onHistoryReady, onCompletedSession, onAssistantTranscript, onError, onInputLevel, onMessages, onStatus, onUserTranscript }, tokenResponse.sessionEndpoint ?? "/api/chat/voice-session", typeof tokenBody?.chatId === "string" ? tokenBody.chatId : undefined);
   }
   const audioContext = new AudioContext();
   const mediaStream = await navigator.mediaDevices.getUserMedia({

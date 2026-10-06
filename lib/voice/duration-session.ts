@@ -9,6 +9,7 @@ import { retrieveRagContext } from "@/lib/rag/retrieval";
 import { loadCustomKnowledgeEnabledCached } from "@/lib/rag/runtime-settings";
 import type { ResolvedLiveVoiceModelConfig } from "@/lib/voice/live-models";
 import { unbilledVoiceSeconds } from "@/lib/voice/pricing";
+import { openVoiceSessionHistory } from "@/lib/voice/session-history";
 
 const MAX_SESSION_MS = 240_000;
 const SAFE_ERROR = "KhasiGPT voice chat is temporarily unavailable. Please try again.";
@@ -18,8 +19,8 @@ export async function findOwnedVoiceSession(id: string, userId: string) {
   return session ?? null;
 }
 
-export async function createDurationVoiceSession({ model, sdp, userId, platform }: {
-  model: ResolvedLiveVoiceModelConfig; sdp: string; userId: string; platform: "web" | "native";
+export async function createDurationVoiceSession({ model, sdp, userId, platform, chatId }: {
+  chatId?: string; model: ResolvedLiveVoiceModelConfig; sdp: string; userId: string; platform: "web" | "native";
 }) {
   const p = model.durationPricing;
   const apiKey = process.env.OPENAI_API_KEY?.trim();
@@ -31,8 +32,11 @@ export async function createDurationVoiceSession({ model, sdp, userId, platform 
   let row: typeof liveVoiceSession.$inferSelect | undefined;
   let providerId: string | null = null;
   let socket: WebSocket | null = null;
+  let history: Awaited<ReturnType<typeof openVoiceSessionHistory>> | undefined;
   try {
-    [row] = await db.insert(liveVoiceSession).values({ userId, modelConfigId: model.id, platform, pricing: { ...p, ...quote } }).returning();
+    history = await openVoiceSessionHistory(userId, chatId);
+    const sessionHistory = history;
+    [row] = await db.insert(liveVoiceSession).values({ userId, modelConfigId: model.id, platform, pricing: { ...p, ...quote, historyChatId: history.chatId } }).returning();
     if (!row) throw new Error(SAFE_ERROR);
     const sessionRow = row;
     const response = await fetch("https://api.openai.com/v1/live/sessions", {
@@ -69,7 +73,7 @@ export async function createDurationVoiceSession({ model, sdp, userId, platform 
     const bill = async (seconds: number) => {
       const delta = unbilledVoiceSeconds(seconds, billedSeconds);
       if (!delta) return;
-      await recordTokenUsage({ userId, chatId: null, modelConfigId: null, liveVoiceModelConfigId: model.id,
+      await recordTokenUsage({ userId, chatId: sessionHistory.chatId, modelConfigId: null, liveVoiceModelConfigId: model.id,
         inputTokens: 0, outputTokens: 0, billTokenUsage: false, generationPricing: pricingSnapshot,
         requestKey: `live:${sessionRow.id}:duration:${seconds}`,
         additionalCharges: [{ category: "live_voice", providerKey: "openai", liveVoiceModelConfigId: model.id,
@@ -93,9 +97,13 @@ export async function createDurationVoiceSession({ model, sdp, userId, platform 
     const finished = new Promise<void>(resolve => ws.once("close", () => {
       clearTimeout(endAt); clearTimeout(hardStop); clearInterval(budgetCheck);
       void queue.then(async () => {
-        await bill(observedSeconds);
+        try { await bill(observedSeconds); } finally { await sessionHistory.finish(!finalized); }
         await db.update(liveVoiceSession).set({ status: finalized ? "completed" : "unconfirmed", updatedAt: new Date() }).where(eq(liveVoiceSession.id, sessionRow.id));
-      }).catch(() => db.update(liveVoiceSession).set({ status: "billing_failed", updatedAt: new Date() }).where(eq(liveVoiceSession.id, sessionRow.id))).finally(async () => { await admission.release(); resolve(); });
+      }).catch(async () => {
+        let historyFailed = false;
+        await sessionHistory.finish(!finalized).catch(() => { historyFailed = true; });
+        await db.update(liveVoiceSession).set({ status: "billing_failed", pricing: { ...sessionRow.pricing, historyFailed }, updatedAt: new Date() }).where(eq(liveVoiceSession.id, sessionRow.id));
+      }).finally(async () => { await admission.release(); resolve(); });
     }));
     ws.on("message", data => {
       let event: Record<string, any>;
@@ -110,6 +118,7 @@ export async function createDurationVoiceSession({ model, sdp, userId, platform 
       if (event.type === "session.input_transcript.delta" || event.type === "session.output_transcript.delta") {
         const role = event.type === "session.input_transcript.delta" ? "user" : "assistant";
         if (typeof event.delta === "string") {
+          sessionHistory.append(event as { type: string }, sessionRow.id);
           const last = transcriptHistory.at(-1);
           if (last?.role === role) last.content += event.delta;
           else transcriptHistory.push({ role, content: event.delta });
@@ -157,7 +166,7 @@ export async function createDurationVoiceSession({ model, sdp, userId, platform 
           const cached = Math.min(input, Math.max(0, Number(usage.input_tokens_details?.cached_tokens) || 0));
           const output = Math.max(0, Number(usage.output_tokens) || 0);
           const cost = ((input - cached) * p.backendInputCostPerMillionUsd + cached * p.backendCachedInputCostPerMillionUsd + output * p.backendOutputCostPerMillionUsd) / 1_000_000;
-          if (cost > 0) await recordTokenUsage({ userId, chatId: null, modelConfigId: null, liveVoiceModelConfigId: model.id, inputTokens: input, outputTokens: output,
+          if (cost > 0) await recordTokenUsage({ userId, chatId: sessionHistory.chatId, modelConfigId: null, liveVoiceModelConfigId: model.id, inputTokens: input, outputTokens: output,
             billTokenUsage: false, generationPricing: pricingSnapshot, requestKey: `live:${sessionRow.id}:backend:${delegationId}`,
             additionalCharges: [{ category: "live_voice", providerKey: "openai", liveVoiceModelConfigId: model.id, providerCostPerUnitUsd: cost, unitCount: 1, markupMultiplier: markup, metadata: { sessionId: sessionRow.id, billingUnit: "backend_response", inputTokens: input, cachedInputTokens: cached, outputTokens: output } }],
           });
@@ -181,7 +190,7 @@ export async function createDurationVoiceSession({ model, sdp, userId, platform 
     queue = queue.then(() => bill(15));
     await opened;
     await queue;
-    return { sessionId: sessionRow.id, sdp: answer, maxDurationSeconds: MAX_SESSION_MS / 1000 };
+    return { sessionId: sessionRow.id, historyChatId: sessionHistory.chatId, serverHistory: true, sdp: answer, maxDurationSeconds: MAX_SESSION_MS / 1000 };
   } catch (error) {
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "session.close" }));
     else if (providerId) {
@@ -193,6 +202,7 @@ export async function createDurationVoiceSession({ model, sdp, userId, platform 
       cleanup.on("close", () => clearTimeout(timer));
     }
     if (row) await db.update(liveVoiceSession).set({ status: "failed", updatedAt: new Date() }).where(eq(liveVoiceSession.id, row.id));
+    await history?.finish(true).catch(() => undefined);
     await admission.release();
     throw error;
   }

@@ -118,6 +118,9 @@ export async function POST(request: Request) {
   }
 
   const ownedSession = confirmedSession;
+  // Updated clients read the server transcript; older clients must not create
+  // a second chat or overwrite the confirmed voice journal with client text.
+  if (typeof ownedSession?.pricing?.historyChatId === "string") return Response.json({ message: "This voice chat is saved in your history. Please update or refresh KhasiGPT to view it." }, { status: 409, headers: noStoreHeaders() });
   if (parsedBody.data.voiceSessionId && (!ownedSession?.providerSessionId || ownedSession.status === "failed")) return Response.json({ message: "Voice session could not be confirmed." }, { status: 403, headers: noStoreHeaders() });
   const liveVoiceModel = ownedSession ? { id: ownedSession.modelConfigId, durationPricing: true } : await withTimeout(
     resolveLiveVoiceModelConfig({

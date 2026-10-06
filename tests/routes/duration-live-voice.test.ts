@@ -29,6 +29,7 @@ function sessionHarness() {
   }
   const chain: any = { values: () => chain, returning: async () => [row], set: (v: any) => { writes.push(v); return chain; }, where: async () => [] };
   const mocks: Record<string, any> = {
+    "@/lib/voice/session-history": { openVoiceSessionHistory: async () => ({ chatId: modelId, append: () => {}, finish: async () => {} }) },
     "server-only": {}, "drizzle-orm": { eq: () => ({}), and: () => ({}) }, "next/server": { after: (fn: () => Promise<void>) => { finalizer = fn; } }, ws: FakeSocket,
     "@/lib/db/schema": { liveVoiceSession: { id: "id", userId: "userId" } },
     "@/lib/db/queries": { db: { insert: () => chain, update: () => chain }, acquirePaidGenerationForUser: async () => ({ release: async () => { released++; } }),
@@ -117,4 +118,13 @@ test("transcript persistence includes a greeting and the later answer in one cal
     { id: "answer", role: "assistant" as const, text: "The answer is 1316.", voiceSessionId: modelId },
   ];
   expect(groupDurationVoicePairs(messages)).toEqual([{ userText: "Calculate 28 times 47", assistantText: "Hello! The answer is 1316.", userSourceId: "user", assistantSourceId: "answer", voiceSessionId: modelId }]);
+});
+
+
+test("a live reply after an opening greeting remains after the caller in saved history", () => {
+  let messages = appendDurationTranscript([], { type: "session.output_transcript.delta", delta: "Hello!", start_ms: 0, end_ms: 100 }, modelId);
+  messages = appendDurationTranscript(messages, { type: "session.input_transcript.delta", delta: "Calculate 28 times 47", start_ms: 200, end_ms: 600 }, modelId);
+  messages = appendDurationTranscript(messages, { type: "session.output_transcript.delta", delta: "It is 1316.", start_ms: 700, end_ms: 1000 }, modelId);
+  expect(messages.map(item => item.role)).toEqual(["assistant", "user", "assistant"]);
+  expect(groupDurationVoicePairs(messages)[0].assistantText).toBe("It is 1316.");
 });

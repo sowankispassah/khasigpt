@@ -9,7 +9,10 @@ export function appendDurationTranscript(messages: DurationTranscriptMessage[], 
   const last = messages[index];
   const start = typeof event.start_ms === "number" ? event.start_ms : 0;
   const end = typeof event.end_ms === "number" ? event.end_ms : start;
-  if (last && start - (last.transcriptEndMs ?? start) < 1500) {
+  // A reply after a newer caller bubble must not merge back into an earlier
+  // greeting: that puts every assistant fragment before the question.
+  const newerCaller = role === "assistant" && messages.slice(index + 1).some(message => message.role === "user");
+  if (last && !newerCaller && start - (last.transcriptEndMs ?? start) < 1500) {
     return messages.map((message, i) => i === index ? { ...message, text: message.text + event.delta, transcriptEndMs: end } : message);
   }
   return [...messages, { id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`, role, text: event.delta, voiceSessionId: sessionId, transcriptEndMs: end }];

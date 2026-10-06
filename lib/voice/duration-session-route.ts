@@ -9,7 +9,7 @@ import { createDurationVoiceSession } from "@/lib/voice/duration-session";
 import { resolveLiveVoiceModelConfig } from "@/lib/voice/live-models";
 import { enforceLiveSessionLaunchAccess } from "@/lib/voice/live-session-access";
 
-const schema = z.object({ sdp: z.string().min(10).max(64_000).startsWith("v=0") });
+const schema = z.object({ chatId: z.string().uuid().optional(), sdp: z.string().min(10).max(64_000).startsWith("v=0") });
 
 export async function handleDurationSession(request: Request, platform: "web" | "native") {
   const auth = await getAuthenticatedUser(request, { allowBearer: platform === "native" });
@@ -24,10 +24,10 @@ export async function handleDurationSession(request: Request, platform: "web" | 
   try {
     const [mode, model] = await Promise.all([getVoiceChatAccessModeForPlatform(platform === "native" ? "android" : "web"), resolveLiveVoiceModelConfig({ platform })]);
     if (!model?.durationPricing || !await isFeatureEnabledForUser({ featureKey: platform === "native" ? VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY : VOICE_CHAT_WEB_FEATURE_FLAG_KEY, mode, role: auth.user.role, userId: auth.user.id, source: "live-session.start" })) return fail(404);
-    return Response.json(await createDurationVoiceSession({ model, sdp: parsed.data.sdp, userId: auth.user.id, platform }), { status: 201, headers: noStoreHeaders() });
+    return Response.json(await createDurationVoiceSession({ model, chatId: parsed.data.chatId, sdp: parsed.data.sdp, userId: auth.user.id, platform }), { status: 201, headers: noStoreHeaders() });
   } catch (error) {
     const type = error && typeof error === "object" && "type" in error ? error.type : null;
     console.error("[live-session] Creation failed.", { type });
-    return fail(type === "payment_required" ? 402 : type === "rate_limit" ? 429 : 503);
+    return fail(type === "forbidden" ? 403 : type === "payment_required" ? 402 : type === "rate_limit" ? 429 : 503);
   }
 }

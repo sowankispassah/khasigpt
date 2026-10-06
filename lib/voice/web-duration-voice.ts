@@ -4,7 +4,7 @@ import { LiveSessionError } from "@/lib/voice/session-errors";
 import type { WebGeminiVoiceCallbacks, WebGeminiVoiceConversationMessage, WebGeminiVoiceTurnController } from "@/lib/voice/web-live-voice";
 import { WebVoiceTokenError } from "@/lib/voice/web-live-voice";
 
-export async function startDurationWebVoice(callbacks: WebGeminiVoiceCallbacks, endpoint: string): Promise<WebGeminiVoiceTurnController> {
+export async function startDurationWebVoice(callbacks: WebGeminiVoiceCallbacks, endpoint: string, chatId?: string): Promise<WebGeminiVoiceTurnController> {
   const peer = new RTCPeerConnection();
   const events = peer.createDataChannel("oai-events");
   const audio = new Audio();
@@ -94,10 +94,11 @@ export async function startDurationWebVoice(callbacks: WebGeminiVoiceCallbacks, 
       const check = () => { if (peer.iceGatheringState === "complete") { clearTimeout(timer); peer.removeEventListener("icegatheringstatechange", check); resolve(); } };
       peer.addEventListener("icegatheringstatechange", check); check();
     });
-    const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sdp: peer.localDescription?.sdp }), signal: AbortSignal.timeout(25_000) });
+    const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chatId, sdp: peer.localDescription?.sdp }), signal: AbortSignal.timeout(25_000) });
     if (!response.ok) { if (response.status === 402) throw new WebVoiceTokenError("Insufficient credits remaining", 402, "insufficient-credits"); throw new LiveSessionError("live_connection_failed"); }
     const result = await response.json();
     sessionId = result.sessionId;
+    if (result.serverHistory) callbacks.onHistoryReady?.(sessionId);
     readyTimer = setTimeout(fail, 15_000);
     await peer.setRemoteDescription({ type: "answer", sdp: result.sdp });
     await connected;

@@ -482,7 +482,7 @@ export function Chat({
     verifiedImageCanGenerate,
   ]);
 
-  const refreshAndPromoteHistory = useCallback(() => {
+  const refreshAndPromoteHistory = useCallback((immediate = false) => {
     const historyCacheKey = unstable_serialize(historyPaginationKey);
     const now = new Date();
 
@@ -536,6 +536,10 @@ export function Chat({
       historyRevalidateTimerRef.current = null;
     }
 
+    if (immediate) {
+      void mutate(historyCacheKey);
+      return;
+    }
     historyRevalidateTimerRef.current = setTimeout(() => {
       mutate(historyCacheKey);
       historyRevalidateTimerRef.current = null;
@@ -2260,7 +2264,7 @@ export function Chat({
               onUpgradeRequired={() => setShowImageUpgradeDialog(true)}
               onVoiceTurnSaved={() => {
                 syncCurrentChatUrl();
-                void refreshAndPromoteHistory();
+                void refreshAndPromoteHistory(true);
               }}
             />
           </div>
@@ -2448,7 +2452,7 @@ export function Chat({
                     onUpgradeRequired={() => setShowImageUpgradeDialog(true)}
                     onVoiceTurnSaved={() => {
                       syncCurrentChatUrl();
-                      void refreshAndPromoteHistory();
+                      void refreshAndPromoteHistory(true);
                     }}
                     voiceStartSignal={voiceStartSignal}
                   />
