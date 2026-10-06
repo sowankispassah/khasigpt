@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { useWindowSize } from "usehooks-ts";
 import { useTranslation } from "@/components/language-provider";
 import { useModelConfig } from "@/components/model-config-provider";
+import type { ChatHistory } from "@/components/sidebar-history";
 import {
   EditableTranslation,
   useEditableTranslation,
@@ -365,7 +366,7 @@ function PureMultimodalInput({
   ) => Promise<ToolIntentResolution | null>;
   onToggleImageMode: () => void;
   onUpgradeRequired?: () => void;
-  onVoiceTurnSaved?: () => void;
+  onVoiceTurnSaved?: (savedChat?: ChatHistory["chats"][number]) => void;
   autoFocus?: boolean;
   documentUploadsEnabled: boolean;
   voiceChatEnabled: boolean;
@@ -757,10 +758,10 @@ function PureMultimodalInput({
           const saved = await confirmVoiceHistory(async () => {
             const response = await fetch(`/api/chat/voice-history?sessionId=${encodeURIComponent(sessionId)}`, { cache: "no-store", signal: AbortSignal.timeout(10000) });
             if (!response.ok) throw new Error(translate("voice.chat.save_failed", "Unable to save this voice chat."));
-            return await response.json() as { pending?: boolean; messages?: ChatMessage[] };
+            return await response.json() as { pending?: boolean; chat?: ChatHistory["chats"][number]; messages?: ChatMessage[] };
           }, translate("voice.chat.save_failed", "Unable to save this voice chat."));
           if (saved.messages) setMessages(saved.messages);
-          onVoiceTurnSaved?.();
+          onVoiceTurnSaved?.(saved.chat);
         } finally { setIsVoiceSaving(false); }
         return;
       }

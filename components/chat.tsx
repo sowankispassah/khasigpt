@@ -482,7 +482,7 @@ export function Chat({
     verifiedImageCanGenerate,
   ]);
 
-  const refreshAndPromoteHistory = useCallback((immediate = false) => {
+  const refreshAndPromoteHistory = useCallback((immediate = false, savedChat?: ChatHistory["chats"][number]) => {
     const historyCacheKey = unstable_serialize(historyPaginationKey);
     const now = new Date();
 
@@ -490,7 +490,7 @@ export function Chat({
       historyCacheKey,
       (currentPages: ChatHistory[] | undefined) => {
         if (!currentPages || currentPages.length === 0) {
-          return currentPages;
+          return savedChat ? [{ chats: [savedChat], hasMore: true }] : currentPages;
         }
 
         let promotedChat: ChatHistory["chats"][number] | null = null;
@@ -504,6 +504,7 @@ export function Chat({
 
             promotedChat = {
               ...chat,
+              ...savedChat,
               createdAt:
                 now as unknown as ChatHistory["chats"][number]["createdAt"],
             };
@@ -511,6 +512,7 @@ export function Chat({
           }),
         }));
 
+        promotedChat ??= savedChat ?? null;
         if (!promotedChat) {
           return currentPages;
         }
@@ -2262,9 +2264,9 @@ export function Chat({
               studyQuestionReference={studyQuestionReference}
               onToggleImageMode={() => {}}
               onUpgradeRequired={() => setShowImageUpgradeDialog(true)}
-              onVoiceTurnSaved={() => {
+              onVoiceTurnSaved={(savedChat) => {
                 syncCurrentChatUrl();
-                void refreshAndPromoteHistory(true);
+                void refreshAndPromoteHistory(true, savedChat);
               }}
             />
           </div>
@@ -2450,9 +2452,9 @@ export function Chat({
                       void refreshImageGenerationAccess();
                     }}
                     onUpgradeRequired={() => setShowImageUpgradeDialog(true)}
-                    onVoiceTurnSaved={() => {
+                    onVoiceTurnSaved={(savedChat) => {
                       syncCurrentChatUrl();
-                      void refreshAndPromoteHistory(true);
+                      void refreshAndPromoteHistory(true, savedChat);
                     }}
                     voiceStartSignal={voiceStartSignal}
                   />
