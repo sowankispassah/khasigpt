@@ -19,6 +19,8 @@ The existing protected `CRON_SECRET` authenticates the scheduled request. No sec
 
 The **Check storage inventory** button invokes a fresh-admin-only, same-origin POST. It always runs in dry mode, regardless of any supplied query/body. It reconciles metadata without deleting or claiming files and is limited to five checks per hour per administrator. The UI disables repeat clicks and displays a terminal success/failure state. Inventory and alert failures are isolated from other admin pages and user startup.
 
+The storage summary uses one validated JSON database snapshot. Four concurrent statements on the production client's single pipeline stalled during live verification; one snapshot avoids that queue interaction and keeps totals and account rows consistent without increasing timeout limits. Account sorting uses the numeric byte column before converting it to display text.
+
 ## Safety and accounting
 
 Migrations `0119_chat_file_lifecycle.sql` and `0120_shared_upload_holds.sql` create private metadata, indexed references and due dates, ownership totals, a durable inventory cursor, and a maintenance lease. They index existing Message/Message_v2, Character and prompt-icon references before cleanup is deployed. Unsupported owned references abort indexing rather than silently becoming orphans. RLS and revoked public/anonymous/authenticated privileges keep this metadata server-only.

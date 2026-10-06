@@ -218,7 +218,7 @@ function maintenanceModule(blob: Record<string, unknown>) {
     if (name === "@/lib/uploads/storage-lifecycle") return lifecycle;
     if (name === "@/lib/uploads/private-documents") return { privateStorageOptions: () => ({ token: "disposable-local-fixture" }) };
     if (name === "@/lib/db/admin-database") return { withAdminDatabase: (_: string, work: any) => work(database, client) };
-    if (!name.startsWith("@/lib/uploads/storage-")) return require(name);
+    if (!name.startsWith("@/lib/uploads/storage-") && name !== "@/lib/admin/chat-storage") return require(name);
     const existing = cache.get(name);
     if (existing) return existing;
     const exports: Record<string, any> = {};
@@ -226,7 +226,7 @@ function maintenanceModule(blob: Record<string, unknown>) {
     vm.runInNewContext(ts.transpileModule(readFileSync(`${name.replace("@/", "")}.ts`, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText, { exports, require: load, Date, AbortSignal, Buffer, process, console });
     return exports;
   };
-  return { ...load("@/lib/uploads/storage-maintenance"), records: load("@/lib/uploads/storage-records") };
+  return { ...load("@/lib/uploads/storage-maintenance"), records: load("@/lib/uploads/storage-records"), admin: load("@/lib/admin/chat-storage") };
 }
 
 async function resetMaintenance() {
@@ -341,4 +341,19 @@ test("a shared configuration cannot acquire a file already claimed for deletion"
   const id = randomUUID();
   await expect(client`INSERT INTO "Character" (id,"canonicalName","refImages") VALUES (${id},${`Expired storage fixture ${id}`},${JSON.stringify([{ url: part(key).url }])}::jsonb)`).rejects.toThrow("expired");
   expect((await client`SELECT id FROM "Character" WHERE id = ${id}`).length).toBe(0);
+});
+
+test("admin summary reads a validated coherent snapshot including inventory results", async () => {
+  await file();
+  const smaller = randomUUID();
+  await client`INSERT INTO "ChatStorageAccount" ("userId",bytes,files) VALUES (${smaller},99,1)`;
+  const module = maintenanceModule({});
+  try {
+    const summary = await module.admin.getChatStorageSummary();
+    expect(summary.accounts.some((account: { userId: string; bytes: string }) => account.userId === owner && account.bytes === "1024")).toBe(true);
+    expect(summary.accounts.findIndex((account: { userId: string }) => account.userId === owner)).toBeLessThan(summary.accounts.findIndex((account: { userId: string }) => account.userId === smaller));
+    expect(Number(summary.totals.files)).toBeGreaterThanOrEqual(1);
+    expect(summary.pending.unknown).toBeGreaterThanOrEqual(0);
+    expect(typeof summary.hasNext).toBe("boolean");
+  } finally { await client`DELETE FROM "ChatStorageAccount" WHERE "userId" = ${smaller}`; }
 });
