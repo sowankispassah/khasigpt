@@ -34,7 +34,7 @@ import type { ToolIntentResolution } from "@/lib/tool-intent";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { getAttachmentAcceptValue } from "@/lib/uploads/document-uploads";
 import { cn, generateUUID } from "@/lib/utils";
-import { confirmVoiceHistory } from "@/lib/voice/confirmed-history";
+import { confirmVoiceHistory, VoiceHistoryReadError } from "@/lib/voice/confirmed-history";
 import { groupDurationVoicePairs } from "@/lib/voice/duration-transcripts";
 import {
   startWebGeminiVoiceTurn,
@@ -757,7 +757,7 @@ function PureMultimodalInput({
         try {
           const saved = await confirmVoiceHistory(async () => {
             const response = await fetch(`/api/chat/voice-history?sessionId=${encodeURIComponent(sessionId)}`, { cache: "no-store", signal: AbortSignal.timeout(10000) });
-            if (!response.ok) throw new Error(translate("voice.chat.save_failed", "Unable to save this voice chat."));
+            if (!response.ok) throw new VoiceHistoryReadError(translate("voice.chat.save_failed", "Unable to save this voice chat."), response.status);
             return await response.json() as { pending?: boolean; chat?: ChatHistory["chats"][number]; messages?: ChatMessage[] };
           }, translate("voice.chat.save_failed", "Unable to save this voice chat."));
           if (saved.messages) setMessages(saved.messages);

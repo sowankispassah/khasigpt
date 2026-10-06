@@ -5,6 +5,7 @@ import path from "node:path";
 import vm from "node:vm";
 import { expect, test } from "@playwright/test";
 import ts from "typescript";
+import { confirmVoiceHistory, VoiceHistoryReadError } from "@/lib/voice/confirmed-history";
 import { appendDurationTranscript } from "@/lib/voice/duration-transcripts";
 
 const requireModule = createRequire(path.join(process.cwd(), "package.json"));
@@ -106,4 +107,23 @@ test("history reads enforce ownership, expose pending state, and never re-charge
   expect((await exports.handleVoiceSessionHistory(request(), false)).status).toBe(404);
   auth = null;
   expect((await exports.handleVoiceSessionHistory(request(), false)).status).toBe(401);
+});
+
+
+test("a transient history read is retried once without starting another generation", async () => {
+  let reads = 0;
+  const saved = await confirmVoiceHistory(async () => {
+    if (++reads === 1) throw new VoiceHistoryReadError("temporary", 503);
+    return { pending: false, messages: ["saved"] };
+  });
+  expect(reads).toBe(2);
+  expect(saved.messages).toEqual(["saved"]);
+  for (const status of [401, 403, 404]) {
+    let denied = 0;
+    await expect(confirmVoiceHistory(async () => { denied++; throw new VoiceHistoryReadError("denied", status); })).rejects.toThrow("denied");
+    expect(denied).toBe(1);
+  }
+  let failures = 0;
+  await expect(confirmVoiceHistory(async () => { failures++; throw new Error("offline"); })).rejects.toThrow("offline");
+  expect(failures).toBe(2);
 });
