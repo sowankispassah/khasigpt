@@ -38,7 +38,7 @@ export async function handleVoiceRelay(request: Request, platform: "web" | "nati
     const [mode, model] = await Promise.all([getVoiceChatAccessModeForPlatform(platform === "web" ? "web" : "android"), resolveLiveVoiceModelConfig({ platform })]);
     if (!model || model.provider !== "google" || !await isFeatureEnabledForUser({ featureKey: platform === "web" ? VOICE_CHAT_WEB_FEATURE_FLAG_KEY : VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY, mode, role: auth.user.role, userId: auth.user.id, source: "voice.relay" })) return fail(404);
     const stream = await createGoogleRelaySession(model, auth.user.id, platform, request.signal);
-    return new Response(stream, { headers: { ...noStoreHeaders(), "Content-Type": "application/x-ndjson", "X-Accel-Buffering": "no" } });
+    return new Response(stream, { headers: { ...noStoreHeaders(), "Content-Type": "application/x-ndjson", "Content-Encoding": "identity", "Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no" } });
   } catch (error) {
     const type = error && typeof error === "object" && "type" in error ? error.type : null;
     console.warn("[voice-relay] Request failed.", { type });
