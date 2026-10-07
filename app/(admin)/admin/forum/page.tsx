@@ -3,6 +3,7 @@ import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ActionSubmitButton } from "@/components/action-submit-button";
+import { AdminPageHeader } from "@/components/admin/admin-ui";
 import { AdminDataPanel } from "@/components/admin-data-panel";
 import { AdminForumConfirmForm } from "@/components/admin-forum-confirm-form";
 import { Badge } from "@/components/ui/badge";
@@ -477,18 +478,11 @@ export default async function AdminForumPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex flex-col gap-2">
-        <p className="font-semibold text-muted-foreground text-sm uppercase tracking-wide">
-          Community Forum
-        </p>
-        <h2 className="font-semibold text-3xl tracking-tight">
-          Forum moderation
-        </h2>
-        <p className="max-w-3xl text-muted-foreground text-sm">
-          Manage categories, discussions, comments, visibility, moderation state,
-          and destructive cleanup from one admin-only control surface.
-        </p>
-      </div>
+      <AdminPageHeader
+        description="Manage categories, discussions, comments, visibility, moderation state, and destructive cleanup from one admin-only control surface."
+        navHref="/admin/forum"
+        title="Forum moderation"
+      />
 
       {!forumConfirmed ? (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">

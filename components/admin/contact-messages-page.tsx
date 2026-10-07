@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { AdminPagination } from "@/components/admin/admin-pagination";
+import { AdminPageHeader } from "@/components/admin/admin-ui";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { toContactTableMessage } from "@/lib/admin/contact-table-message";
 import { adminQueryResult } from "@/lib/admin/safe-query";
@@ -89,12 +90,11 @@ export async function ContactMessagesPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="font-semibold text-2xl">{kind === "report" ? <EditableTranslation defaultText="Reports" description="Admin reports page title." translationKey="admin.reports.title" /> : <EditableTranslation defaultText="Contact requests" description="Admin contact requests page title." translationKey="admin.contacts.title" />}</h1>
-        <p className="text-muted-foreground text-sm">
-          {kind === "report" ? <EditableTranslation defaultText="AI response and forum reports submitted by users." description="Admin reports page description." translationKey="admin.reports.description" /> : <EditableTranslation defaultText="Messages from people who want to get in touch." description="Admin contact requests page description." translationKey="admin.contacts.description" />}
-        </p>
-      </header>
+      <AdminPageHeader
+        description={kind === "report" ? <EditableTranslation defaultText="AI response and forum reports submitted by users." description="Admin reports page description." translationKey="admin.reports.description" /> : <EditableTranslation defaultText="Messages from people who want to get in touch." description="Admin contact requests page description." translationKey="admin.contacts.description" />}
+        navHref={kind === "report" ? "/admin/reports" : "/admin/contacts"}
+        title={kind === "report" ? <EditableTranslation defaultText="Reports" description="Admin reports page title." translationKey="admin.reports.title" /> : <EditableTranslation defaultText="Contact requests" description="Admin contact requests page title." translationKey="admin.contacts.title" />}
+      />
 
       <section className="rounded-lg border bg-card p-4 shadow-sm">
         {kind === "contact" && contactParam !== undefined && (!contactId?.success || !selectedContactState?.ok || !selectedContactState.data) ? <div className="mb-3 rounded-md border border-amber-200 p-3 text-sm" role="alert"><EditableTranslation defaultText="The selected support request could not be opened. It may no longer exist; refresh this section to retry." description="Selected support conversation unavailable." translationKey="admin.users.details.support_target_error" /></div> : null}

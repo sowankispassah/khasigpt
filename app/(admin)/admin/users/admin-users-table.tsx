@@ -667,7 +667,7 @@ export function AdminUsersTable({
   );
 
   return (
-    <div className="rounded-lg border bg-card p-4 shadow-sm">
+    <div className="rounded-xl border bg-card p-4 shadow-xs">
       <AdminUsersSearchForm
         initialAccountStatus={initialAccountStatus}
         initialPresence={initialPresence}
@@ -677,8 +677,9 @@ export function AdminUsersTable({
       />
       <AdminUsersBulkActionBar />
       <div className="mt-4 overflow-x-auto">
-        <table className="w-full whitespace-nowrap text-sm">
-          <thead className="text-muted-foreground text-xs uppercase">
+        {/* Horizontal cell padding keeps adjacent columns from running together. */}
+        <table className="w-full whitespace-nowrap text-sm [&_td:first-child]:pl-0 [&_td]:px-3 [&_th:first-child]:pl-0 [&_th]:px-3 [&_tr]:border-border/70">
+          <thead className="text-muted-foreground text-xs uppercase tracking-wide">
             <tr>
               <AdminUsersSelectAllCheckbox />
               <th className="py-3 text-left">

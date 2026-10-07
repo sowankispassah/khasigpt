@@ -8,6 +8,7 @@ import {
   updatePlanTranslationAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
+import { AdminPageHeader } from "@/components/admin/admin-ui";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
   ADMIN_SETTINGS_IMAGE_MODELS_CACHE_TAG,
@@ -1016,18 +1017,11 @@ export default async function AdminPricingPage({
   return (
     <div className="flex flex-col gap-6">
       <PricingNotice notice={resolvedSearchParams?.notice} />
-      <header className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="font-semibold text-2xl">Pricing</h1>
-            <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
-              Review recharge tiers, compare effective user pricing with
-              provider costs, and update plans without opening separate
-              collapsible sections.
-            </p>
-          </div>
-        </div>
-      </header>
+      <AdminPageHeader
+        description="Review recharge tiers, compare effective user pricing with provider costs, and update plans."
+        navHref="/admin/pricing"
+        title="Pricing"
+      />
       {plansState.ok ? (
         <Suspense
           fallback={

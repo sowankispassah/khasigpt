@@ -1,3 +1,4 @@
+import { AdminPageHeader } from "@/components/admin/admin-ui";
 import { ExploreAdminManager } from "@/components/admin/explore-admin-manager";
 import { ExploreProviderSettings } from "@/components/admin/explore-provider-settings";
 import { listExploreCategories } from "@/lib/explore/service";
@@ -15,12 +16,11 @@ export default async function ExploreAdminPage() {
   });
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-semibold text-2xl">Nearby</h1>
-        <p className="mt-1 text-muted-foreground text-sm">
-          Configure discovery categories, subcategories, search behavior, location rules, icons, and ordering.
-        </p>
-      </div>
+      <AdminPageHeader
+        description="Configure discovery categories, subcategories, search behavior, location rules, icons, and ordering."
+        navHref="/admin/explore"
+        title="Nearby"
+      />
       <ExploreProviderSettings />
       <ExploreAdminManager initialCategories={categories} />
     </div>

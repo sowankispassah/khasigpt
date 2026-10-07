@@ -1,3 +1,4 @@
+import { ChevronDown } from "lucide-react";
 import { unstable_cache } from "next/cache";
 import type { ComponentProps, ReactNode } from "react";
 import {
@@ -22,6 +23,8 @@ import {
   updateTranslationFeatureLanguageStatusAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
+import { AdminSectionIndex } from "@/components/admin/admin-section-index";
+import { AdminPageHeader } from "@/components/admin/admin-ui";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
   ADMIN_SETTINGS_LANGUAGES_CACHE_TAG,
@@ -668,6 +671,26 @@ function toDateTimeLocalInputValue(iso: string) {
     .slice(0, 16);
 }
 
+function settingsSectionId(title: string) {
+  return `settings-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}`;
+}
+
+// Top-level sections, in page order, for the "On this page" index.
+const SETTINGS_SECTION_INDEX = [
+  { id: "prelaunch-access", label: "Maintenance" },
+  ...[
+    "Feature settings",
+    "Active image model",
+    "Image generation defaults",
+    "Free message policy",
+    "Translation settings",
+    "Language settings",
+    "Home page pre-prompts",
+    "Public page content",
+    "Live Translation defaults",
+  ].map((label) => ({ id: settingsSectionId(label), label })),
+];
+
 function CollapsibleSection({
   title,
   description,
@@ -683,20 +706,21 @@ function CollapsibleSection({
 }) {
   return (
     <details
-      className="group overflow-hidden rounded-lg border bg-card shadow-sm"
-      id={id}
+      className="group scroll-mt-20 overflow-hidden rounded-xl border bg-card shadow-xs"
+      id={id ?? (typeof title === "string" ? settingsSectionId(title) : undefined)}
       {...(defaultOpen ? { open: true } : {})}
     >
-      <summary className="flex cursor-pointer items-center justify-between gap-3 px-6 py-4">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-6 py-4 transition hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
         <div className="space-y-1">
-          <h2 className="font-semibold text-lg">{title}</h2>
+          <h2 className="font-semibold text-base">{title}</h2>
           {description ? (
             <p className="text-muted-foreground text-sm">{description}</p>
           ) : null}
         </div>
-        <span className="font-semibold text-muted-foreground text-xs transition-transform duration-150 group-open:rotate-180">
-          ▼
-        </span>
+        <ChevronDown
+          aria-hidden="true"
+          className="size-4 shrink-0 text-muted-foreground transition-transform duration-150 group-open:rotate-180"
+        />
       </summary>
       <div className="border-t px-6 py-5">
         <div className="space-y-4">{children}</div>
@@ -1198,6 +1222,14 @@ export default async function AdminSettingsPage({
       : null;
   return (
     <>
+      <div className="mb-6 flex flex-col gap-4">
+        <AdminPageHeader
+          description="Site access, features, models, languages and public page content."
+          navHref="/admin/settings"
+          title="Settings"
+        />
+        <AdminSectionIndex items={SETTINGS_SECTION_INDEX} />
+      </div>
       <AdminSettingsNotice notice={notice} />
 
       {!featureSettingsReadConfirmed ? (

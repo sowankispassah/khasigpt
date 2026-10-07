@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { AdminPagination } from "@/components/admin/admin-pagination";
+import { AdminPageHeader } from "@/components/admin/admin-ui";
 import { Badge } from "@/components/ui/badge";
 import { adminQueryResult } from "@/lib/admin/safe-query";
 import {
@@ -180,13 +181,11 @@ export default async function AdminAccountDeletionPage({
   return (
     <div className="flex flex-col gap-6">
       <MarkDeletionRequestsViewed enabled={rowsConfirmed} />
-      <header className="flex flex-col gap-1">
-        <h1 className="font-semibold text-2xl">Account deletion requests</h1>
-        <p className="text-muted-foreground text-sm">
-          Review verified requests, approve or reject them, and mark completed
-          after account data has been removed or anonymized.
-        </p>
-      </header>
+      <AdminPageHeader
+        description="Review verified requests, approve or reject them, and mark completed after account data has been removed or anonymized."
+        navHref="/admin/account-deletion"
+        title="Account deletion requests"
+      />
 
       {notice && notices[notice] ? (
         <div

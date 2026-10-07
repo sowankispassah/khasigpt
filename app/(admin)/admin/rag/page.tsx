@@ -2,6 +2,7 @@ import nextDynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { AdminPageLoading } from "@/components/admin/admin-page-loading";
+import { AdminPageHeader } from "@/components/admin/admin-ui";
 import type { SerializedAdminRagEntry } from "@/components/admin-rag/admin-rag-manager";
 import type { SerializedUserKnowledgeEntry } from "@/components/admin-user-knowledge-table";
 import { getAdminQueryTimeoutMs } from "@/lib/admin/safe-query";
@@ -126,7 +127,12 @@ export default async function AdminRagPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="rounded-lg border bg-card p-6 shadow-sm">
+      <AdminPageHeader
+        description="Retrieval knowledge used in chats, user submissions awaiting review, and index rebuilds."
+        navHref="/admin/rag"
+        title="Knowledge (RAG)"
+      />
+      <section className="rounded-xl border bg-card p-6 shadow-xs">
         <h2 className="font-semibold text-lg">Custom knowledge (RAG)</h2>
         <p className="mt-1 text-muted-foreground text-sm">
           Enable or disable custom knowledge for chats.

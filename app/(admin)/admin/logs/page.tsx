@@ -1,6 +1,7 @@
 import { formatDistanceToNow } from "date-fns";
 
 import { AdminPagination } from "@/components/admin/admin-pagination";
+import { AdminPageHeader } from "@/components/admin/admin-ui";
 import { adminQueryResult } from "@/lib/admin/safe-query";
 import { getAuditLogCount, listAuditLog } from "@/lib/db/queries";
 
@@ -62,12 +63,11 @@ export default async function AdminAuditLogPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <header>
-        <h2 className="font-semibold text-xl">Audit log</h2>
-        <p className="text-muted-foreground text-sm">
-          Every administrative action is recorded for compliance.
-        </p>
-      </header>
+      <AdminPageHeader
+        description="Every administrative action is recorded for compliance."
+        navHref="/admin/logs"
+        title="Audit log"
+      />
 
       <div className="rounded-lg border bg-card p-4 shadow-sm">
         {(!entriesConfirmed || !totalEntriesState.ok) && (

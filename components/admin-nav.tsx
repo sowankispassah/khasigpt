@@ -1,46 +1,20 @@
 "use client";
 
-import {
-  BriefcaseBusiness,
-  CircleDollarSign,
-  Compass,
-  Contact,
-  Database,
-  Flag,
-  HardDrive,
-  Languages,
-  LayoutDashboard,
-  Loader2,
-  MessageSquare,
-  MessagesSquare,
-  Percent,
-  ScrollText,
-  Settings,
-  ShieldCheck,
-  Trash2,
-  UserCog,
-  Users,
-} from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
+import Image from "next/image";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  type ComponentType,
-  type MouseEvent,
-  useCallback,
-} from "react";
+import { type MouseEvent, useCallback } from "react";
 import {
   type AdminNavBadgeCounts,
-  type AdminNavBadgeKey,
   useAdminNavCounts,
 } from "@/components/admin/use-admin-nav-counts";
 import { useTranslation } from "@/components/language-provider";
-import {
-  EditableTranslation,
-} from "@/components/translation-edit-provider";
-
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -50,81 +24,15 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-  SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar";
+import {
+  ADMIN_NAV_GROUPS,
+  type AdminNavItem,
+  isActiveAdminRoute,
+} from "@/lib/admin/navigation";
 import { startGlobalProgress } from "@/lib/ui/global-progress";
 import { cn } from "@/lib/utils";
-
-type AdminNavItem = {
-  badgeKey?: AdminNavBadgeKey;
-  href: string;
-  icon: ComponentType<{ className?: string }>;
-  label: string;
-  labelKey?: string;
-};
-
-type AdminNavGroup = {
-  items: AdminNavItem[];
-  label: string;
-};
-
-const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
-  {
-    label: "Dashboard",
-    items: [{ href: "/admin", icon: LayoutDashboard, label: "Overview" }],
-  },
-  {
-    label: "User Management",
-    items: [
-      { badgeKey: "users", href: "/admin/users", icon: Users, label: "Users" },
-      { href: "/admin/account", icon: UserCog, label: "Account" },
-      {
-        badgeKey: "contacts",
-        href: "/admin/contacts",
-        icon: Contact,
-        label: "Contacts",
-        labelKey: "admin.nav.contacts",
-      },
-      {
-        badgeKey: "reports",
-        href: "/admin/reports",
-        icon: Flag,
-        label: "Reports",
-        labelKey: "admin.nav.reports",
-      },
-      {
-        badgeKey: "accountDeletionRequests",
-        href: "/admin/account-deletion",
-        icon: Trash2,
-        label: "Deletion Requests",
-        labelKey: "admin.nav.deletion_requests",
-      },
-    ],
-  },
-  {
-    label: "Content",
-    items: [
-      { href: "/admin/chats", icon: MessagesSquare, label: "Chats" },
-      { href: "/admin/forum", icon: MessageSquare, label: "Forum" },
-      { href: "/admin/characters", icon: ShieldCheck, label: "Characters" },
-      { href: "/admin/jobs", icon: BriefcaseBusiness, label: "Jobs" },
-      { href: "/admin/rag", icon: Database, label: "RAG" },
-      { href: "/admin/explore", icon: Compass, label: "Nearby" },
-    ],
-  },
-  {
-    label: "Administration",
-    items: [
-      { href: "/admin/pricing", icon: CircleDollarSign, label: "Pricing" },
-      { href: "/admin/settings", icon: Settings, label: "Settings" },
-      { href: "/admin/translations", icon: Languages, label: "Translations" },
-      { href: "/admin/logs", icon: ScrollText, label: "Audit Log" },
-      { badgeKey: "storage", href: "/admin/storage", icon: HardDrive, label: "Chat storage", labelKey: "admin.storage.nav" },
-      { href: "/admin/coupons", icon: Percent, label: "Coupons" },
-    ],
-  },
-];
 
 export function AdminNav({
   initialBadgeCounts = {},
@@ -159,51 +67,61 @@ export function AdminNav({
     [pathname, setOpenMobile]
   );
 
-  const getBadgeCount = useCallback(
-    (link: AdminNavItem) => {
-      if (!link.badgeKey) {
-        return 0;
-      }
-      return badgeCounts[link.badgeKey] ?? 0;
-    },
-    [badgeCounts]
-  );
-
   return (
-    <Sidebar
-      className="border-r bg-sidebar"
-      collapsible="icon"
-      variant="sidebar"
-    >
-      <SidebarHeader className="border-b">
-        <div className="flex h-12 items-center px-1">
-          <Link
-            className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 font-semibold text-sidebar-foreground text-sm outline-none transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-            href="/admin"
-            onClick={(event) => handleLinkClick(event, "/admin")}
-            prefetch="auto"
-          >
-            <LayoutDashboard className="size-5 shrink-0" />
-            <span className="truncate group-data-[collapsible=icon]:hidden">
-              Admin Console
+    <Sidebar className="border-r" collapsible="icon" variant="sidebar">
+      <SidebarHeader className="border-sidebar-border/70 border-b">
+        <Link
+          className="flex h-12 min-w-0 cursor-pointer items-center gap-2.5 rounded-lg px-2 outline-none transition hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+          href="/admin"
+          onClick={(event) => handleLinkClick(event, "/admin")}
+          prefetch="auto"
+        >
+          {/* Light tile keeps the dark logo visible on the dark sidebar. */}
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white ring-1 ring-sidebar-border">
+            <Image
+              alt=""
+              className="size-6"
+              height={24}
+              src="/images/khasigptlogo.png"
+              width={24}
+            />
+          </span>
+          <span className="flex min-w-0 flex-col leading-tight group-data-[collapsible=icon]:hidden">
+            <span className="truncate font-semibold text-sidebar-foreground text-sm">
+              KhasiGPT
             </span>
-          </Link>
-        </div>
+            <span className="truncate text-sidebar-foreground/60 text-xs">
+              <EditableTranslation
+                defaultText="Admin console"
+                description="Subtitle under the brand name in the admin sidebar."
+                translationKey="admin.shell.subtitle"
+              />
+            </span>
+          </span>
+        </Link>
       </SidebarHeader>
+
       <SidebarContent className="gap-0 py-2">
-        {ADMIN_NAV_GROUPS.map((group, index) => (
-          <SidebarGroup className="py-2" key={group.label}>
-            {index > 0 ? <SidebarSeparator className="-mt-2 mb-2" /> : null}
-            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+        {ADMIN_NAV_GROUPS.map((group) => (
+          <SidebarGroup className="py-1.5" key={group.label}>
+            <SidebarGroupLabel className="font-medium text-[11px] text-sidebar-foreground/50 uppercase tracking-wider">
+              {group.label}
+            </SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu>
+              <SidebarMenu className="gap-0.5">
                 {group.items.map((link) => {
                   const isActive = isActiveAdminRoute(pathname, link.href);
-                  const badgeCount = getBadgeCount(link);
-                  const Icon = link.icon;
-                  const label = link.labelKey ? translate(link.labelKey, link.label) : link.label;
+                  const badgeCount = link.badgeKey
+                    ? (badgeCounts[link.badgeKey] ?? 0)
+                    : 0;
+                  const label = link.labelKey
+                    ? translate(link.labelKey, link.label)
+                    : link.label;
                   const badgeTitle = getBadgeTitle(
-                    translate("admin.nav.unread_badge", "Unread in {section}: {count}"),
+                    translate(
+                      "admin.nav.unread_badge",
+                      "Unread in {section}: {count}"
+                    ),
                     label,
                     badgeCount
                   );
@@ -213,40 +131,42 @@ export function AdminNav({
                       <SidebarMenuButton
                         asChild
                         className={cn(
-                          "h-9 cursor-pointer has-[[data-pending=true]]:bg-primary/10 has-[[data-pending=true]]:text-primary",
+                          "h-9 cursor-pointer text-sidebar-foreground/80 has-[[data-pending=true]]:bg-primary/10 has-[[data-pending=true]]:text-primary",
                           isActive &&
-                            "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
+                            "bg-primary/10 font-medium text-primary hover:bg-primary/15 hover:text-primary"
                         )}
                         isActive={isActive}
                         tooltip={label}
                       >
                         <Link
                           aria-current={isActive ? "page" : undefined}
-                          aria-label={badgeCount > 0 ? `${label}. ${badgeTitle}` : undefined}
-                          href={link.href}
-                          onClick={(event) =>
-                            handleLinkClick(event, link.href)
+                          aria-label={
+                            badgeCount > 0 ? `${label}. ${badgeTitle}` : undefined
                           }
+                          href={link.href}
+                          onClick={(event) => handleLinkClick(event, link.href)}
                           // Dynamic admin routes preload their loading boundary,
                           // keeping section data reads scoped to actual visits.
                           prefetch="auto"
                         >
-                          <AdminNavLinkContent icon={Icon} link={link} />
+                          <AdminNavLinkContent link={link} />
                         </Link>
                       </SidebarMenuButton>
                       {badgeCount > 0 ? (
                         <>
                           <SidebarMenuBadge
-                            className="h-5 min-w-5 rounded-full border border-red-700 bg-red-600 px-1 font-semibold text-white"
+                            className="h-5 min-w-5 rounded-full bg-destructive px-1.5 font-semibold text-[11px] text-white tabular-nums"
                             title={badgeTitle}
                           >
                             {formatBadgeCount(badgeCount)}
                           </SidebarMenuBadge>
                           <span
                             aria-hidden="true"
-                            className="absolute -top-1 -right-1 hidden h-5 min-w-5 items-center justify-center rounded-full border border-red-700 bg-red-600 px-1 font-semibold text-[10px] text-white ring-2 ring-sidebar group-data-[collapsible=icon]:flex"
+                            className="absolute -top-1 -right-1 hidden h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 font-semibold text-[10px] text-white ring-2 ring-sidebar group-data-[collapsible=icon]:flex"
                             title={badgeTitle}
-                          >{formatBadgeCount(badgeCount)}</span>
+                          >
+                            {formatBadgeCount(badgeCount)}
+                          </span>
                         </>
                       ) : null}
                     </SidebarMenuItem>
@@ -257,19 +177,37 @@ export function AdminNav({
           </SidebarGroup>
         ))}
       </SidebarContent>
+
+      <SidebarFooter className="border-sidebar-border/70 border-t">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              asChild
+              className="h-9 cursor-pointer text-sidebar-foreground/70"
+              tooltip={translate("admin.shell.back_to_app", "Back to app")}
+            >
+              <Link href="/chat" onClick={() => startGlobalProgress()}>
+                <ArrowLeft className="size-4" />
+                <span>
+                  <EditableTranslation
+                    defaultText="Back to app"
+                    description="Admin sidebar footer link that returns to the main chat app."
+                    translationKey="admin.shell.back_to_app"
+                  />
+                </span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   );
 }
 
-function AdminNavLinkContent({
-  icon: Icon,
-  link,
-}: {
-  icon: AdminNavItem["icon"];
-  link: AdminNavItem;
-}) {
+function AdminNavLinkContent({ link }: { link: AdminNavItem }) {
   const { pending } = useLinkStatus();
+  const Icon = link.icon;
 
   return (
     <>
@@ -299,13 +237,6 @@ function AdminNavLinkContent({
       </span>
     </>
   );
-}
-
-function isActiveAdminRoute(pathname: string, href: string) {
-  if (href === "/admin") {
-    return pathname === href;
-  }
-  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 function formatBadgeCount(count: number) {

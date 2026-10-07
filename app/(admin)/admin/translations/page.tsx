@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ComponentProps } from "react";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { AdminPagination } from "@/components/admin/admin-pagination";
+import { AdminPageHeader } from "@/components/admin/admin-ui";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { adminQueryResult } from "@/lib/admin/safe-query";
@@ -201,15 +202,11 @@ export default async function AdminTranslationsPage({
 
   return (
     <div className="space-y-6">
-      <header className="space-y-1.5">
-        <h1 className="font-semibold text-2xl">Translations</h1>
-        <p className="text-muted-foreground text-sm">
-          Manage default English copy and provide localized text. Leave a
-          translation blank to fall back to the English text. Need to wire a new
-          string? Wrap it in the translation helper and it will appear here
-          automatically.
-        </p>
-      </header>
+      <AdminPageHeader
+        description="Manage default English copy and provide localized text. Leave a translation blank to fall back to the English text. New strings wrapped in the translation helper appear here automatically."
+        navHref="/admin/translations"
+        title="Translations"
+      />
 
       <TranslationSearchForm defaultValue={rawQuery} />
 

@@ -1,6 +1,8 @@
 import { format } from "date-fns";
+import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { type ReactNode, Suspense } from "react";
+import { AdminPageHeader } from "@/components/admin/admin-ui";
 import { InlineExpandableRows } from "@/components/admin/inline-expandable-rows";
 import { ReceiptDownloadButton } from "@/components/receipt-download-button";
 import { EditableTranslation } from "@/components/translation-edit-provider";
@@ -316,11 +318,26 @@ function splitPreviewRows<T>(rows: T[], previewSize = DEFAULT_SECTION_PREVIEW_RO
   return { preview: rows.slice(0, previewSize), overflow: rows.slice(previewSize) };
 }
 
-function AccountSection({ title, children }: { title: string; children: ReactNode }) {
+function AccountSection({
+  title,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
   return (
-    <details className="rounded-lg border bg-card shadow-sm">
-      <summary className="cursor-pointer list-none px-4 py-4 font-semibold text-lg [&::-webkit-details-marker]:hidden">
+    <details
+      className="group overflow-hidden rounded-xl border bg-card shadow-xs"
+      {...(defaultOpen ? { open: true } : {})}
+    >
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 font-semibold text-base transition hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
         {title}
+        <ChevronDown
+          aria-hidden="true"
+          className="size-4 shrink-0 text-muted-foreground transition-transform duration-150 group-open:rotate-180"
+        />
       </summary>
       <div className="border-t p-4">{children}</div>
     </details>
@@ -849,12 +866,11 @@ export default async function AdminAccountPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="font-semibold text-2xl">Per-chat profit</h1>
-        <p className="text-muted-foreground text-sm">
-          Track revenue, provider cost, and margin for each chat session.
-        </p>
-      </header>
+      <AdminPageHeader
+        description="Track revenue, provider cost, and margin for each chat session."
+        navHref="/admin/account"
+        title="Per-chat profit"
+      />
 
       <Suspense fallback={<AccountOverviewFallback />}>
         <AccountOverviewSection
@@ -1425,7 +1441,7 @@ async function AccountOverviewSection({
   ];
 
   return (
-    <AccountSection title="Overview">
+    <AccountSection defaultOpen title="Overview">
       {!chatSummariesResult.ok || !rechargeSummariesResult.ok || !usdToInrResult.ok ? (
         <div className="mb-4">
           <AccountQueryWarning>

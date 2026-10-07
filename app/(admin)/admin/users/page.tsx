@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { AdminPageHeader, AdminStatusPill } from "@/components/admin/admin-ui";
 import { AdminUserDetailsButton } from "@/components/admin/admin-user-details-button";
 import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
 import { AddCreditsForm } from "@/components/admin-user-add-credits-form";
@@ -183,22 +184,19 @@ export default async function AdminUsersPage({
         {usersSnapshotState.ok && currentUserId ? (
           <MarkUsersViewed checkedThrough={checkedThrough} />
         ) : null}
-        <header className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="font-semibold text-xl">User management</h2>
-            <p className="text-muted-foreground text-sm">
-              Promote admins, suspend accounts, and monitor roles.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-full border bg-background px-3 py-1 font-medium text-xs text-muted-foreground">
+        <AdminPageHeader
+          actions={<AdminUsersBulkDeleteButton />}
+          description="Promote admins, suspend accounts, and monitor roles."
+          meta={
+            <AdminStatusPill>
               {totalUsersConfirmed
                 ? `${totalUsers.toLocaleString()} users`
                 : "User count unavailable"}
-            </span>
-            <AdminUsersBulkDeleteButton />
-          </div>
-        </header>
+            </AdminStatusPill>
+          }
+          navHref="/admin/users"
+          title="User management"
+        />
 
         {!totalUsersConfirmed && (
           <AdminUsersQueryWarning message="User count could not be confirmed." />
@@ -265,7 +263,7 @@ function UsersTableSection({
   usersConfirmed: boolean;
 }) {
   return (
-    <div className="rounded-lg border bg-card p-4 shadow-sm">
+    <div className="rounded-xl border bg-card p-4 shadow-xs">
       <Suspense fallback={null}>
         <BalanceQueryWarning
           balanceByUserIdStatePromise={balanceByUserIdStatePromise}
@@ -427,7 +425,7 @@ async function ActiveSubscriptionsSection({
   const activeSubscriptions = activeSubscriptionsState.data;
 
   return (
-    <div className="rounded-lg border bg-card p-4 shadow-sm">
+    <div className="rounded-xl border bg-card p-4 shadow-xs">
       <div className="flex items-center justify-between gap-2">
         <div>
           <h3 className="font-semibold text-base">Active subscriptions</h3>
@@ -505,7 +503,7 @@ function AdminUsersQueryWarning({ message }: { message: string }) {
 
 function SubscriptionsFallback() {
   return (
-    <div className="rounded-lg border bg-card p-4 shadow-sm">
+    <div className="rounded-xl border bg-card p-4 shadow-xs">
       <div className="space-y-3">
         {Array.from({ length: 4 }, (_, index) => (
           <div

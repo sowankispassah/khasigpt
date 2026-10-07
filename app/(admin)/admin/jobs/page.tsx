@@ -1,8 +1,10 @@
+import { ChevronDown } from "lucide-react";
 import { redirect } from "next/navigation";
 import { type ReactNode, Suspense } from "react";
 import { auth } from "@/app/(auth)/auth";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { AdminPagination } from "@/components/admin/admin-pagination";
+import { AdminPageHeader } from "@/components/admin/admin-ui";
 import { AdminJobEditDialog } from "@/components/admin-job-edit-dialog";
 import { AdminJobsExpandableTable } from "@/components/admin-jobs-expandable-table";
 import { AdminJobsRunnerModeControl } from "@/components/admin-jobs-runner-mode-control";
@@ -422,12 +424,15 @@ function CollapsibleSectionCard({
   defaultOpen?: boolean;
 }) {
   return (
-    <Card>
-      <details open={defaultOpen}>
-        <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+    <Card className="overflow-hidden rounded-xl shadow-xs">
+      <details className="group" open={defaultOpen}>
+        <summary className="cursor-pointer list-none transition hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
           <CardHeader className="flex flex-row items-center justify-between gap-3">
-            <CardTitle>{title}</CardTitle>
-            <span className="text-muted-foreground text-xs">Click to expand/collapse</span>
+            <CardTitle className="text-base">{title}</CardTitle>
+            <ChevronDown
+              aria-hidden="true"
+              className="size-4 shrink-0 text-muted-foreground transition-transform duration-150 group-open:rotate-180"
+            />
           </CardHeader>
         </summary>
         <CardContent className={contentClassName}>{children}</CardContent>
@@ -1225,6 +1230,11 @@ export default async function AdminJobsPage({
 
   return (
     <div className="flex flex-col gap-6">
+      <AdminPageHeader
+        description="Job listings, sources, scraping schedule and ingestion history."
+        navHref="/admin/jobs"
+        title="Jobs"
+      />
       <AdminJobsRunnerModeControl
         action={saveJobsRunnerModeAction}
         mode={runnerMode}

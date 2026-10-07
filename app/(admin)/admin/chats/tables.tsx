@@ -9,6 +9,7 @@ import {
   hardDeleteChatAction,
   restoreChatAction,
 } from "@/app/(admin)/actions";
+import { AdminPageHeader } from "@/components/admin/admin-ui";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -206,12 +207,11 @@ export function AdminChatTables({
   return (
     <div className="flex flex-col gap-8">
       <section className="flex flex-col gap-4">
-        <header>
-          <h2 className="font-semibold text-xl">Chat sessions</h2>
-          <p className="text-muted-foreground text-sm">
-            Review and remove chat threads across the application.
-          </p>
-        </header>
+        <AdminPageHeader
+          description="Review and remove chat threads across the application."
+          navHref="/admin/chats"
+          title="Chat sessions"
+        />
 
         {activeError ? (
           <AdminChatTableWarning

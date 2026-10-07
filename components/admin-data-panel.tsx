@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { AdminPanel } from "@/components/admin/admin-ui";
 import { cn } from "@/lib/utils";
 
 type AdminDataPanelProps = {
@@ -9,6 +10,7 @@ type AdminDataPanelProps = {
   className?: string;
 };
 
+/** Legacy panel API, rendered with the shared AdminPanel card. */
 export function AdminDataPanel({
   title,
   children,
@@ -16,23 +18,13 @@ export function AdminDataPanel({
   className,
 }: AdminDataPanelProps) {
   return (
-    <section
-      className={cn(
-        "flex h-full flex-col rounded-xl border bg-card/80 p-5 shadow-sm",
-        className
-      )}
+    <AdminPanel
+      action={action}
+      bodyClassName="overflow-x-auto p-4"
+      className={cn("h-full", className)}
+      title={title}
     >
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="font-semibold text-muted-foreground text-sm uppercase tracking-wide">
-          {title}
-        </h2>
-        {action ? <div className="shrink-0">{action}</div> : null}
-      </div>
-      <div className="relative mt-4 grow">
-        <div className="h-full overflow-x-auto rounded-lg border border-border/60 bg-background/60 px-1 py-1 md:px-0 md:py-0">
-          <div className="h-full">{children}</div>
-        </div>
-      </div>
-    </section>
+      {children}
+    </AdminPanel>
   );
 }

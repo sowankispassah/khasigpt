@@ -1,5 +1,6 @@
 import { format, formatDistanceToNow } from "date-fns";
 import { notFound } from "next/navigation";
+import { AdminPageHeader } from "@/components/admin/admin-ui";
 import { SessionUsageChatLink } from "@/components/session-usage-chat-link";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
@@ -175,19 +176,18 @@ export default async function AdminUserLogsPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="space-y-1">
-          <h2 className="font-semibold text-xl">User activity</h2>
-          <p className="text-muted-foreground text-sm">
-            Recent sign-ups, logins, and account changes for {user.email}
-          </p>
-        </div>
-        <SessionUsageChatLink className="cursor-pointer" href="/admin/users">
-          <span className="inline-flex items-center rounded-md border border-input bg-background px-3 py-2 font-semibold text-sm hover:bg-accent">
-            Back to users
-          </span>
-        </SessionUsageChatLink>
-      </header>
+      <AdminPageHeader
+        actions={
+          <SessionUsageChatLink className="cursor-pointer" href="/admin/users">
+            <span className="inline-flex h-8 items-center rounded-md border border-input bg-background px-3 font-medium text-sm hover:bg-accent">
+              Back to users
+            </span>
+          </SessionUsageChatLink>
+        }
+        description={`Recent sign-ups, logins, and account changes for ${user.email}`}
+        navHref="/admin/users"
+        title="User activity"
+      />
 
       <div className="grid gap-3 md:grid-cols-3">
         <div className="rounded-lg border bg-card p-4 shadow-sm">

@@ -32,16 +32,18 @@ const ActivityMetric = memo(function ActivityMetric({
   hint,
 }: {
   label: string;
-  value: number;
+  value: number | null;
   hint: string;
 }) {
   return (
-    <div className="rounded-lg border border-border/60 bg-background/70 p-4">
-      <p className="text-muted-foreground text-xs uppercase tracking-wide">
-        {label}
-      </p>
-      <p className="mt-2 font-semibold text-2xl tabular-nums">
-        {Number.isFinite(value) ? value : 0}
+    <div className="rounded-lg bg-muted/40 p-4">
+      <p className="font-medium text-muted-foreground text-sm">{label}</p>
+      <p className="mt-1 font-semibold text-2xl tabular-nums">
+        {value !== null && Number.isFinite(value) ? (
+          value
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
       </p>
       <p className="text-muted-foreground text-xs">{hint}</p>
     </div>
@@ -76,17 +78,18 @@ export function AdminLiveActivityPanel() {
     () => [
       {
         label: "Live now",
-        value: summary?.activeNow ?? 0,
+        // Unconfirmed counts render as a dash, never as zero.
+        value: summary?.activeNow ?? null,
         hint: "Last 5 minutes",
       },
       {
         label: "Active",
-        value: summary?.active15m ?? 0,
+        value: summary?.active15m ?? null,
         hint: "Last 15 minutes",
       },
       {
         label: "Active",
-        value: summary?.active60m ?? 0,
+        value: summary?.active60m ?? null,
         hint: "Last 60 minutes",
       },
     ],

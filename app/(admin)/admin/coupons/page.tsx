@@ -1,6 +1,7 @@
 import nextDynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { AdminPageLoading } from "@/components/admin/admin-page-loading";
+import { AdminPageHeader } from "@/components/admin/admin-ui";
 import { AdminReferralsManager } from "@/components/admin-referrals-manager";
 import { adminQueryResult } from "@/lib/admin/safe-query";
 import {
@@ -133,13 +134,11 @@ export default async function AdminCouponsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <h1 className="font-semibold text-2xl">Coupons & referrals</h1>
-        <p className="text-muted-foreground text-sm">
-          Assign codes to creators, manage validity windows, and monitor
-          performance.
-        </p>
-      </header>
+      <AdminPageHeader
+        description="Assign codes to creators, manage validity windows, and monitor performance."
+        navHref="/admin/coupons"
+        title="Coupons & referrals"
+      />
 
       <AdminReferralsManager creators={creatorOptions} creatorsConfirmed={creatorsState.ok} />
       <AdminCouponsManager

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { AdminPageHeader } from "@/components/admin/admin-ui";
 import { StorageInventoryButton } from "@/components/admin/storage-inventory-button";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { getChatStorageSummary } from "@/lib/admin/chat-storage";
@@ -28,7 +29,11 @@ export default async function AdminStoragePage({ searchParams }: { searchParams:
   const date = data?.maintenance?.lastRunAt;
   const parsedDate = typeof date === "string" ? new Date(date) : date;
   return <section className="flex flex-col gap-5">
-    <header className="flex items-center justify-between gap-4"><h1 className="font-semibold text-2xl"><Text name="title" /></h1><Link className="cursor-pointer underline" data-nav href={`/admin/storage?page=${page}`}><Text name="refresh" /></Link></header>
+    <AdminPageHeader
+      actions={<Link className="inline-flex h-8 cursor-pointer items-center rounded-md border bg-background px-3 font-medium text-sm hover:bg-accent" data-nav href={`/admin/storage?page=${page}`}><Text name="refresh" /></Link>}
+      navHref="/admin/storage"
+      title={<Text name="title" />}
+    />
     <p className="text-muted-foreground text-sm"><Text name="policy" /></p>
     <p className="text-muted-foreground text-sm"><Text name="restore" /></p>
     <StorageInventoryButton />

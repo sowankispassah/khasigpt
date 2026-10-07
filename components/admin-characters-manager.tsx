@@ -16,6 +16,7 @@ import {
   deleteCharacterAction,
   updateCharacterAction,
 } from "@/app/(admin)/actions";
+import { AdminPageHeader } from "@/components/admin/admin-ui";
 import { useTranslation } from "@/components/language-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -603,21 +604,20 @@ export function AdminCharactersManager({
         </div>
       ) : null}
 
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-semibold text-2xl">Characters</h1>
-          <p className="text-muted-foreground text-sm">
-            Manage aliases and reference images for character injection.
-          </p>
-        </div>
-        <Button
-          className="cursor-pointer"
-          onClick={openCreateSheet}
-          type="button"
-        >
-          New character
-        </Button>
-      </header>
+      <AdminPageHeader
+        actions={
+          <Button
+            className="cursor-pointer"
+            onClick={openCreateSheet}
+            type="button"
+          >
+            New character
+          </Button>
+        }
+        description="Manage aliases and reference images for character injection."
+        navHref="/admin/characters"
+        title="Characters"
+      />
 
       <section className="rounded-2xl border bg-card/60 p-4 shadow-sm">
         {!charactersConfirmed ? (

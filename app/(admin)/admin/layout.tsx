@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { AdminNav } from "@/components/admin-nav";
 import { AdminSearch } from "@/components/admin-search";
 import { SiteShell } from "@/components/site-shell";
@@ -112,24 +113,20 @@ export default async function AdminLayout({
       <SidebarProvider defaultOpen={defaultSidebarOpen}>
         <AdminNav />
         <SidebarInset>
-          <div className="flex min-h-screen flex-col">
-            <header className="sticky top-0 z-20 border-b bg-background/95 py-3 pr-16 pl-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:pr-20 sm:pl-6">
-              <div className="flex w-full items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <SidebarTrigger
-                    aria-label="Toggle admin sidebar"
-                    className="shrink-0 cursor-pointer"
-                  />
-                  <div className="min-w-0">
-                    <h1 className="truncate font-semibold text-lg">
-                      Admin Console
-                    </h1>
-                  </div>
-                </div>
-                <AdminSearch />
+          <div className="flex min-h-screen flex-col bg-muted/30">
+            {/* Right padding keeps clear of the fixed PageUserMenu avatar. */}
+            <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-background/90 pr-24 pl-3 backdrop-blur supports-[backdrop-filter]:bg-background/75 sm:pl-4">
+              <SidebarTrigger
+                aria-label="Toggle admin sidebar"
+                className="shrink-0 cursor-pointer"
+              />
+              <div aria-hidden="true" className="h-5 w-px shrink-0 bg-border" />
+              <div className="min-w-0 flex-1">
+                <AdminBreadcrumb />
               </div>
+              <AdminSearch />
             </header>
-            <main className="w-full flex-1 px-4 py-6 sm:px-6 lg:px-8">
+            <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
               {children}
             </main>
           </div>

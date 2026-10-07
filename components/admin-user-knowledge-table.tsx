@@ -180,7 +180,7 @@ export function AdminUserKnowledgeTable({
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="font-semibold text-xl">User Added Knowledge</h1>
+          <h2 className="font-semibold text-xl">User Added Knowledge</h2>
           <p className="text-muted-foreground text-sm">
             Review, approve, or reject knowledge submitted by users. Approved
             items become retrievable by everyone.
