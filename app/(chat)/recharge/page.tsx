@@ -2,7 +2,9 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import type { ReactNode } from "react";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
+import { AccountPageShell } from "@/components/account/account-ui";
 import { RechargePlans } from "@/components/recharge-plans";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { loadPricingReadModel } from "@/lib/api/read-models";
@@ -13,6 +15,12 @@ import {
 import { couponsAllowed } from "@/lib/referrals/settings";
 import { withTimeout } from "@/lib/utils/async";
 import { getChatRouteSession } from "../chat-route-session";
+import {
+  RechargeBalanceCard,
+  RechargeHowItWorks,
+  RechargePartialNotice,
+  RechargeUnavailable,
+} from "./recharge-view";
 
 const PRICING_TIMEOUT_MS = 7000;
 const BALANCE_TIMEOUT_MS = 7000;
@@ -79,12 +87,6 @@ export default async function RechargePage() {
         })
       : ({} as Record<string, string>);
 
-  const formatCreditValue = (credits: number) =>
-    credits.toLocaleString("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-
   const activePlanId = balance?.plan?.id ?? null;
   const sortedPlans = [...plans].sort((a, b) => {
     if (a.priceInPaise === b.priceInPaise) {
@@ -115,9 +117,6 @@ export default async function RechargePage() {
     }
   }
 
-  const expiryFormatter = new Intl.DateTimeFormat("en-IN", {
-    dateStyle: "medium",
-  });
   const localizedPlans = sortedPlans.map((plan) => {
     const nameKey = `recharge.plan.${plan.id}.name`;
     const descriptionKey = `recharge.plan.${plan.id}.description`;
@@ -144,50 +143,19 @@ export default async function RechargePage() {
   });
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-12 px-4 py-12">
-      <header className="flex flex-col gap-6">
-        <div>
-          <BackToHomeButton
-            label="Back to home"
-            translationKey="navigation.back_to_home"
-          />
-        </div>
-        <div className="mx-auto flex max-w-2xl flex-col gap-3 text-center">
-          <span className="font-semibold text-muted-foreground text-sm uppercase tracking-wide">
-            <EditableTranslation defaultText="Pricing" translationKey="recharge.tagline" />
-          </span>
-          <h1 className="font-semibold text-3xl md:text-4xl">
-            <EditableTranslation
-              defaultText="Choose your plan"
-              translationKey="recharge.title"
-            />
-          </h1>
-          <p className="text-muted-foreground text-sm md:text-base">
-            <EditableTranslation
-              defaultText="Unlock more capacity and features by picking a plan that scales with your needs. Activate instantly and start building without interruption."
-              translationKey="recharge.subtitle"
-            />
-          </p>
-        </div>
-      </header>
-
-      {!balance ? (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900 text-sm">
-          <p className="font-semibold">
-            <EditableTranslation
-              defaultText="Some recharge details could not be confirmed."
-              translationKey="recharge.warning.partial_title"
-            />
-          </p>
-          <p className="mt-1">
-            <EditableTranslation
-              defaultText="Plans are available, but your current balance could not be loaded right now."
-              translationKey="recharge.warning.partial_body"
-            />
-          </p>
-        </div>
-      ) : null}
-
+    <RechargePageFrame>
+      {!balance ? <RechargePartialNotice /> : null}
+      <RechargeBalanceCard
+        balance={
+          balance
+            ? {
+                creditsRemaining: balance.creditsRemaining,
+                creditsTotal: balance.creditsTotal,
+                expiresAt: balance.expiresAt,
+              }
+            : null
+        }
+      />
       <RechargePlans
         couponsEnabled={couponsEnabled}
         activePlanId={activePlanId}
@@ -208,89 +176,46 @@ export default async function RechargePage() {
           contact: null,
         }}
       />
+      <RechargeHowItWorks />
+    </RechargePageFrame>
+  );
+}
 
-      <section className="rounded-2xl border bg-card/80 p-6 shadow-sm">
-        <h2 className="font-semibold text-lg">
-          <EditableTranslation
-            defaultText="Current balance"
-            translationKey="recharge.current_balance.title"
-          />
-        </h2>
-        {!balance ? (
-          <p className="mt-4 text-amber-900 text-sm">
-            <EditableTranslation
-              defaultText="Current balance could not be loaded right now."
-              translationKey="recharge.current_balance.unavailable"
-            />
-          </p>
-        ) : (
-          <dl className="mt-4 grid gap-6 sm:grid-cols-2">
-            <div>
-              <dt className="text-muted-foreground text-xs uppercase tracking-wide">
-                <EditableTranslation
-                  defaultText="Credits remaining"
-                  translationKey="recharge.current_balance.remaining"
-                />
-              </dt>
-              <dd className="mt-2 font-semibold text-2xl">
-                {formatCreditValue(balance.creditsRemaining)}{" "}
-                <span className="font-normal text-muted-foreground text-sm">
-                  / {formatCreditValue(balance.creditsTotal)}
-                </span>
-              </dd>
-            </div>
-            {balance.expiresAt ? (
-              <div>
-                <dt className="text-muted-foreground text-xs uppercase tracking-wide">
-                  <EditableTranslation
-                    defaultText="Credits valid until"
-                    translationKey="recharge.current_balance.valid_until"
-                  />
-                </dt>
-                <dd className="mt-2 font-semibold text-lg">
-                  {expiryFormatter.format(balance.expiresAt)}
-                </dd>
-              </div>
-            ) : null}
-          </dl>
-        )}
-      </section>
-    </div>
+function RechargePageFrame({ children }: { children: ReactNode }) {
+  return (
+    <AccountPageShell
+      back={
+        <BackToHomeButton
+          label="Back to home"
+          translationKey="navigation.back_to_home"
+          variant="pill"
+        />
+      }
+      description={
+        <EditableTranslation
+          defaultText="Unlock more capacity and features by picking a plan that scales with your needs. Activate instantly and start building without interruption."
+          translationKey="recharge.subtitle"
+        />
+      }
+      eyebrow={
+        <EditableTranslation defaultText="Pricing" translationKey="recharge.tagline" />
+      }
+      title={
+        <EditableTranslation
+          defaultText="Choose your plan"
+          translationKey="recharge.title"
+        />
+      }
+    >
+      {children}
+    </AccountPageShell>
   );
 }
 
 function RechargeUnavailablePage() {
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-12">
-      <div>
-        <BackToHomeButton
-          label="Back to home"
-          translationKey="navigation.back_to_home"
-        />
-      </div>
-      <section className="rounded-lg border border-amber-300 bg-amber-50 p-6 text-amber-900 shadow-sm">
-        <h1 className="font-semibold text-2xl">
-          <EditableTranslation
-            defaultText="Choose your plan"
-            translationKey="recharge.title"
-          />
-        </h1>
-        <p className="mt-2 text-sm">
-          <EditableTranslation
-            defaultText="Recharge plans could not be loaded right now. Please retry shortly."
-            translationKey="recharge.error.pricing_unavailable"
-          />
-        </p>
-        <a
-          className="mt-4 inline-flex cursor-pointer rounded-md border border-amber-300 bg-background px-3 py-2 font-medium text-sm transition hover:bg-amber-100"
-          href="/recharge"
-        >
-          <EditableTranslation
-            defaultText="Retry"
-            translationKey="recharge.error.retry"
-          />
-        </a>
-      </section>
-    </div>
+    <RechargePageFrame>
+      <RechargeUnavailable />
+    </RechargePageFrame>
   );
 }
