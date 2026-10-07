@@ -1,9 +1,12 @@
-import { formatDistanceToNow } from "date-fns";
-
 import { AdminPagination } from "@/components/admin/admin-pagination";
-import { AdminPageHeader } from "@/components/admin/admin-ui";
+import {
+  AdminNotice,
+  AdminPageHeader,
+  AdminStatusPill,
+} from "@/components/admin/admin-ui";
 import { adminQueryResult } from "@/lib/admin/safe-query";
 import { getAuditLogCount, listAuditLog } from "@/lib/db/queries";
+import { AuditLogTable } from "./audit-log-view";
 
 export const dynamic = "force-dynamic";
 
@@ -65,89 +68,32 @@ export default async function AdminAuditLogPage({
     <div className="flex flex-col gap-6">
       <AdminPageHeader
         description="Every administrative action is recorded for compliance."
+        meta={
+          totalEntriesState.ok ? (
+            <AdminStatusPill>{`${totalEntries.toLocaleString()} entries`}</AdminStatusPill>
+          ) : null
+        }
         navHref="/admin/logs"
         title="Audit log"
       />
 
-      <div className="rounded-lg border bg-card p-4 shadow-sm">
-        {(!entriesConfirmed || !totalEntriesState.ok) && (
-          <AdminAuditWarning
-            message={[
-              !entriesConfirmed ? "Audit rows could not be confirmed." : null,
-              !totalEntriesState.ok
-                ? "Audit entry total could not be confirmed."
-                : null,
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          />
-        )}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-muted-foreground text-xs uppercase">
-              <tr>
-                <th className="py-3 text-left">Timestamp</th>
-                <th className="py-3 text-left">Action</th>
-                <th className="py-3 text-left">Actor</th>
-                <th className="py-3 text-left">IP</th>
-                <th className="py-3 text-left">Device</th>
-                <th className="py-3 text-left">User Agent</th>
-                <th className="py-3 text-left">Target</th>
-                <th className="py-3 text-left">Metadata</th>
-              </tr>
-            </thead>
-            <tbody>
-              {!entriesConfirmed ? (
-                <tr>
-                  <td className="py-4 text-muted-foreground" colSpan={8}>
-                    Unable to load audit entries.
-                  </td>
-                </tr>
-              ) : pagedEntries.length === 0 ? (
-                <tr>
-                  <td className="py-4 text-muted-foreground" colSpan={8}>
-                    No audit entries available yet.
-                  </td>
-                </tr>
-              ) : (
-                pagedEntries.map((entry) => (
-                  <tr className="border-t align-top text-sm" key={entry.id}>
-                    <td className="py-3 text-muted-foreground text-xs">
-                      {new Date(entry.createdAt).toLocaleString()}
-                      <div className="text-[11px] text-muted-foreground/80">
-                        {formatDistanceToNow(new Date(entry.createdAt), {
-                          addSuffix: true,
-                        })}
-                      </div>
-                    </td>
-                    <td className="py-3 font-medium">{entry.action}</td>
-                    <td className="py-3 text-xs">{entry.actorId}</td>
-                    <td className="py-3 text-xs">{entry.ipAddress ?? "-"}</td>
-                    <td className="py-3 text-xs capitalize">
-                      {entry.device ?? "-"}
-                    </td>
-                    <td
-                      className="py-3 text-xs"
-                      title={entry.userAgent ?? undefined}
-                    >
-                      <span className="line-clamp-2 max-w-xs break-words">
-                        {entry.userAgent ?? "-"}
-                      </span>
-                    </td>
-                    <td className="py-3 text-muted-foreground text-xs">
-                      {JSON.stringify(entry.target)}
-                    </td>
-                    <td className="py-3 text-muted-foreground text-xs">
-                      {entry.metadata ? JSON.stringify(entry.metadata) : "-"}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+      {(!entriesConfirmed || !totalEntriesState.ok) && (
+        <AdminNotice>
+          {[
+            !entriesConfirmed ? "Audit rows could not be confirmed." : null,
+            !totalEntriesState.ok
+              ? "Audit entry total could not be confirmed."
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" ")}{" "}
+          Refresh this admin section to retry.
+        </AdminNotice>
+      )}
 
-        <div className="mt-4">
+      <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
+        <AuditLogTable entries={pagedEntries} entriesConfirmed={entriesConfirmed} />
+        <div className="border-t px-4 py-3">
           <AdminPagination
             itemLabel="audit entries"
             page={page}
@@ -157,15 +103,7 @@ export default async function AdminAuditLogPage({
             totalItems={totalEntriesState.ok ? totalEntries : pagedEntries.length}
           />
         </div>
-      </div>
-    </div>
-  );
-}
-
-function AdminAuditWarning({ message }: { message: string }) {
-  return (
-    <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
-      {message} Refresh this admin section to retry.
+      </section>
     </div>
   );
 }

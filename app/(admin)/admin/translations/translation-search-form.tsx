@@ -1,5 +1,6 @@
 "use client";
 
+import { Loader2, Search } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
@@ -78,38 +79,41 @@ export function TranslationSearchForm({
   };
 
   return (
-    <div className="rounded-lg border bg-background p-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex min-w-[240px] flex-1 items-center gap-2">
-          <Input
-            aria-label="Search translations"
-            className="flex-1"
-            onChange={handleChange}
-            placeholder="Search by key, description, or translated text…"
-            type="search"
-            value={value}
-          />
-          {value.trim().length > 0 ? (
-            <Button
-              className="whitespace-nowrap"
-              onClick={handleClear}
-              type="button"
-              variant="outline"
-            >
-              Clear
-            </Button>
-          ) : null}
-        </div>
+    <div className="flex items-center gap-2">
+      <div className="relative min-w-0 flex-1">
+        <Search
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+        />
+        <Input
+          aria-label="Search translations"
+          className="h-9 rounded-lg pr-24 pl-9"
+          onChange={handleChange}
+          placeholder="Search by key, description, or translated text…"
+          type="search"
+          value={value}
+        />
         <span
           aria-live="polite"
           className={cn(
-            "text-muted-foreground text-xs transition-opacity",
+            "pointer-events-none absolute top-1/2 right-3 inline-flex -translate-y-1/2 items-center gap-1.5 bg-background text-muted-foreground text-xs transition-opacity",
             isPending ? "opacity-100" : "opacity-0"
           )}
         >
+          <Loader2 aria-hidden="true" className="size-3 animate-spin" />
           Updating…
         </span>
       </div>
+      {value.trim().length > 0 ? (
+        <Button
+          className="h-9 shrink-0 cursor-pointer whitespace-nowrap"
+          onClick={handleClear}
+          type="button"
+          variant="outline"
+        >
+          Clear
+        </Button>
+      ) : null}
     </div>
   );
 }

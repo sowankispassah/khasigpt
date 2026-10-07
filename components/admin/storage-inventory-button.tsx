@@ -1,11 +1,12 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
+import { Loader2, ScanSearch } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 import { STORAGE_COPY } from "@/lib/uploads/storage-copy";
+import { cn } from "@/lib/utils";
 
 export function StorageInventoryButton() {
   const router = useRouter();
@@ -25,5 +26,17 @@ export function StorageInventoryButton() {
     } catch { setOutcome("failed"); }
     finally { setBusy(false); }
   }
-  return <div className="flex flex-col items-start gap-2"><Button disabled={busy} onClick={inspect} type="button">{busy && <Loader2 aria-hidden className="animate-spin" />}<EditableTranslation {...STORAGE_COPY[busy ? "inspecting" : "inspect"]} /></Button>{outcome && <output className="text-sm"><EditableTranslation {...STORAGE_COPY[outcome === "failed" ? "inspectFailed" : outcome === "skipped" ? "inspectSkipped" : "inspectDone"]} /></output>}</div>;
+  return (
+    <div className="flex flex-col items-start gap-2">
+      <Button className="cursor-pointer" disabled={busy} onClick={inspect} type="button" variant="outline">
+        {busy ? <Loader2 aria-hidden className="animate-spin" /> : <ScanSearch aria-hidden />}
+        <EditableTranslation {...STORAGE_COPY[busy ? "inspecting" : "inspect"]} />
+      </Button>
+      {outcome && (
+        <output className={cn("text-sm", outcome === "failed" ? "text-rose-700 dark:text-rose-400" : "text-muted-foreground")}>
+          <EditableTranslation {...STORAGE_COPY[outcome === "failed" ? "inspectFailed" : outcome === "skipped" ? "inspectSkipped" : "inspectDone"]} />
+        </output>
+      )}
+    </div>
+  );
 }

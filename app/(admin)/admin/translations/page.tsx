@@ -1,10 +1,8 @@
 import Link from "next/link";
-import type { ComponentProps } from "react";
-import { ActionSubmitButton } from "@/components/action-submit-button";
-import { AdminPagination } from "@/components/admin/admin-pagination";
-import { AdminPageHeader } from "@/components/admin/admin-ui";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import {
+  AdminPageHeader,
+  AdminStatusPill,
+} from "@/components/admin/admin-ui";
 import { adminQueryResult } from "@/lib/admin/safe-query";
 import {
   listTranslationEntries,
@@ -13,26 +11,18 @@ import {
 import { registerTranslationKeys } from "@/lib/i18n/dictionary";
 import { getAllLanguages, type LanguageOption } from "@/lib/i18n/languages";
 import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
-import {
-  publishTranslationsAction,
-  saveDefaultTextAction,
-  saveTranslationValueAction,
-} from "./translation-actions";
 import { TranslationSearchForm } from "./translation-search-form";
-
-const TRANSLATION_PENDING_TIMEOUT_MS = 12000;
-const TRANSLATION_PAGE_SIZE = 25;
-
-function TranslationSubmitButton(
-  props: ComponentProps<typeof ActionSubmitButton>
-) {
-  return (
-    <ActionSubmitButton
-      pendingTimeoutMs={TRANSLATION_PENDING_TIMEOUT_MS}
-      {...props}
-    />
-  );
-}
+import {
+  PublishTranslationsForm,
+  type SectionDefinition,
+  SelectedTranslationSection,
+  TRANSLATION_PAGE_SIZE,
+  type TranslationSectionGroup,
+  TranslationSectionNavigation,
+  TranslationSummary,
+  TranslationsEmpty,
+  TranslationsWarning,
+} from "./translations-view";
 
 const TRANSLATION_SECTION_DEFINITIONS: SectionDefinition[] = [
   {
@@ -200,27 +190,38 @@ export default async function AdminTranslationsPage({
       )
     : [];
 
+  const entriesUsable = entriesState.ok && languagesState.ok;
+
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <AdminPageHeader
+        actions={<PublishTranslationsForm disabled={!entriesUsable} />}
         description="Manage default English copy and provide localized text. Leave a translation blank to fall back to the English text. New strings wrapped in the translation helper appear here automatically."
+        meta={
+          entriesState.ok ? (
+            <AdminStatusPill>{`${entries.length.toLocaleString()} strings`}</AdminStatusPill>
+          ) : null
+        }
         navHref="/admin/translations"
         title="Translations"
       />
 
-      <TranslationSearchForm defaultValue={rawQuery} />
-
-      <TranslationSummary
-        entriesConfirmed={entriesState.ok}
-        languagesConfirmed={languagesState.ok}
-        languages={activeLanguages}
-        searchQuery={searchQuery}
-        totalEntries={entries.length}
-        visibleEntries={filteredEntries.length}
-      />
+      <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
+        <div className="border-b p-4">
+          <TranslationSearchForm defaultValue={rawQuery} />
+        </div>
+        <TranslationSummary
+          entriesConfirmed={entriesState.ok}
+          languagesConfirmed={languagesState.ok}
+          languages={activeLanguages}
+          searchQuery={searchQuery}
+          totalEntries={entries.length}
+          visibleEntries={filteredEntries.length}
+        />
+      </section>
 
       {(!staticKeysState.ok || !languagesState.ok || !entriesState.ok) && (
-        <AdminTranslationsWarning
+        <TranslationsWarning
           message={[
             !staticKeysState.ok
               ? "Static translation key registration failed."
@@ -234,24 +235,22 @@ export default async function AdminTranslationsPage({
       )}
 
       {!entriesState.ok ? (
-        <div className="rounded-lg border border-border border-dashed bg-muted/40 p-8 text-center text-muted-foreground">
-          Unable to load translation keys. Refresh this admin section to retry.
-        </div>
+        <TranslationsEmpty title="Unable to load translation keys">
+          Refresh this admin section to retry.
+        </TranslationsEmpty>
       ) : entries.length === 0 ? (
-        <div className="rounded-lg border border-border border-dashed bg-muted/40 p-8 text-center text-muted-foreground">
-          No translation keys have been registered yet. Introduce translations
-          in your components using the translation helper to populate this list.
-        </div>
+        <TranslationsEmpty title="No translation keys have been registered yet">
+          Introduce translations in your components using the translation
+          helper to populate this list.
+        </TranslationsEmpty>
       ) : filteredEntries.length === 0 ? (
-        <div className="rounded-lg border border-border border-dashed bg-muted/40 p-8 text-center text-muted-foreground">
-          No translations matched{" "}
-          <span className="font-semibold">“{rawQuery.trim()}”</span>. Try a
-          different search term or{" "}
-          <Link className="underline" href="/admin/translations">
+        <TranslationsEmpty title={`No translations matched “${rawQuery.trim()}”`}>
+          Try a different search term or{" "}
+          <Link className="cursor-pointer underline" data-nav href="/admin/translations">
             clear the search
           </Link>
           .
-        </div>
+        </TranslationsEmpty>
       ) : (
         <>
           <TranslationSectionNavigation
@@ -271,228 +270,6 @@ export default async function AdminTranslationsPage({
     </div>
   );
 }
-
-function TranslationSummary({
-  entriesConfirmed,
-  languagesConfirmed,
-  languages,
-  visibleEntries,
-  totalEntries,
-  searchQuery,
-}: {
-  entriesConfirmed: boolean;
-  languagesConfirmed: boolean;
-  languages: LanguageOption[];
-  visibleEntries: number;
-  totalEntries: number;
-  searchQuery: string;
-}) {
-  const uniqueLanguages = Array.from(
-    new Map(languages.map((language) => [language.code, language])).values()
-  );
-  const showingLabel =
-    searchQuery.trim().length > 0 && totalEntries > 0
-      ? `Showing ${visibleEntries} of ${totalEntries} string${
-          totalEntries === 1 ? "" : "s"
-        }`
-      : `${totalEntries} registered ${
-          totalEntries === 1 ? "string" : "strings"
-        }`;
-
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border bg-background p-4 text-sm">
-      <div className="flex flex-col">
-        <span className="font-semibold text-base">
-          {entriesConfirmed ? showingLabel : "Translation strings unavailable"}
-        </span>
-        <span className="text-muted-foreground">
-          {languagesConfirmed
-            ? `${uniqueLanguages.length} active ${
-                uniqueLanguages.length === 1 ? "language" : "languages"
-              }`
-            : "Active languages unavailable"}
-        </span>
-      </div>
-      <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
-        <div className="flex max-h-24 flex-wrap gap-2 overflow-y-auto">
-          {uniqueLanguages.map((language) => {
-            const label =
-              language.name?.trim().length > 0
-                ? language.name
-                : language.code.toUpperCase();
-            return (
-              <span
-                className="inline-flex items-center rounded-full border border-border bg-muted/50 px-3 py-1 font-medium text-xs tracking-wide"
-                key={language.id}
-              >
-                {label}
-                {language.isDefault ? (
-                  <span className="ml-2 rounded-full bg-primary px-2 py-0.5 text-[10px] text-primary-foreground uppercase">
-                    Default
-                  </span>
-                ) : null}
-              </span>
-            );
-          })}
-        </div>
-        <form action={publishTranslationsAction}>
-          <TranslationSubmitButton
-            disabled={!entriesConfirmed || !languagesConfirmed}
-            pendingLabel="Publishing..."
-            size="sm"
-            successMessage="Translations published"
-            type="submit"
-            variant="default"
-          >
-            Publish translations
-          </TranslationSubmitButton>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function TranslationTable({
-  entries,
-  nonDefaultLanguages,
-}: {
-  entries: TranslationTableEntry[];
-  nonDefaultLanguages: LanguageOption[];
-}) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[720px] border-collapse">
-        <thead>
-          <tr className="border-b bg-muted/50 text-muted-foreground text-sm">
-            <th className="px-4 py-3 text-left font-medium text-xs uppercase tracking-wide">
-              Key
-            </th>
-            <th className="px-4 py-3 text-left font-medium text-xs uppercase tracking-wide">
-              English (default)
-            </th>
-            {nonDefaultLanguages.map((language) => (
-              <th
-                className="px-4 py-3 text-left font-medium text-xs uppercase tracking-wide"
-                key={language.id}
-              >
-                {language.name}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {entries.map((entry) => (
-            <tr className="align-top" key={entry.keyId}>
-              <td className="whitespace-nowrap px-4 py-4 text-sm">
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium">{entry.key}</span>
-                  {entry.description ? (
-                    <span className="text-muted-foreground text-xs">
-                      {entry.description}
-                    </span>
-                  ) : null}
-                </div>
-              </td>
-              <td className="px-4 py-4">
-                <form
-                  action={saveDefaultTextAction}
-                  className="flex flex-col gap-2 text-sm"
-                >
-                  <input name="keyId" type="hidden" value={entry.keyId} />
-                  <Textarea
-                    defaultValue={entry.defaultText}
-                    name="defaultText"
-                    rows={3}
-                  />
-                  <Input
-                    defaultValue={entry.description ?? ""}
-                    name="description"
-                    placeholder="Optional description"
-                  />
-                  <div className="flex items-center gap-2">
-                    <TranslationSubmitButton
-                      pendingLabel="Saving..."
-                      size="sm"
-                      successMessage="Default text saved"
-                      type="submit"
-                      variant="outline"
-                    >
-                      Save
-                    </TranslationSubmitButton>
-                    <span className="text-muted-foreground text-xs">
-                      Updated{" "}
-                      {entry.updatedAt
-                        ? entry.updatedAt.toLocaleString()
-                        : "never"}
-                    </span>
-                  </div>
-                </form>
-              </td>
-              {nonDefaultLanguages.map((language) => {
-                const translation = entry.translations[language.code];
-                return (
-                  <td
-                    className="px-4 py-4"
-                    key={`${entry.keyId}-${language.id}`}
-                  >
-                    <form
-                      action={saveTranslationValueAction}
-                      className="flex flex-col gap-2 text-sm"
-                    >
-                      <input name="keyId" type="hidden" value={entry.keyId} />
-                      <input
-                        name="languageCode"
-                        type="hidden"
-                        value={language.code}
-                      />
-                      <Textarea
-                        defaultValue={translation?.value ?? ""}
-                        name="translationValue"
-                        placeholder={`Enter ${language.name} translation`}
-                        rows={3}
-                      />
-                      <div className="flex items-center gap-2">
-                        <TranslationSubmitButton
-                          pendingLabel="Saving..."
-                          size="sm"
-                          successMessage={
-                            translation?.value
-                              ? `${language.name} translation saved`
-                              : `${language.name} translation cleared (falls back to English)`
-                          }
-                          type="submit"
-                          variant="outline"
-                        >
-                          {translation?.value ? "Update" : "Save"}
-                        </TranslationSubmitButton>
-                        <span className="text-muted-foreground text-xs">
-                          {translation?.updatedAt
-                            ? `Updated ${translation.updatedAt.toLocaleString()}`
-                            : "Not provided"}
-                        </span>
-                      </div>
-                    </form>
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-type SectionDefinition = {
-  id: string;
-  label: string;
-  description?: string;
-  prefixes: string[];
-};
-
-type TranslationSectionGroup = SectionDefinition & {
-  entries: TranslationTableEntry[];
-};
 
 function organizeEntriesBySection(
   entries: TranslationTableEntry[]
@@ -516,142 +293,6 @@ function organizeEntriesBySection(
   return definitions
     .map((definition) => sectionMap.get(definition.id))
     .filter(Boolean) as TranslationSectionGroup[];
-}
-
-function TranslationSectionNavigation({
-  activeSectionId,
-  searchQuery,
-  sections,
-}: {
-  activeSectionId: string | null;
-  searchQuery: string;
-  sections: TranslationSectionGroup[];
-}) {
-  return (
-    <nav className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
-      <p className="mb-2 font-semibold text-muted-foreground text-xs uppercase tracking-wide">
-        Jump to section
-      </p>
-      <div className="flex flex-wrap gap-2">
-        {sections.map((section) => (
-          <Link
-            className={`inline-flex cursor-pointer items-center gap-2 rounded-full border bg-background px-3 py-1 font-medium text-xs transition hover:border-primary/40 hover:text-primary ${
-              section.id === activeSectionId
-                ? "border-primary text-primary"
-                : "border-border text-foreground"
-            }`}
-            data-nav
-            href={buildTranslationsHref({
-              page: 1,
-              query: searchQuery,
-              sectionId: section.id,
-            })}
-            key={section.id}
-            prefetch
-          >
-            {section.label}
-            <span className="rounded-full bg-muted/80 px-2 py-0.5 text-[10px] text-muted-foreground uppercase">
-              {section.entries.length}
-            </span>
-          </Link>
-        ))}
-      </div>
-    </nav>
-  );
-}
-
-function AdminTranslationsWarning({ message }: { message: string }) {
-  return (
-    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
-      {message} Fallback data is not treated as saved translation state.
-    </div>
-  );
-}
-
-function SelectedTranslationSection({
-  nonDefaultLanguages,
-  section,
-  visibleEntries,
-  page,
-  searchParams,
-}: {
-  nonDefaultLanguages: LanguageOption[];
-  section: TranslationSectionGroup | null;
-  visibleEntries: TranslationTableEntry[];
-  page: number;
-  searchParams?: { [key: string]: string | string[] | undefined };
-}) {
-  if (!section) {
-    return null;
-  }
-
-  const hasEntries = section.entries.length > 0;
-
-  return (
-    <section
-      className="overflow-hidden rounded-lg border border-border bg-card shadow-sm"
-      id={`translation-section-${section.id}`}
-    >
-      <div className="flex flex-col gap-1 bg-muted/40 px-4 py-3 font-semibold text-foreground text-sm">
-        <div className="flex items-center justify-between gap-2">
-          <span>{section.label}</span>
-          <span className="font-normal text-muted-foreground text-xs">
-            {section.entries.length} {section.entries.length === 1 ? "string" : "strings"}
-          </span>
-        </div>
-        {section.description ? (
-          <span className="font-normal text-muted-foreground text-xs">
-            {section.description}
-          </span>
-        ) : null}
-      </div>
-      <div className="border-border border-t">
-        {hasEntries ? (
-          <div className="space-y-4 p-4">
-            <TranslationTable
-              entries={visibleEntries}
-              nonDefaultLanguages={nonDefaultLanguages}
-            />
-            <AdminPagination
-              itemLabel="translations"
-              page={page}
-              pageSize={TRANSLATION_PAGE_SIZE}
-              pathname="/admin/translations"
-              searchParams={searchParams}
-              totalItems={section.entries.length}
-            />
-          </div>
-        ) : (
-          <p className="px-4 py-6 text-muted-foreground text-sm">
-            No translations have been registered for this section yet. Wrap copy
-            in the translation helper using the suggested prefix{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-foreground text-xs">
-              {section.prefixes[0] ?? "general."}
-            </code>{" "}
-            to populate this table.
-          </p>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function buildTranslationsHref({
-  sectionId,
-  query,
-  page,
-}: {
-  sectionId: string;
-  query: string;
-  page: number;
-}) {
-  const params = new URLSearchParams();
-  if (query.trim().length > 0) {
-    params.set("q", query.trim());
-  }
-  params.set("section", sectionId);
-  params.set("page", String(page));
-  return `/admin/translations?${params.toString()}`;
 }
 
 function matchesQuery(entry: TranslationTableEntry, query: string): boolean {
