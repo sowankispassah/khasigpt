@@ -1,5 +1,4 @@
 import { Suspense } from "react";
-import { auth } from "@/app/(auth)/auth";
 import { AdminUserDetailsButton } from "@/components/admin/admin-user-details-button";
 import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
 import { AddCreditsForm } from "@/components/admin-user-add-credits-form";
@@ -29,6 +28,7 @@ import {
   type UserBalanceSummary,
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
+import { getAdminRequestSession } from "@/lib/security/admin-session";
 import { AdminUsersTable } from "./admin-users-table";
 import { MarkUsersViewed } from "./mark-users-viewed";
 
@@ -84,7 +84,7 @@ export default async function AdminUsersPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await auth();
+  const session = await getAdminRequestSession();
   const currentUserId = session?.user?.id;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const requestedPage = parsePage(resolvedSearchParams?.page);

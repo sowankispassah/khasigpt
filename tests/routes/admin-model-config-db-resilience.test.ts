@@ -84,7 +84,9 @@ test.describe("admin model config database resilience", () => {
 
     expect(pageSource).toContain("const imageModelConfigsStatePromise");
     expect(pageSource).toContain("imageModelConfigsStatePromise,");
-    expect(pageSource).toContain("await Promise.all([");
+    expect(pageSource).toContain("return Promise.all([");
+    // Independent of the settings snapshot, so it starts alongside stage one.
+    expect(pageSource).toContain(": startStageTwo();");
   });
 
   test("creates active image models atomically instead of partial-saving then failing", async () => {

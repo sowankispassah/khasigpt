@@ -107,6 +107,20 @@ const FALLBACK_SECTION: SectionDefinition = {
 
 export const dynamic = "force-dynamic";
 
+// Static definitions only change with a deploy, so sync them once per server
+// instance instead of on every visit. A failed sync is retried next visit.
+let staticKeysRegistration: Promise<void> | null = null;
+
+function ensureStaticTranslationKeysRegistered() {
+  staticKeysRegistration ??= registerTranslationKeys(
+    STATIC_TRANSLATION_DEFINITIONS
+  ).catch((error) => {
+    staticKeysRegistration = null;
+    throw error;
+  });
+  return staticKeysRegistration;
+}
+
 export default async function AdminTranslationsPage({
   searchParams,
 }: {
@@ -116,7 +130,7 @@ export default async function AdminTranslationsPage({
   const staticKeysState = await adminQueryResult({
     fallback: null,
     label: "translations.register-static-keys",
-    promise: registerTranslationKeys(STATIC_TRANSLATION_DEFINITIONS),
+    promise: ensureStaticTranslationKeysRegistered(),
     timeoutMs: 3000,
   });
   const [languagesState, entriesState] = await Promise.all([

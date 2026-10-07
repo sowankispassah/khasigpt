@@ -414,37 +414,50 @@ async function loadAdminSettingsData() {
   const appSettingStatePromise = serializeDbReads
     ? dedicatedFeatureAccessStatePromise.then(() => loadAppSettingValuesByKey())
     : loadAppSettingValuesByKey();
-  const [dedicatedFeatureAccessState, appSettingState] = await Promise.all([
+  const stageOneSettled = Promise.all([
     dedicatedFeatureAccessStatePromise,
     appSettingStatePromise,
   ]);
-  const imageModelConfigsStatePromise = settingsQueryState(
-    "image model configs",
-    () => listAdminImageModelConfigsCached(),
-    []
-  );
+  // The model, language and image reads below are independent of the settings
+  // snapshot and usually served from cache, so start them alongside it unless
+  // reads must be serialized onto a single connection.
+  const startStageTwo = () => {
+    const imageModelConfigsStatePromise = settingsQueryState(
+      "image model configs",
+      () => listAdminImageModelConfigsCached(),
+      []
+    );
+    return Promise.all([
+      resolveAdminDbReadGroup([
+        () =>
+          settingsQueryState(
+            "model configs",
+            () => listAdminModelConfigsCached(),
+            []
+          ),
+        () =>
+          settingsQueryState("languages", () => listAdminLanguagesCached(), []),
+        () =>
+          settingsQueryState(
+            "translation feature languages",
+            () => listAdminTranslationFeatureLanguagesCached(),
+            []
+          ),
+      ]),
+      imageModelConfigsStatePromise,
+    ]);
+  };
+  const stageTwo = serializeDbReads
+    ? stageOneSettled.then(startStageTwo)
+    : startStageTwo();
+  // Awaited below; this only stops a stage-one failure from also surfacing as
+  // an unhandled rejection of the chained stage two.
+  stageTwo.catch(() => undefined);
+  const [dedicatedFeatureAccessState, appSettingState] = await stageOneSettled;
   const [
     [modelsState, languagesState, translationFeatureLanguagesState],
     imageModelConfigsState,
-  ] = await Promise.all([
-    resolveAdminDbReadGroup([
-      () =>
-        settingsQueryState(
-          "model configs",
-          () => listAdminModelConfigsCached(),
-          []
-        ),
-      () =>
-        settingsQueryState("languages", () => listAdminLanguagesCached(), []),
-      () =>
-        settingsQueryState(
-          "translation feature languages",
-          () => listAdminTranslationFeatureLanguagesCached(),
-          []
-        ),
-    ]),
-    imageModelConfigsStatePromise,
-  ]);
+  ] = await stageTwo;
   const appSettingValuesByKey = appSettingState.values;
   const dbBackedAppSettingValues =
     appSettingState.source === "snapshot-db" ||

@@ -1,6 +1,5 @@
 import nextDynamic from "next/dynamic";
 import { redirect } from "next/navigation";
-import { auth } from "@/app/(auth)/auth";
 import { AdminPageLoading } from "@/components/admin/admin-page-loading";
 import { AdminReferralsManager } from "@/components/admin-referrals-manager";
 import { adminQueryResult } from "@/lib/admin/safe-query";
@@ -10,6 +9,7 @@ import {
   listCouponsWithStats,
   listCreators,
 } from "@/lib/db/queries";
+import { getAdminRequestSession } from "@/lib/security/admin-session";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +24,7 @@ const AdminCouponsManager = nextDynamic(
 );
 
 export default async function AdminCouponsPage() {
-  const session = await auth();
+  const session = await getAdminRequestSession();
 
   if (!session?.user) {
     redirect("/login?callbackUrl=/admin/coupons");

@@ -2,8 +2,6 @@ import { formatDistanceToNow } from "date-fns";
 import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-
-import { auth } from "@/app/(auth)/auth";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { AdminDataPanel } from "@/components/admin-data-panel";
 import { AdminForumConfirmForm } from "@/components/admin-forum-confirm-form";
@@ -25,6 +23,7 @@ import {
   sanitizeForumContent,
 } from "@/lib/forum/utils";
 import { registerTranslationKeys } from "@/lib/i18n/dictionary";
+import { getAdminRequestSession } from "@/lib/security/admin-session";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +32,7 @@ const THREAD_LIMIT = 40;
 const POST_LIMIT = 80;
 
 async function requireAdmin() {
-  const session = await auth();
+  const session = await getAdminRequestSession();
   if (!session?.user || session.user.role !== "admin") {
     redirect("/");
   }

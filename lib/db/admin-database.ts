@@ -10,7 +10,9 @@ type AdminDatabaseState = {
   client: ReturnType<typeof postgres>;
   db: ReturnType<typeof drizzle>;
   healthCheck: Promise<void> | null;
+  inFlight: number;
   lastHealthyAt: number;
+  retired: boolean;
 };
 
 type GlobalAdminDatabaseState = typeof globalThis & {
@@ -23,6 +25,13 @@ const globalAdminDatabase = globalThis as GlobalAdminDatabaseState;
 function parsePositiveInteger(value: string | undefined, fallback: number) {
   const parsed = Number.parseInt(value ?? "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+// Admin pages issue several independent reads per render. One connection made
+// every Promise.all run back to back, so a page cost the sum of its reads.
+// Keep the pool and the admission queue the same size.
+function getAdminPoolSize() {
+  return parsePositiveInteger(process.env.POSTGRES_ADMIN_POOL_SIZE, 3);
 }
 
 function isSupabasePoolerUrl(value: string | undefined | null) {
@@ -77,7 +86,7 @@ function createAdminDatabaseState(): AdminDatabaseState {
 
   const usesPooler = isSupabasePoolerUrl(postgresUrl);
   const adminPoolConfig = {
-    max: parsePositiveInteger(process.env.POSTGRES_ADMIN_POOL_SIZE, 1),
+    max: getAdminPoolSize(),
     idle_timeout: parsePositiveInteger(
       process.env.POSTGRES_ADMIN_IDLE_TIMEOUT,
       5
@@ -111,7 +120,9 @@ function createAdminDatabaseState(): AdminDatabaseState {
     client,
     db: drizzle(client),
     healthCheck: null,
+    inFlight: 0,
     lastHealthyAt: Date.now(),
+    retired: false,
   };
 }
 
@@ -121,14 +132,26 @@ function getAdminDatabaseState() {
   return globalAdminDatabase.__khasigptAdminDatabaseState;
 }
 
+function closeRetiredAdminDatabase(expectedState: AdminDatabaseState) {
+  void expectedState.client.end({ timeout: 0 }).catch((error) => {
+    console.warn("[admin.db] Failed to close an unhealthy connection.", error);
+  });
+}
+
+// New operations move to a fresh client immediately; the unhealthy one closes
+// once the operations already running on it settle, so a recycle never
+// interrupts a concurrent operation.
 function recycleAdminDatabase(expectedState: AdminDatabaseState) {
   if (globalAdminDatabase.__khasigptAdminDatabaseState === expectedState) {
     globalAdminDatabase.__khasigptAdminDatabaseState = undefined;
   }
 
-  void expectedState.client.end({ timeout: 0 }).catch((error) => {
-    console.warn("[admin.db] Failed to close an unhealthy connection.", error);
-  });
+  if (!expectedState.retired) {
+    expectedState.retired = true;
+    if (expectedState.inFlight === 0) {
+      closeRetiredAdminDatabase(expectedState);
+    }
+  }
 
   return getAdminDatabaseState();
 }
@@ -220,6 +243,7 @@ async function runAdminDatabaseOperation<T>({
 
   for (let attempt = 1; attempt <= (retry ? 2 : 1); attempt += 1) {
     const state = await verifyAdminDatabaseConnection();
+    state.inFlight += 1;
 
     try {
       const result = await withTimeout(
@@ -248,6 +272,11 @@ async function runAdminDatabaseOperation<T>({
       if (!(recoverable && retry && attempt === 1)) {
         throw error;
       }
+    } finally {
+      state.inFlight -= 1;
+      if (state.retired && state.inFlight === 0) {
+        closeRetiredAdminDatabase(state);
+      }
     }
   }
 
@@ -262,7 +291,9 @@ export function withAdminDatabase<T>(
   ) => Promise<T>,
   options: { retry?: boolean } = {}
 ) {
-  globalAdminDatabase.__khasigptAdminOperationQueue ??= new DatabaseOperationQueue();
+  globalAdminDatabase.__khasigptAdminOperationQueue ??= new DatabaseOperationQueue({
+    concurrency: getAdminPoolSize(),
+  });
   return globalAdminDatabase.__khasigptAdminOperationQueue.run(
     () => runAdminDatabaseOperation({
       label,

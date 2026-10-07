@@ -1,6 +1,7 @@
 "use client";
 
 import { MoreVertical } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
   type ReactNode,
@@ -9,8 +10,6 @@ import {
   useState,
   useTransition,
 } from "react";
-import { AdminUserDeleteDialog } from "@/components/admin-user-delete-dialog";
-import { AdminUserFeatureAccessDialog } from "@/components/admin-user-feature-access-dialog";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
 import { SessionUsageChatLink } from "@/components/session-usage-chat-link";
@@ -26,6 +25,19 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
+// Every user row renders this menu, but the dialogs open only on demand, so
+// load each one on first use instead of shipping both with the table.
+const AdminUserDeleteDialog = dynamic(() =>
+  import("@/components/admin-user-delete-dialog").then(
+    (module) => module.AdminUserDeleteDialog
+  )
+);
+const AdminUserFeatureAccessDialog = dynamic(() =>
+  import("@/components/admin-user-feature-access-dialog").then(
+    (module) => module.AdminUserFeatureAccessDialog
+  )
+);
 
 type AdminUserActionsMenuProps = {
   email: string;
@@ -135,6 +147,10 @@ export function AdminUserActionsMenu({
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [featureAccessDialogOpen, setFeatureAccessDialogOpen] = useState(false);
+  // Stay mounted after the first open so closing still animates.
+  const [deleteDialogMounted, setDeleteDialogMounted] = useState(false);
+  const [featureAccessDialogMounted, setFeatureAccessDialogMounted] =
+    useState(false);
   const [isRefreshing, startRefresh] = useTransition();
   const router = useRouter();
 
@@ -272,6 +288,7 @@ export function AdminUserActionsMenu({
           onSelect={(event) => {
             event.preventDefault();
             setOpen(false);
+            setFeatureAccessDialogMounted(true);
             setFeatureAccessDialogOpen(true);
           }}
         >
@@ -427,6 +444,7 @@ export function AdminUserActionsMenu({
           onSelect={(event) => {
             event.preventDefault();
             setOpen(false);
+            setDeleteDialogMounted(true);
             setDeleteDialogOpen(true);
           }}
         >
@@ -444,20 +462,24 @@ export function AdminUserActionsMenu({
         </DropdownMenuItem>
       </DropdownMenuContent>
       </DropdownMenu>
-      <AdminUserDeleteDialog
-        email={email}
-        onDeleted={onDeleted}
-        refreshOnDeleted={!onDeleted}
-        onOpenChange={setDeleteDialogOpen}
-        open={deleteDialogOpen}
-        userId={userId}
-      />
-      <AdminUserFeatureAccessDialog
-        email={email}
-        onOpenChange={setFeatureAccessDialogOpen}
-        open={featureAccessDialogOpen}
-        userId={userId}
-      />
+      {deleteDialogMounted ? (
+        <AdminUserDeleteDialog
+          email={email}
+          onDeleted={onDeleted}
+          refreshOnDeleted={!onDeleted}
+          onOpenChange={setDeleteDialogOpen}
+          open={deleteDialogOpen}
+          userId={userId}
+        />
+      ) : null}
+      {featureAccessDialogMounted ? (
+        <AdminUserFeatureAccessDialog
+          email={email}
+          onOpenChange={setFeatureAccessDialogOpen}
+          open={featureAccessDialogOpen}
+          userId={userId}
+        />
+      ) : null}
     </>
   );
 }

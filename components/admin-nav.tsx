@@ -27,9 +27,12 @@ import {
   type ComponentType,
   type MouseEvent,
   useCallback,
-  useEffect,
-  useState,
 } from "react";
+import {
+  type AdminNavBadgeCounts,
+  type AdminNavBadgeKey,
+  useAdminNavCounts,
+} from "@/components/admin/use-admin-nav-counts";
 import { useTranslation } from "@/components/language-provider";
 import {
   EditableTranslation,
@@ -53,17 +56,8 @@ import {
 import { startGlobalProgress } from "@/lib/ui/global-progress";
 import { cn } from "@/lib/utils";
 
-type AdminBadgeKey =
-  | "users"
-  | "accountDeletionRequests"
-  | "contacts"
-  | "reports"
-  | "jobs"
-  | "moderation"
-  | "storage";
-
 type AdminNavItem = {
-  badgeKey?: AdminBadgeKey;
+  badgeKey?: AdminNavBadgeKey;
   href: string;
   icon: ComponentType<{ className?: string }>;
   label: string;
@@ -114,12 +108,7 @@ const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { href: "/admin/chats", icon: MessagesSquare, label: "Chats" },
       { href: "/admin/forum", icon: MessageSquare, label: "Forum" },
       { href: "/admin/characters", icon: ShieldCheck, label: "Characters" },
-      {
-        badgeKey: "jobs",
-        href: "/admin/jobs",
-        icon: BriefcaseBusiness,
-        label: "Jobs",
-      },
+      { href: "/admin/jobs", icon: BriefcaseBusiness, label: "Jobs" },
       { href: "/admin/rag", icon: Database, label: "RAG" },
       { href: "/admin/explore", icon: Compass, label: "Nearby" },
     ],
@@ -137,203 +126,15 @@ const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   },
 ];
 
-type AdminBadgeCounts = Partial<Record<AdminBadgeKey, number>>;
-
 export function AdminNav({
   initialBadgeCounts = {},
 }: {
-  initialBadgeCounts?: AdminBadgeCounts;
+  initialBadgeCounts?: AdminNavBadgeCounts;
 }) {
   const pathname = usePathname();
   const { translate } = useTranslation();
   const { setOpenMobile } = useSidebar();
-  const [badgeCounts, setBadgeCounts] =
-    useState<AdminBadgeCounts>(initialBadgeCounts);
-
-  useEffect(() => {
-    let cancelled = false;
-    let controller: AbortController | undefined;
-    async function refreshStorageAlerts() {
-      if (document.visibilityState !== "visible") return;
-      controller?.abort();
-      const current = new AbortController();
-      controller = current;
-      const timeout = window.setTimeout(() => current.abort(), 15_000);
-      try {
-        const response = await fetch("/api/admin/storage", { cache: "no-store", credentials: "same-origin", signal: current.signal });
-        if (!response.ok) return;
-        const body = await response.json() as { count?: unknown };
-        if (!cancelled && !current.signal.aborted && typeof body.count === "number" && Number.isSafeInteger(body.count) && body.count >= 0) {
-          const count = body.count;
-          setBadgeCounts(previous => ({ ...previous, storage: count }));
-        }
-      } catch {
-        // Preserve the last confirmed alert count; never block navigation.
-      } finally { window.clearTimeout(timeout); }
-    }
-    const refresh = () => { void refreshStorageAlerts(); };
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
-    const interval = window.setInterval(refresh, 120_000);
-    refresh();
-    return () => { cancelled = true; controller?.abort(); window.clearInterval(interval); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    let controller: AbortController | undefined;
-    async function refreshUsersCount() {
-      controller?.abort();
-      const requestController = new AbortController();
-      controller = requestController;
-      const timeout = window.setTimeout(() => requestController.abort(), 15_000);
-      try {
-        const response = await fetch("/api/admin/users/unviewed-count", {
-          cache: "no-store",
-          credentials: "same-origin",
-          signal: requestController.signal,
-        });
-        if (!response.ok) return;
-        const body = (await response.json()) as { count?: unknown };
-        if (
-          !cancelled && !requestController.signal.aborted &&
-          typeof body.count === "number" &&
-          Number.isSafeInteger(body.count) && body.count >= 0
-        ) {
-          const count = body.count;
-          setBadgeCounts((current) => ({ ...current, users: count }));
-        }
-      } catch {
-        // This optional read must retain the last confirmed count on failure.
-      } finally {
-        window.clearTimeout(timeout);
-      }
-    }
-    const refresh = () => {
-      if (document.visibilityState === "visible") void refreshUsersCount();
-    };
-    window.addEventListener("admin:users-unviewed-count", refresh);
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
-    refresh();
-    const interval = window.setInterval(refresh, 120_000);
-    return () => {
-      cancelled = true;
-      controller?.abort();
-      window.clearInterval(interval);
-      window.removeEventListener("admin:users-unviewed-count", refresh);
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function refreshDeletionRequestCount() {
-      try {
-        const response = await fetch(
-          "/api/admin/account-deletion/unviewed-count",
-          {
-            cache: "no-store",
-            credentials: "same-origin",
-          }
-        );
-        if (!response.ok) {
-          return;
-        }
-        const body = (await response.json()) as { count?: unknown };
-        const count =
-          typeof body.count === "number" && Number.isFinite(body.count)
-            ? Math.max(0, body.count)
-            : 0;
-        if (!cancelled) {
-          setBadgeCounts((current) => ({
-            ...current,
-            accountDeletionRequests: count,
-          }));
-        }
-      } catch (error) {
-        console.warn(
-          "[admin-nav] Failed to refresh account deletion badge count.",
-          error
-        );
-      }
-    }
-
-    const handleCountUpdate = (event: Event) => {
-      const count = (event as CustomEvent<{ count?: number }>).detail?.count;
-      if (typeof count === "number" && Number.isFinite(count)) {
-        setBadgeCounts((current) => ({
-          ...current,
-          accountDeletionRequests: Math.max(0, count),
-        }));
-        return;
-      }
-      void refreshDeletionRequestCount();
-    };
-
-    window.addEventListener(
-      "admin:account-deletion-unviewed-count",
-      handleCountUpdate
-    );
-    void refreshDeletionRequestCount();
-    const intervalId = window.setInterval(refreshDeletionRequestCount, 120_000);
-
-    return () => {
-      cancelled = true;
-      window.removeEventListener(
-        "admin:account-deletion-unviewed-count",
-        handleCountUpdate
-      );
-      window.clearInterval(intervalId);
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function refreshContactCounts() {
-      try {
-        const response = await fetch("/api/admin/contact-messages/unread-counts", {
-          cache: "no-store",
-          credentials: "same-origin",
-        });
-        if (!response.ok) {
-          return;
-        }
-        const body = (await response.json()) as { contacts?: unknown; reports?: unknown };
-        if (
-          typeof body.contacts !== "number" || !Number.isFinite(body.contacts) ||
-          typeof body.reports !== "number" || !Number.isFinite(body.reports)
-        ) {
-          return;
-        }
-        const contacts = body.contacts;
-        const reports = body.reports;
-        if (!cancelled) {
-          setBadgeCounts((current) => ({
-            ...current,
-            contacts: Math.max(0, contacts),
-            reports: Math.max(0, reports),
-          }));
-        }
-      } catch (error) {
-        console.warn("[admin-nav] Failed to refresh contact and report badges.", error);
-      }
-    }
-
-    const handleCountUpdate = () => void refreshContactCounts();
-    window.addEventListener("admin:contact-unread-counts", handleCountUpdate);
-    void refreshContactCounts();
-    const intervalId = window.setInterval(refreshContactCounts, 120_000);
-
-    return () => {
-      cancelled = true;
-      window.removeEventListener("admin:contact-unread-counts", handleCountUpdate);
-      window.clearInterval(intervalId);
-    };
-  }, []);
+  const badgeCounts = useAdminNavCounts(initialBadgeCounts);
 
   const handleLinkClick = useCallback(
     (event: MouseEvent<HTMLAnchorElement>, href: string) => {

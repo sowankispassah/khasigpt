@@ -182,11 +182,20 @@ export function AdminJobsScrapeControl({
   }, [refreshStatus]);
 
   useEffect(() => {
-    const intervalMs = progress?.state === "running" ? 2_000 : 8_000;
-    const id = window.setInterval(() => {
-      void refreshStatus();
-    }, intervalMs);
-    return () => window.clearInterval(id);
+    // Follow an active run closely; when idle only watch for scheduled runs.
+    // Hidden tabs skip polling and catch up as soon as they become visible.
+    const intervalMs = progress?.state === "running" ? 2_000 : 30_000;
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "visible") {
+        void refreshStatus();
+      }
+    };
+    const id = window.setInterval(refreshIfVisible, intervalMs);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+    };
   }, [progress?.state, refreshStatus]);
 
   const running = progress?.state === "running";

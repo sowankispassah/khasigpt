@@ -242,16 +242,22 @@ test.describe("admin database recovery", () => {
   });
 
   test("does not block the shared admin shell on an optional badge query", async () => {
-    const [layoutSource, navSource] = await Promise.all([
+    const [layoutSource, navSource, countsSource] = await Promise.all([
       readWorkspaceFile("app/(admin)/admin/layout.tsx"),
       readWorkspaceFile("components/admin-nav.tsx"),
+      readWorkspaceFile("components/admin/use-admin-nav-counts.ts"),
     ]);
 
     expect(layoutSource).not.toContain(
       "getUnviewedAccountDeletionRequestCount"
     );
     expect(layoutSource).toContain("<AdminNav />");
-    expect(navSource).toContain("void refreshDeletionRequestCount();");
+    expect(navSource).toContain("useAdminNavCounts(");
+    // Badges load after hydration through one request and keep the last
+    // confirmed counts on failure.
+    expect(countsSource).toContain('fetch("/api/admin/nav-counts"');
+    expect(countsSource).toContain("mergeConfirmedCounts(previous, body)");
+    expect(countsSource).toContain('document.visibilityState !== "visible"');
   });
 
   test("uses short-lived shared pooler sockets as a secondary safeguard", async () => {

@@ -1,8 +1,9 @@
 "use client";
 
-import { ChevronDown, ChevronUp, Compass, icons, LoaderCircle, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, LoaderCircle, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { EditableTranslation } from "@/components/translation-edit-provider";
+import { EXPLORE_ICON_NAMES, getExploreIcon } from "@/lib/explore/icons";
 import type {
   ExploreCategoryDto,
   ExploreLocationMode,
@@ -26,10 +27,10 @@ const LOCATION_MODES: Array<{ value: ExploreLocationMode; label: string }> = [
   { value: "meghalaya_wide", label: "Meghalaya Wide" },
   { value: "current_or_selected", label: "Current or Selected Location" },
 ];
-const ICON_NAMES = Object.keys(icons).filter((name) => /^[A-Z]/.test(name));
+const ICON_NAMES = EXPLORE_ICON_NAMES;
 
 function IconPreview({ name, className = "size-5" }: { name: string; className?: string }) {
-  const Icon = (icons as Record<string, typeof Compass>)[name] ?? Compass;
+  const Icon = getExploreIcon(name);
   return <Icon className={className} />;
 }
 

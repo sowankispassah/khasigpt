@@ -72,6 +72,7 @@ import {
   setManagedJobSourceEnabled,
   setManagedJobSourceLocationScope,
 } from "@/lib/jobs/source-registry";
+import { getAdminRequestSession } from "@/lib/security/admin-session";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { withTimeout } from "@/lib/utils/async";
 
@@ -949,7 +950,7 @@ export default async function AdminJobsPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await auth();
+  const session = await getAdminRequestSession();
   if (!session?.user || session.user.role !== "admin") {
     redirect("/");
   }

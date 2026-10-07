@@ -4,7 +4,6 @@
 import {
   Compass,
   ExternalLink,
-  icons,
   LoaderCircle,
   LocateFixed,
   MapPin,
@@ -30,6 +29,7 @@ import {
   useEditableTranslation,
 } from "@/components/translation-edit-provider";
 import { mergeExploreDetails } from "@/lib/explore/details";
+import { getExploreIcon } from "@/lib/explore/icons";
 import { acquireCurrentLocation, LOCATION_ACCURACY_COPY, LOCATION_ACCURACY_ERROR, LOCATION_UNCONFIRMED_COPY, LocationResolutionError } from "@/lib/explore/location-acquisition";
 import { loadExplorePhoto } from "@/lib/explore/photo-client";
 import {
@@ -73,7 +73,7 @@ function DynamicIcon({
   name: string;
   className?: string;
 }) {
-  const Icon = (icons as Record<string, typeof Compass>)[name] ?? Compass;
+  const Icon = getExploreIcon(name);
   return <Icon className={className} />;
 }
 

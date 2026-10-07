@@ -31,6 +31,7 @@ test.beforeEach(async ({ context, page, baseURL }) => {
   await page.route("**/api/admin/users/unviewed-count", route => route.fulfill({ json: { count: 2 } }));
   await page.route("**/api/admin/account-deletion/unviewed-count", route => route.fulfill({ json: { count: 0 } }));
   await page.route("**/api/admin/contact-messages/unread-counts", route => route.fulfill({ json: { contacts: 0, reports: 0 } }));
+  await page.route("**/api/admin/nav-counts", route => route.fulfill({ json: { accountDeletionRequests: 0, contacts: 0, reports: 0, storage: 0, users: 2 } }));
 });
 
 test("prefetches only the loading shell and switches before section data arrives", async ({ page }) => {

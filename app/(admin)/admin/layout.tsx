@@ -1,7 +1,5 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-
-import { auth } from "@/app/(auth)/auth";
 import { AdminNav } from "@/components/admin-nav";
 import { AdminSearch } from "@/components/admin-search";
 import { SiteShell } from "@/components/site-shell";
@@ -11,6 +9,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import type { LanguageOption } from "@/lib/i18n/languages";
+import { getAdminRequestSession } from "@/lib/security/admin-session";
 
 const ADMIN_SHELL_TRANSLATIONS = [
   { key: "user_menu.resources", defaultText: "Resources" },
@@ -91,7 +90,7 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
+  const session = await getAdminRequestSession();
 
   if (!session?.user || session.user.role !== "admin") {
     redirect("/");

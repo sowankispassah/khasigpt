@@ -264,6 +264,18 @@ export function shouldBypassSiteStatusGate(pathname: string) {
   );
 }
 
+// True only when a fresh in-memory status shows the gate cannot redirect an
+// admin-console request, so skipping it needs no session verification.
+export function siteGateCannotBlockAdminConsole(now = Date.now()) {
+  return Boolean(
+    siteStatusCache &&
+      now - siteStatusCache.fetchedAt < SITE_STATUS_CACHE_WINDOW_MS &&
+      siteStatusCache.webLaunched &&
+      !siteStatusCache.underMaintenance &&
+      !isPathOrDescendant(siteStatusCache.adminEntryPath, "/admin")
+  );
+}
+
 const siteStatusRequests = new Map<string, ReturnType<typeof fetchSiteStatus>>();
 
 async function resolveSiteStatus(request: NextRequest) {
@@ -674,8 +686,11 @@ async function handleRequest(
     // Admins already retain console access during maintenance/prelaunch.
     // Verify the signed session before skipping this unrelated DB-backed gate;
     // the admin layout and actions still enforce current account authorization.
+    // While the launched site is not in maintenance the gate cannot redirect
+    // here, so that per-navigation verification round trip is unnecessary.
     !(isPathOrDescendant(request.nextUrl.pathname, "/admin") &&
-      await hasVerifiedAdminSession(request))
+      (siteGateCannotBlockAdminConsole() ||
+        await hasVerifiedAdminSession(request)))
   ) {
     const pathname = request.nextUrl.pathname;
     const siteStatus = await resolveSiteStatus(request);

@@ -32,6 +32,9 @@ function harness() {
       return current;
     } },
     "next/navigation": { redirect: (url: string) => { throw new Error(`redirect:${url}`); } },
+    // Outside a React server render, cache() does not memoize across calls;
+    // each action must still read and confirm its own session.
+    react: { cache: <T extends (...args: never[]) => unknown>(fn: T) => fn },
     "next/server": { after: () => { calls.effects.push("after"); } },
   };
   function load(file: string): any {

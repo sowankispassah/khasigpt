@@ -1,7 +1,6 @@
 import nextDynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
-import { auth } from "@/app/(auth)/auth";
 import { AdminPageLoading } from "@/components/admin/admin-page-loading";
 import type { SerializedAdminRagEntry } from "@/components/admin-rag/admin-rag-manager";
 import type { SerializedUserKnowledgeEntry } from "@/components/admin-user-knowledge-table";
@@ -15,6 +14,7 @@ import {
   listAdminRagEntries,
   listUserAddedKnowledgeEntries,
 } from "@/lib/rag/service";
+import { getAdminRequestSession } from "@/lib/security/admin-session";
 import { parseBooleanSetting } from "@/lib/settings/boolean-setting";
 import { withTimeout } from "@/lib/utils/async";
 import { CustomKnowledgeToggle } from "./custom-knowledge-toggle";
@@ -71,7 +71,7 @@ function serializeDate(value: Date | string): string {
 }
 
 export default async function AdminRagPage() {
-  const session = await auth();
+  const session = await getAdminRequestSession();
 
   if (!session?.user || session.user.role !== "admin") {
     redirect("/");
