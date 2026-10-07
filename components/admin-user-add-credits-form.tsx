@@ -13,7 +13,8 @@ type AddCreditsFormProps = {
   creditsRemaining: number | null;
   layout?: "inline" | "stacked";
   disabled?: boolean;
-  onCreditsAdded?: () => void;
+  /** Called with the new balance, or null when it could not be confirmed. */
+  onCreditsAdded?: (creditsRemaining: number | null) => void;
 };
 
 const ADD_CREDITS_TIMEOUT_MS = 15_000;
@@ -121,16 +122,16 @@ export function AddCreditsForm({
         setIsSaving(true);
         try {
           const result = await grantCredits({ credits, userId, errorMessage: translate("admin.users.credits.error", "Unable to grant credits.") });
-          setLocalCreditsRemaining((current) =>
+          const nextBalance =
             result.creditsRemaining !== null
               ? result.creditsRemaining
-              : current === null
+              : localCreditsRemaining === null
                 ? null
-                : current + credits
-          );
+                : localCreditsRemaining + credits;
+          setLocalCreditsRemaining(nextBalance);
           setCreditInput("");
           toast({ description: translate("admin.users.credits.success", "Credits granted"), type: "success" });
-          onCreditsAdded?.();
+          onCreditsAdded?.(nextBalance);
         } catch (error) {
           toast({
             description:

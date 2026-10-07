@@ -1,5 +1,6 @@
 "use client";
 
+import { AdminStatusPill, type AdminStatusTone } from "@/components/admin/admin-ui";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { getAdminUserStatus } from "@/lib/admin/user-account-status";
 
@@ -13,11 +14,11 @@ export function AdminUserStatusBadge({
   isOnline: boolean;
 }) {
   const status = getAdminUserStatus({ emailVerificationPending, isActive, isOnline });
-  const classes = {
-    active: "bg-emerald-100 text-emerald-700",
-    not_verified: "bg-amber-100 text-amber-800",
-    online: "bg-sky-100 text-sky-700",
-    suspended: "bg-rose-100 text-rose-700",
+  const tone: AdminStatusTone = {
+    active: "success" as const,
+    not_verified: "warning" as const,
+    online: "info" as const,
+    suspended: "danger" as const,
   }[status];
   const labels = {
     active: { text: "Active", description: "Status badge for an active admin user account." },
@@ -27,12 +28,12 @@ export function AdminUserStatusBadge({
   }[status];
 
   return (
-    <span className={`rounded-full px-2 py-1 text-xs ${classes}`}>
+    <AdminStatusPill tone={tone}>
       <EditableTranslation
         defaultText={labels.text}
         description={labels.description}
         translationKey={`admin.users.status.${status}`}
       />
-    </span>
+    </AdminStatusPill>
   );
 }

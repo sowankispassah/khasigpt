@@ -1,6 +1,5 @@
 "use client";
 
-
 import { Loader2, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
@@ -11,15 +10,9 @@ import {
   useState,
   useTransition,
 } from "react";
-import { AdminUserDetailsButton } from "@/components/admin/admin-user-details-button";
-import { AdminUserActionsMenu, type UserUpdatePayload } from "@/components/admin-user-actions-menu";
-import { AddCreditsForm } from "@/components/admin-user-add-credits-form";
-import { AdminUserChatsButton } from "@/components/admin-user-chats-button";
-import { AdminUserStatusBadge } from "@/components/admin-user-status-badge";
 import {
   AdminUsersBulkActionBar,
   AdminUsersSelectAllCheckbox,
-  AdminUsersSelectionCheckbox,
   useAdminUsersSelection,
 } from "@/components/admin-users-selection";
 import { useTranslation } from "@/components/language-provider";
@@ -35,21 +28,18 @@ import type {
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
 import { doneGlobalProgress, startGlobalProgress } from "@/lib/ui/global-progress";
+import { cn } from "@/lib/utils";
+import {
+  AdminUserCreditsCell,
+  AdminUserRow,
+  type AdminUserRowData,
+  USER_COLUMN_CLASSES,
+} from "./admin-user-row";
 
 const LOAD_MORE_TIMEOUT_MS = 15_000;
 
-type AdminUserRow = {
-  allowPersonalKnowledge: boolean;
-  chatCount: number;
-  createdAt: string | Date;
-  email: string;
-  emailVerificationPending: boolean;
-  id: string;
-  isActive: boolean;
-  isOnline: boolean;
-  lastLoginAt: string | Date | null;
+type LoadedAdminUser = AdminUserRowData & {
   lastSeenAt: string | Date | null;
-  role: UserRole;
   creditsRemaining: number | null;
 };
 
@@ -74,7 +64,7 @@ function isValidDateValue(value: unknown, allowNull = false): value is string | 
   return typeof value === "string" && !Number.isNaN(new Date(value).getTime());
 }
 
-function isAdminUserRow(value: unknown): value is Omit<AdminUserRow, "creditsRemaining"> {
+function isAdminUserRow(value: unknown): value is Omit<LoadedAdminUser, "creditsRemaining"> {
   if (!value || typeof value !== "object") {
     return false;
   }
@@ -97,24 +87,6 @@ function isAdminUserRow(value: unknown): value is Omit<AdminUserRow, "creditsRem
     isValidDateValue(row.lastSeenAt, true) &&
     (row.role === "admin" || row.role === "creator" || row.role === "regular")
   );
-}
-
-function toDate(value: string | Date | null) {
-  if (value === null) {
-    return null;
-  }
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function formatDateTime(value: string | Date | null) {
-  const date = toDate(value);
-  return date
-    ? new Intl.DateTimeFormat("en-IN", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(date)
-    : null;
 }
 
 function LoadingLabel({ children }: { children: ReactNode }) {
@@ -252,13 +224,17 @@ function AdminUsersSearchForm({
   return (
     <form
       aria-busy={isPending}
-      className="flex flex-wrap items-end gap-2"
+      className="flex flex-col gap-2 lg:flex-row lg:items-center"
       onSubmit={handleSubmit}
     >
-      <div className="min-w-0 flex-1 sm:min-w-[18rem]">
+      <div className="relative min-w-0 flex-1">
+        <Search
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+        />
         <input
           aria-label={translate("admin.users.search.label", "Search users")}
-          className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-9 w-full rounded-lg border border-input bg-background pr-3 pl-9 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
           id="admin-user-search"
           onChange={(event) => setValue(event.target.value)}
           placeholder={placeholder}
@@ -267,10 +243,11 @@ function AdminUsersSearchForm({
         />
         {editButton}
       </div>
-      <div className="shrink-0">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+      <div className="min-w-0">
         <select
           aria-label={translate("admin.users.filters.role.label", "Role")}
-          className="h-9 min-w-32 rounded-md border border-input bg-background px-2 text-sm"
+          className="h-9 w-full cursor-pointer rounded-lg border border-input bg-background px-2.5 text-sm sm:w-auto"
           id="admin-user-role"
           onChange={(event) => {
             const nextRole = event.target.value as UserRole | "all";
@@ -293,13 +270,13 @@ function AdminUsersSearchForm({
           </option>
         </select>
       </div>
-      <div className="shrink-0">
+      <div className="min-w-0">
         <select
           aria-label={translate(
             "admin.users.filters.account_status.label",
             "Account status"
           )}
-          className="h-9 min-w-36 rounded-md border border-input bg-background px-2 text-sm"
+          className="h-9 w-full cursor-pointer rounded-lg border border-input bg-background px-2.5 text-sm sm:w-auto"
           id="admin-user-account-status"
           onChange={(event) => {
             const nextAccountStatus = event.target
@@ -326,10 +303,10 @@ function AdminUsersSearchForm({
           </option>
         </select>
       </div>
-      <div className="shrink-0">
+      <div className="min-w-0">
         <select
           aria-label={translate("admin.users.filters.presence.label", "Presence")}
-          className="h-9 min-w-32 rounded-md border border-input bg-background px-2 text-sm"
+          className="h-9 w-full cursor-pointer rounded-lg border border-input bg-background px-2.5 text-sm sm:w-auto"
           id="admin-user-presence"
           onChange={(event) => {
             const nextPresence = event.target
@@ -350,10 +327,10 @@ function AdminUsersSearchForm({
           </option>
         </select>
       </div>
-      <div className="shrink-0">
+      <div className="min-w-0">
         <select
           aria-label={translate("admin.users.filters.sort.label", "Sort by")}
-          className="h-9 min-w-44 cursor-pointer rounded-md border border-input bg-background px-2 text-sm"
+          className="h-9 w-full cursor-pointer rounded-lg border border-input bg-background px-2.5 text-sm sm:w-auto"
           id="admin-user-sort"
           onChange={(event) => {
             const nextSort = event.target.value as AdminUserSortOption;
@@ -396,7 +373,7 @@ function AdminUsersSearchForm({
         {sort === "recent_chat" ? recentChatEditButton : null}
       </div>
       <Button
-        className="cursor-pointer"
+        className="col-span-2 h-9 cursor-pointer sm:col-span-1"
         disabled={isPending}
         type="submit"
         variant="secondary"
@@ -420,91 +397,14 @@ function AdminUsersSearchForm({
           </span>
         )}
       </Button>
+      </div>
     </form>
-  );
-}
-
-function LoadedUserRow({
-  currentUserId,
-  onUpdated,
-  user,
-}: {
-  currentUserId: string | undefined;
-  onUpdated: (patch: UserUpdatePayload) => void;
-  user: AdminUserRow;
-}) {
-  const createdAt = toDate(user.createdAt);
-  const lastLoginAt = toDate(user.lastLoginAt);
-
-  return (
-    <tr className="border-t text-sm" key={user.id}>
-      <AdminUsersSelectionCheckbox
-        disabled={user.id === currentUserId}
-        email={user.email}
-        userId={user.id}
-      />
-      <td className="py-3"><AdminUserDetailsButton email={user.email} userId={user.id} onUpdated={onUpdated} /></td>
-      <td className="py-3 capitalize">{user.role}</td>
-      <td className="py-3">
-        <AdminUserStatusBadge emailVerificationPending={user.emailVerificationPending} isActive={user.isActive} isOnline={user.isOnline} />
-      </td>
-      <td className="py-3">
-        {createdAt ? (
-          <time dateTime={createdAt.toISOString()}>{formatDateTime(createdAt)}</time>
-        ) : (
-          <EditableTranslation
-            defaultText="Unavailable"
-            description="Fallback when a user's signup date cannot be displayed."
-            translationKey="admin.users.date.unavailable"
-          />
-        )}
-      </td>
-      <td className="py-3">
-        {user.isOnline ? (
-          <EditableTranslation
-            defaultText="Online"
-            description="Shown in the last-login column while the user is currently online."
-            translationKey="admin.users.last_login.online"
-          />
-        ) : lastLoginAt ? (
-          <time dateTime={lastLoginAt.toISOString()}>
-            {formatDateTime(lastLoginAt)}
-          </time>
-        ) : (
-          <EditableTranslation
-            defaultText="Never"
-            description="Shown when a user has no recorded successful login."
-            translationKey="admin.users.last_login.never"
-          />
-        )}
-      </td>
-      <td className="py-3">
-        <AdminUserChatsButton chatCount={user.chatCount} userId={user.id} />
-      </td>
-      <td className="py-3">
-        <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap pr-2">
-          <AdminUserActionsMenu
-            allowPersonalKnowledge={user.allowPersonalKnowledge}
-            currentRole={user.role}
-            email={user.email}
-            emailVerificationPending={user.emailVerificationPending}
-            isActive={user.isActive}
-            isSelf={user.id === currentUserId}
-            onUpdated={onUpdated}
-            userId={user.id}
-          />
-          <AddCreditsForm
-            creditsRemaining={user.creditsRemaining}
-            userId={user.id}
-          />
-        </div>
-      </td>
-    </tr>
   );
 }
 
 export function AdminUsersTable({
   children,
+  notice,
   currentUserId,
   initialAccountStatus,
   initialPage,
@@ -518,6 +418,8 @@ export function AdminUsersTable({
   totalUsersConfirmed,
 }: {
   children: ReactNode;
+  /** Warning shown above the table, e.g. when balances could not load. */
+  notice?: ReactNode;
   currentUserId: string | undefined;
   initialAccountStatus: AdminUserAccountStatusFilter;
   initialPage: number;
@@ -541,7 +443,7 @@ export function AdminUsersTable({
     "admin.users.load_more.timeout",
     "Loading users timed out. Please retry."
   );
-  const [loadedUsers, setLoadedUsers] = useState<AdminUserRow[]>([]);
+  const [loadedUsers, setLoadedUsers] = useState<LoadedAdminUser[]>([]);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [nextPage, setNextPage] = useState(initialPage + 1);
@@ -667,82 +569,93 @@ export function AdminUsersTable({
   );
 
   return (
-    <div className="rounded-xl border bg-card p-4 shadow-xs">
-      <AdminUsersSearchForm
-        initialAccountStatus={initialAccountStatus}
-        initialPresence={initialPresence}
-        initialRole={initialRole}
-        initialSearch={initialSearch}
-        initialSort={initialSort}
-      />
-      <AdminUsersBulkActionBar />
-      <div className="mt-4 overflow-x-auto">
-        {/* Horizontal cell padding keeps adjacent columns from running together. */}
-        <table className="w-full whitespace-nowrap text-sm [&_td:first-child]:pl-0 [&_td]:px-3 [&_th:first-child]:pl-0 [&_th]:px-3 [&_tr]:border-border/70">
-          <thead className="text-muted-foreground text-xs uppercase tracking-wide">
+    <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
+      <div className="border-b p-4">
+        <AdminUsersSearchForm
+          initialAccountStatus={initialAccountStatus}
+          initialPresence={initialPresence}
+          initialRole={initialRole}
+          initialSearch={initialSearch}
+          initialSort={initialSort}
+        />
+        <AdminUsersBulkActionBar />
+      </div>
+      {notice ? <div className="border-b px-4 py-3">{notice}</div> : null}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm [&_td]:px-4 [&_th]:px-4">
+          <thead className="border-b bg-muted/40 text-muted-foreground text-xs">
             <tr>
               <AdminUsersSelectAllCheckbox />
-              <th className="py-3 text-left">
+              <th className="py-2.5 text-left font-medium" scope="col">
                 <EditableTranslation
-                  defaultText="Email"
-                  description="Admin user table email column heading."
-                  translationKey="admin.users.table.email"
+                  defaultText="User"
+                  description="Admin user table column with each user email and role."
+                  translationKey="admin.users.table.user"
                 />
               </th>
-              <th className="py-3 text-left">
-                <EditableTranslation
-                  defaultText="Role"
-                  description="Admin user table role column heading."
-                  translationKey="admin.users.table.role"
-                />
-              </th>
-              <th className="py-3 text-left">
+              <th className={cn("py-2.5 text-left font-medium", USER_COLUMN_CLASSES.status)} scope="col">
                 <EditableTranslation
                   defaultText="Status"
                   description="Admin user table status column heading."
                   translationKey="admin.users.table.status"
                 />
               </th>
-              <th className="py-3 text-left">
+              <th className={cn("py-2.5 text-left font-medium", USER_COLUMN_CLASSES.credits)} scope="col">
                 <EditableTranslation
-                  defaultText="Signed up"
-                  description="Admin user table signup date and time column heading."
-                  translationKey="admin.users.table.signed_up"
+                  defaultText="Credits"
+                  description="Admin user table column with each user remaining credit balance."
+                  translationKey="admin.users.table.credits"
                 />
               </th>
-              <th className="py-3 text-left">
-                <EditableTranslation
-                  defaultText="Last login"
-                  description="Admin user table latest successful login column heading."
-                  translationKey="admin.users.table.last_login"
-                />
-              </th>
-              <th className="py-3 text-left">
+              <th className={cn("py-2.5 text-left font-medium", USER_COLUMN_CLASSES.chats)} scope="col">
                 <EditableTranslation
                   defaultText="Chats"
                   description="Admin user table column showing the count of active chats created by each user."
                   translationKey="admin.users.table.chats"
                 />
               </th>
-              <th className="py-3 text-left">
+              <th className={cn("py-2.5 text-left font-medium", USER_COLUMN_CLASSES.joined)} scope="col">
                 <EditableTranslation
-                  defaultText="Actions"
-                  description="Admin user table actions column heading."
-                  translationKey="admin.users.table.actions"
+                  defaultText="Joined"
+                  description="Admin user table signup date column heading."
+                  translationKey="admin.users.table.joined"
                 />
+              </th>
+              <th className={cn("py-2.5 text-left font-medium", USER_COLUMN_CLASSES.lastActive)} scope="col">
+                <EditableTranslation
+                  defaultText="Last active"
+                  description="Admin user table column showing online status or the latest successful login."
+                  translationKey="admin.users.table.last_active"
+                />
+              </th>
+              <th className="py-2.5 text-right font-medium" scope="col">
+                <span className="sr-only">
+                  <EditableTranslation
+                    defaultText="Actions"
+                    description="Admin user table actions column heading."
+                    translationKey="admin.users.table.actions"
+                  />
+                </span>
               </th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-border/60">
             {children}
             {loadedUsers.map((user) => (
-              <LoadedUserRow
+              <AdminUserRow
+                creditsSlot={
+                  <AdminUserCreditsCell
+                    creditsRemaining={user.creditsRemaining}
+                    email={user.email}
+                    userId={user.id}
+                  />
+                }
                 currentUserId={currentUserId}
+                key={user.id}
                 onUpdated={(patch) => {
                   setLoadedUsers((current) => current.map((row) => row.id === user.id ? { ...row, ...patch } : row));
                   router.refresh();
                 }}
-                key={user.id}
                 user={user}
               />
             ))}
@@ -750,7 +663,7 @@ export function AdminUsersTable({
         </table>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
         <span className="text-muted-foreground">
           {totalUsersConfirmed ? (
             <EditableTranslation
@@ -802,10 +715,10 @@ export function AdminUsersTable({
         ) : null}
       </div>
       {loadError ? (
-        <p className="mt-2 text-destructive text-sm" role="alert">
+        <p className="px-4 pb-3 text-destructive text-sm" role="alert">
           {loadError}
         </p>
       ) : null}
-    </div>
+    </section>
   );
 }

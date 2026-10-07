@@ -57,15 +57,19 @@ test.describe("admin bulk user deletion", () => {
   });
 
   test("scopes selection to visible rows and resets it with the page/search scope", async () => {
-    const [pageSource, tableSource, selectionSource] = await Promise.all([
+    const [pageSource, tableSource, rowSource, selectionSource] = await Promise.all([
       readWorkspaceFile("app/(admin)/admin/users/page.tsx"),
       readWorkspaceFile("app/(admin)/admin/users/admin-users-table.tsx"),
+      readWorkspaceFile("app/(admin)/admin/users/admin-user-row.tsx"),
       readWorkspaceFile("components/admin-users-selection.tsx"),
     ]);
 
     expect(pageSource).toContain("<AdminUsersSelectionProvider");
     expect(pageSource).toContain("<AdminUsersBulkDeleteButton />");
-    expect(pageSource).toContain("<AdminUsersSelectionCheckbox");
+    // Server-rendered and load-more rows share one row component.
+    expect(pageSource).toContain("<AdminUserRow");
+    expect(tableSource).toContain("<AdminUserRow");
+    expect(rowSource).toContain("<AdminUsersSelectionCheckbox");
     expect(tableSource).toContain("<AdminUsersSelectAllCheckbox />");
     expect(tableSource).toContain("<AdminUsersBulkActionBar />");
     expect(selectionSource).toContain("setSelectedUserIds(new Set())");

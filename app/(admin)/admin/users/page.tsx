@@ -1,21 +1,20 @@
 import { Suspense } from "react";
-import { AdminPageHeader, AdminStatusPill } from "@/components/admin/admin-ui";
-import { AdminUserDetailsButton } from "@/components/admin/admin-user-details-button";
-import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
-import { AddCreditsForm } from "@/components/admin-user-add-credits-form";
-import { AdminUserChatsButton } from "@/components/admin-user-chats-button";
-import { AdminUserStatusBadge } from "@/components/admin-user-status-badge";
+import {
+  AdminEmptyState,
+  AdminPageHeader,
+  AdminPanel,
+  AdminStatusPill,
+} from "@/components/admin/admin-ui";
 import {
   AdminUsersBulkDeleteButton,
-  AdminUsersSelectionCheckbox,
   AdminUsersSelectionProvider,
 } from "@/components/admin-users-selection";
-import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
   type AdminQueryResult,
   adminQueryResult,
 } from "@/lib/admin/safe-query";
 import { type AdminUserAccountStatusFilter, parseAdminUserAccountStatus } from "@/lib/admin/user-account-status";
+import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import {
   type ActiveSubscriptionSummary,
   type AdminUserPresenceFilter,
@@ -30,6 +29,7 @@ import {
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
 import { getAdminRequestSession } from "@/lib/security/admin-session";
+import { AdminUserCreditsCell, AdminUserRow } from "./admin-user-row";
 import { AdminUsersTable } from "./admin-users-table";
 import { MarkUsersViewed } from "./mark-users-viewed";
 
@@ -71,13 +71,6 @@ function parsePresence(
 function parseSort(value: string | string[] | undefined): AdminUserSortOption {
   const rawValue = Array.isArray(value) ? value[0] : value;
   return isAdminUserSortOption(rawValue) ? rawValue : "created_desc";
-}
-
-function formatAdminDateTime(value: Date) {
-  return new Intl.DateTimeFormat("en-IN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(value);
 }
 
 export default async function AdminUsersPage({
@@ -186,7 +179,7 @@ export default async function AdminUsersPage({
         ) : null}
         <AdminPageHeader
           actions={<AdminUsersBulkDeleteButton />}
-          description="Promote admins, suspend accounts, and monitor roles."
+          description="Search accounts, review activity and credits, and manage roles or access."
           meta={
             <AdminStatusPill>
               {totalUsersConfirmed
@@ -263,119 +256,68 @@ function UsersTableSection({
   usersConfirmed: boolean;
 }) {
   return (
-    <div className="rounded-xl border bg-card p-4 shadow-xs">
-      <Suspense fallback={null}>
-        <BalanceQueryWarning
-          balanceByUserIdStatePromise={balanceByUserIdStatePromise}
-        />
-      </Suspense>
-      <AdminUsersTable
-        currentUserId={currentUserId}
-        key={`${page}:${search}:${role}:${accountStatus}:${presence}:${sort}`}
-        initialPage={page}
-        initialSearch={search}
-        initialUserIds={pagedUsers.map((user) => user.id)}
-        initialAccountStatus={accountStatus}
-        initialPresence={presence}
-        initialRole={role}
-        initialSort={sort}
-        pageSize={USERS_PAGE_SIZE}
-        totalUsers={totalUsers}
-        totalUsersConfirmed={totalUsersConfirmed}
-      >
-        {!usersConfirmed ? (
-          <tr>
-            <td className="py-6 text-muted-foreground" colSpan={8}>
-              Unable to load users for this page.
-            </td>
-          </tr>
-        ) : pagedUsers.length === 0 ? (
-          <tr>
-            <td className="py-6 text-muted-foreground" colSpan={8}>
-              No users found.
-            </td>
-          </tr>
-        ) : (
-          pagedUsers.map((user) => {
-            const lastLoginAt = user.lastLoginAt;
-            return (
-              <tr className="border-t text-sm" key={user.id}>
-                <AdminUsersSelectionCheckbox
-                  disabled={user.id === currentUserId}
+    <AdminUsersTable
+      currentUserId={currentUserId}
+      key={`${page}:${search}:${role}:${accountStatus}:${presence}:${sort}`}
+      initialPage={page}
+      initialSearch={search}
+      initialUserIds={pagedUsers.map((user) => user.id)}
+      initialAccountStatus={accountStatus}
+      initialPresence={presence}
+      initialRole={role}
+      initialSort={sort}
+      notice={
+        <Suspense fallback={null}>
+          <BalanceQueryWarning
+            balanceByUserIdStatePromise={balanceByUserIdStatePromise}
+          />
+        </Suspense>
+      }
+      pageSize={USERS_PAGE_SIZE}
+      totalUsers={totalUsers}
+      totalUsersConfirmed={totalUsersConfirmed}
+    >
+      {!usersConfirmed ? (
+        <tr>
+          <td colSpan={9}>
+            <AdminEmptyState
+              description="Refresh this admin section to retry."
+              title="Unable to load users for this page"
+            />
+          </td>
+        </tr>
+      ) : pagedUsers.length === 0 ? (
+        <tr>
+          <td colSpan={9}>
+            <AdminEmptyState
+              description="Try a different search or clear the filters."
+              title="No users found"
+            />
+          </td>
+        </tr>
+      ) : (
+        pagedUsers.map((user) => (
+          <AdminUserRow
+            creditsSlot={
+              <Suspense
+                fallback={
+                  <span className="inline-block h-4 w-14 animate-pulse rounded bg-muted" />
+                }
+              >
+                <UserCreditsCell
+                  balanceByUserIdStatePromise={balanceByUserIdStatePromise}
                   email={user.email}
                   userId={user.id}
                 />
-                <td className="py-3"><AdminUserDetailsButton email={user.email} userId={user.id} /></td>
-                <td className="py-3 capitalize">{user.role}</td>
-                <td className="py-3">
-                  <AdminUserStatusBadge emailVerificationPending={user.emailVerificationPending} isActive={user.isActive} isOnline={user.isOnline} />
-                </td>
-                <td className="py-3">
-                  <time dateTime={user.createdAt.toISOString()}>
-                    {formatAdminDateTime(user.createdAt)}
-                  </time>
-                </td>
-                <td className="py-3">
-                  {user.isOnline ? (
-                    <EditableTranslation
-                      defaultText="Online"
-                      description="Shown in the last-login column while the user is currently online."
-                      translationKey="admin.users.last_login.online"
-                    />
-                  ) : lastLoginAt ? (
-                    <time dateTime={lastLoginAt.toISOString()}>
-                      {formatAdminDateTime(lastLoginAt)}
-                    </time>
-                  ) : (
-                    <EditableTranslation
-                      defaultText="Never"
-                      description="Shown when a user has no recorded successful login."
-                      translationKey="admin.users.last_login.never"
-                    />
-                  )}
-                </td>
-                <td className="py-3">
-                  <AdminUserChatsButton
-                    chatCount={user.chatCount}
-                    userId={user.id}
-                  />
-                </td>
-                <td className="py-3">
-                  <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap pr-2">
-                    <AdminUserActionsMenu
-                      allowPersonalKnowledge={Boolean(
-                        user.allowPersonalKnowledge
-                      )}
-                      currentRole={user.role as UserRole}
-                      email={user.email}
-                      emailVerificationPending={user.emailVerificationPending}
-                      isActive={user.isActive}
-                      isSelf={user.id === currentUserId}
-                      userId={user.id}
-                    />
-                    <Suspense
-                      fallback={
-                        <AddCreditsForm
-                          creditsRemaining={null}
-                          userId={user.id}
-                        />
-                      }
-                    >
-                      <UserCreditAction
-                        balanceByUserIdStatePromise={
-                          balanceByUserIdStatePromise
-                        }
-                        userId={user.id}
-                      />
-                    </Suspense>
-                  </div>
-                </td>
-              </tr>
-            );
-          })
-        )}
-      </AdminUsersTable>
-    </div>
+              </Suspense>
+            }
+            currentUserId={currentUserId}
+            key={user.id}
+            user={{ ...user, role: user.role as UserRole }}
+          />
+        ))
+      )}
+    </AdminUsersTable>
   );
 }
 
@@ -388,30 +330,44 @@ async function BalanceQueryWarning({
 }) {
   const balanceByUserIdState = await balanceByUserIdStatePromise;
   return balanceByUserIdState.ok ? null : (
-    <AdminUsersQueryWarning message="Credit balances could not be confirmed. User rows remain available and credit balances stay unconfirmed instead of falling back to zero." />
+    <AdminUsersQueryWarning message="Credit balances could not be confirmed, so they show as “—” instead of zero." />
   );
 }
 
-async function UserCreditAction({
+async function UserCreditsCell({
   balanceByUserIdStatePromise,
+  email,
   userId,
 }: {
   balanceByUserIdStatePromise: Promise<
     AdminQueryResult<Map<string, UserBalanceSummary>>
   >;
+  email: string;
   userId: string;
 }) {
   const balanceByUserIdState = await balanceByUserIdStatePromise;
   return (
-    <AddCreditsForm
+    <AdminUserCreditsCell
       creditsRemaining={
         balanceByUserIdState.ok
           ? (balanceByUserIdState.data.get(userId)?.creditsRemaining ?? 0)
           : null
       }
+      email={email}
       userId={userId}
     />
   );
+}
+
+const subscriptionDateFormatter = new Intl.DateTimeFormat("en-IN", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+
+function daysUntil(value: Date | string) {
+  const expiresAt = new Date(value).getTime();
+  return Math.ceil((expiresAt - Date.now()) / 86_400_000);
 }
 
 async function ActiveSubscriptionsSection({
@@ -425,77 +381,85 @@ async function ActiveSubscriptionsSection({
   const activeSubscriptions = activeSubscriptionsState.data;
 
   return (
-    <div className="rounded-xl border bg-card p-4 shadow-xs">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h3 className="font-semibold text-base">Active subscriptions</h3>
-          <p className="text-muted-foreground text-sm">
-            Recent users with active plans and their remaining balances.
-          </p>
+    <AdminPanel
+      description="Most recent users with an active plan and how much of it is left."
+      title="Active subscriptions"
+    >
+      {!activeSubscriptionsState.ok ? (
+        <div className="px-5 pt-4">
+          <AdminUsersQueryWarning message="Active subscriptions could not be confirmed." />
         </div>
-      </div>
-      {!activeSubscriptionsState.ok && (
-        <AdminUsersQueryWarning message="Active subscriptions could not be confirmed. Existing rows are hidden until this section loads real data." />
-      )}
-      <div className="mt-4 overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="text-muted-foreground text-xs uppercase">
-            <tr>
-              <th className="py-2 text-left">User</th>
-              <th className="py-2 text-left">Plan</th>
-              <th className="py-2 text-right">Tokens left</th>
-              <th className="py-2 text-right">Expires</th>
-            </tr>
-          </thead>
-          <tbody>
-            {!activeSubscriptionsState.ok ? (
-              <tr>
-                <td className="py-4 text-muted-foreground" colSpan={4}>
-                  Unable to load active subscriptions.
-                </td>
-              </tr>
-            ) : activeSubscriptions.length === 0 ? (
-              <tr>
-                <td className="py-4 text-muted-foreground" colSpan={4}>
-                  No active subscriptions yet.
-                </td>
-              </tr>
-            ) : (
-              activeSubscriptions.map((subscription) => (
-                <tr className="border-t" key={subscription.subscriptionId}>
-                  <td className="py-2 font-mono text-xs">
+      ) : null}
+      {!activeSubscriptionsState.ok ? null : activeSubscriptions.length === 0 ? (
+        <AdminEmptyState title="No active subscriptions yet" />
+      ) : (
+        <ul className="divide-y divide-border/60">
+          {activeSubscriptions.map((subscription) => {
+            const allowance = Math.max(0, subscription.tokenAllowance);
+            const balance = Math.max(0, subscription.tokenBalance);
+            const percentLeft =
+              allowance > 0 ? Math.min(100, (balance / allowance) * 100) : 0;
+            const remainingDays = daysUntil(subscription.expiresAt);
+            return (
+              <li
+                className="grid gap-3 px-5 py-3 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto] sm:items-center"
+                key={subscription.subscriptionId}
+              >
+                <div className="min-w-0">
+                  <div className="truncate font-medium text-sm">
                     {subscription.userEmail}
-                  </td>
-                  <td className="py-2">
+                  </div>
+                  <div className="text-muted-foreground text-xs">
                     {subscription.planName ?? "Plan removed"}
-                  </td>
-                  <td className="py-2 text-right">
-                    {subscription.tokenBalance.toLocaleString()} /{" "}
-                    {subscription.tokenAllowance.toLocaleString()}
-                  </td>
-                  <td className="py-2 text-right">
-                    {new Date(subscription.expiresAt).toLocaleDateString(
-                      "en-IN",
-                      {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      }
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+                  </div>
+                </div>
+                <div className="text-sm tabular-nums">
+                  <span className="font-medium">
+                    {(balance / TOKENS_PER_CREDIT).toLocaleString("en-IN", {
+                      maximumFractionDigits: 2,
+                    })}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    of{" "}
+                    {(allowance / TOKENS_PER_CREDIT).toLocaleString("en-IN", {
+                      maximumFractionDigits: 2,
+                    })}{" "}
+                    credits
+                  </span>
+                </div>
+                <div
+                  aria-label={`${Math.round(percentLeft)}% of credits left`}
+                  className="h-2 w-full rounded-full bg-muted"
+                  role="img"
+                >
+                  <div
+                    className="h-full rounded-full bg-primary/70"
+                    style={{ width: `${percentLeft}%` }}
+                  />
+                </div>
+                <div className="text-muted-foreground text-xs sm:text-right">
+                  <AdminStatusPill tone={remainingDays <= 7 ? "warning" : "neutral"}>
+                    {remainingDays <= 0
+                      ? "Expires today"
+                      : `${remainingDays} d left`}
+                  </AdminStatusPill>
+                  <div className="mt-1">
+                    {subscriptionDateFormatter.format(new Date(subscription.expiresAt))}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </AdminPanel>
   );
 }
 
 function AdminUsersQueryWarning({ message }: { message: string }) {
   return (
-    <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
+    <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-800 text-sm dark:text-amber-300">
       {message} Refresh this admin section to retry.
     </div>
   );
@@ -503,8 +467,8 @@ function AdminUsersQueryWarning({ message }: { message: string }) {
 
 function SubscriptionsFallback() {
   return (
-    <div className="rounded-xl border bg-card p-4 shadow-xs">
-      <div className="space-y-3">
+    <AdminPanel title="Active subscriptions">
+      <div aria-busy="true" className="space-y-3 p-5">
         {Array.from({ length: 4 }, (_, index) => (
           <div
             className="h-10 animate-pulse rounded-lg bg-muted/50"
@@ -512,6 +476,6 @@ function SubscriptionsFallback() {
           />
         ))}
       </div>
-    </div>
+    </AdminPanel>
   );
 }

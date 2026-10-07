@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useState } from "react";
 import type { UserUpdatePayload } from "@/components/admin-user-actions-menu";
 import { EditableTranslation } from "@/components/translation-edit-provider";
+import { cn } from "@/lib/utils";
 
 const UserDetailsDialog = dynamic(() => import("./admin-user-details-dialog"), {
   ssr: false,
@@ -21,10 +22,12 @@ const UserDetailsDialog = dynamic(() => import("./admin-user-details-dialog"), {
 });
 
 export function AdminUserDetailsButton({
+  className,
   userId,
   email,
   onUpdated,
 }: {
+  className?: string;
   userId: string;
   email: string;
   onUpdated?: (patch: UserUpdatePayload) => void;
@@ -33,7 +36,10 @@ export function AdminUserDetailsButton({
   return (
     <>
       <button
-        className="cursor-pointer break-all text-left text-primary underline-offset-2 hover:underline"
+        className={cn(
+          "cursor-pointer break-all text-left text-primary underline-offset-2 hover:underline",
+          className
+        )}
         onClick={() => setOpen(true)}
         type="button"
       >

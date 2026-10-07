@@ -1001,6 +1001,36 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Admin user table actions column heading.",
   },
   {
+    key: "admin.users.table.user",
+    defaultText: "User",
+    description: "Admin user table column with each user email and role.",
+  },
+  {
+    key: "admin.users.table.credits",
+    defaultText: "Credits",
+    description: "Admin user table column with each user remaining credit balance.",
+  },
+  {
+    key: "admin.users.table.joined",
+    defaultText: "Joined",
+    description: "Admin user table signup date column heading.",
+  },
+  {
+    key: "admin.users.table.last_active",
+    defaultText: "Last active",
+    description: "Admin user table column showing online status or the latest successful login.",
+  },
+  {
+    key: "admin.users.credits.open",
+    defaultText: "Add credits to {email}",
+    description: "Accessible label for the button that opens the add-credits dialog for a user.",
+  },
+  {
+    key: "admin.users.credits.dialog_description",
+    defaultText: "Granted credits are free for the user and expire after 90 days.",
+    description: "Explains granted admin credits in the add-credits dialog.",
+  },
+  {
     key: "admin.users.table.showing",
     defaultText: "Showing {shown} of {total} users",
     description: "Admin user table count showing how many filtered users are currently visible.",
