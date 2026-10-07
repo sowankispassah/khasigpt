@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { EditableTranslation } from "@/components/translation-edit-provider";
-import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 type ChartVariant = "area" | "bar" | "line";
 
@@ -38,7 +38,7 @@ const chartOptions: Array<{
 const STORAGE_KEY = "subscriptions.dailyUsage.chartVariant";
 
 const ChartSkeleton = () => (
-  <div className="h-64 w-full animate-pulse rounded-xl border bg-muted/40" />
+  <div className="h-64 w-full animate-pulse rounded-xl bg-muted/40" />
 );
 
 const DailyUsageChart = dynamic(
@@ -80,22 +80,28 @@ export function DailyUsageChartSwitcher({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-end gap-2">
-        {chartOptions.map((option) => (
-          <Button
-            className="cursor-pointer"
-            key={option.value}
-            onClick={() => handleVariantChange(option.value)}
-            size="sm"
-            type="button"
-            variant={variant === option.value ? "default" : "outline"}
-          >
-            <EditableTranslation
-              defaultText={option.label}
-              translationKey={option.translationKey}
-            />
-          </Button>
-        ))}
+      <div className="flex justify-end">
+        <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
+          {chartOptions.map((option) => (
+            <button
+              aria-pressed={variant === option.value}
+              className={cn(
+                "min-h-9 cursor-pointer rounded-md px-3 font-medium text-xs transition",
+                variant === option.value
+                  ? "bg-background text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+              key={option.value}
+              onClick={() => handleVariantChange(option.value)}
+              type="button"
+            >
+              <EditableTranslation
+                defaultText={option.label}
+                translationKey={option.translationKey}
+              />
+            </button>
+          ))}
+        </div>
       </div>
 
       <DailyUsageChart data={data} timezone={timezone} variant={variant} />

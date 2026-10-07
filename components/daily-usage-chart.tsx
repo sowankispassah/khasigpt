@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef } from "react";
+import { useId, useMemo } from "react";
 import {
   Area,
   AreaChart,
@@ -15,6 +15,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useTranslation } from "@/components/language-provider";
 
 type DailyUsageDatum = {
   date: string;
@@ -37,11 +38,16 @@ type ChartTooltipPayload = {
 };
 
 const DEFAULT_TIMEZONE = "Asia/Kolkata";
-const DARK_GREEN = "hsl(155 36% 30%)";
-const DARK_GREEN_LIGHT = "hsl(155 36% 45%)";
+// Single series: the validated teal used across the app's charts, which keeps
+// contrast on both the light and dark card surfaces.
+const SERIES_COLOR = "#2a9d90";
 const creditsFormatter = new Intl.NumberFormat("en-IN", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
+});
+const axisFormatter = new Intl.NumberFormat("en-IN", {
+  maximumFractionDigits: 1,
+  notation: "compact",
 });
 
 function buildFormatters(timezone: string) {
@@ -65,6 +71,8 @@ export function DailyUsageChart({
   variant = "area",
 }: DailyUsageChartProps) {
   const gradientId = useId().replace(/:/g, "-");
+  const { translate } = useTranslation();
+  const unitLabel = translate("subscriptions.unit.credits", "credits");
   const { dateFormatter, fullFormatter } = useMemo(
     () => buildFormatters(timezone),
     [timezone]
@@ -95,107 +103,90 @@ export function DailyUsageChart({
 
   const ChartComponent =
     variant === "bar" ? BarChart : variant === "line" ? LineChart : AreaChart;
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) {
-      return;
-    }
-    container.scrollLeft = container.scrollWidth;
-  }, []);
+  const activeDot = {
+    fill: SERIES_COLOR,
+    r: 5,
+    stroke: "var(--card)",
+    strokeWidth: 2,
+  };
 
   return (
-    <div
-      className="w-full focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
-      style={{ minHeight: 240 }}
-    >
-      <div
-        className="h-64 w-full overflow-x-auto focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
-        ref={scrollContainerRef}
-      >
-        <div className="h-full min-w-[560px]">
-          <ResponsiveContainer height="100%" width="100%">
-            <ChartComponent
-              data={preparedData}
-              margin={{ top: 10, bottom: 0, left: 8, right: 24 }}
+    <div className="h-64 w-full">
+      <ResponsiveContainer height="100%" width="100%">
+        <ChartComponent
+          data={preparedData}
+          margin={{ top: 8, bottom: 0, left: 0, right: 8 }}
+        >
+          <defs>
+            <linearGradient
+              id={`usage-gradient-${gradientId}`}
+              x1="0"
+              x2="0"
+              y1="0"
+              y2="1"
             >
-              <defs>
-                <linearGradient
-                  id={`usage-gradient-${gradientId}`}
-                  x1="0"
-                  x2="0"
-                  y1="0"
-                  y2="1"
-                >
-                  <stop
-                    offset="5%"
-                    stopColor={DARK_GREEN_LIGHT}
-                    stopOpacity={0.55}
-                  />
-                  <stop
-                    offset="95%"
-                    stopColor={DARK_GREEN}
-                    stopOpacity={0.12}
-                  />
-                </linearGradient>
-              </defs>
-              <CartesianGrid
-                opacity={0.35}
-                stroke="hsl(var(--border))"
-                strokeDasharray="4 4"
-                vertical={false}
-              />
-              <XAxis
-                axisLine={false}
-                dataKey="formattedDate"
-                interval="preserveStartEnd"
-                padding={{ left: 8, right: 16 }}
-                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-                tickLine={false}
-              />
-              <YAxis
-                allowDecimals={false}
-                axisLine={false}
-                domain={yDomain}
-                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-                tickLine={false}
-                width={40}
-              />
-              <Tooltip<number, string>
-                content={(props) => <DailyUsageTooltip {...props} />}
-                cursor={{ stroke: DARK_GREEN, strokeOpacity: 0.35 }}
-              />
-              {variant === "bar" ? (
-                <Bar
-                  dataKey="credits"
-                  fill={DARK_GREEN}
-                  radius={[6, 6, 0, 0]}
-                />
-              ) : variant === "line" ? (
-                <Line
-                  activeDot={{ r: 6 }}
-                  dataKey="credits"
-                  dot={{ r: 4, fill: DARK_GREEN }}
-                  stroke={DARK_GREEN}
-                  strokeWidth={2.5}
-                  type="monotone"
-                />
-              ) : (
-                <Area
-                  activeDot={{ r: 5 }}
-                  dataKey="credits"
-                  fill={`url(#usage-gradient-${gradientId})`}
-                  fillOpacity={1}
-                  stroke={DARK_GREEN}
-                  strokeWidth={2.5}
-                  type="monotone"
-                />
-              )}
-            </ChartComponent>
-          </ResponsiveContainer>
-        </div>
-      </div>
+              <stop offset="0%" stopColor={SERIES_COLOR} stopOpacity={0.22} />
+              <stop offset="100%" stopColor={SERIES_COLOR} stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke="var(--border)" strokeWidth={1} vertical={false} />
+          <XAxis
+            axisLine={false}
+            dataKey="formattedDate"
+            interval="preserveStartEnd"
+            minTickGap={24}
+            tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+            tickLine={false}
+            tickMargin={8}
+          />
+          <YAxis
+            allowDecimals={false}
+            axisLine={false}
+            domain={yDomain}
+            tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+            tickFormatter={(value: number) => axisFormatter.format(value)}
+            tickLine={false}
+            width={40}
+          />
+          <Tooltip<number, string>
+            content={(props) => <DailyUsageTooltip {...props} unitLabel={unitLabel} />}
+            cursor={
+              variant === "bar"
+                ? { fill: "var(--muted)", opacity: 0.6 }
+                : { stroke: "var(--muted-foreground)", strokeWidth: 1 }
+            }
+          />
+          {variant === "bar" ? (
+            <Bar
+              dataKey="credits"
+              fill={SERIES_COLOR}
+              maxBarSize={24}
+              radius={[4, 4, 0, 0]}
+            />
+          ) : variant === "line" ? (
+            <Line
+              activeDot={activeDot}
+              dataKey="credits"
+              dot={false}
+              stroke={SERIES_COLOR}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              type="monotone"
+            />
+          ) : (
+            <Area
+              activeDot={activeDot}
+              dataKey="credits"
+              fill={`url(#usage-gradient-${gradientId})`}
+              fillOpacity={1}
+              stroke={SERIES_COLOR}
+              strokeWidth={2}
+              type="monotone"
+            />
+          )}
+        </ChartComponent>
+      </ResponsiveContainer>
     </div>
   );
 }
@@ -203,8 +194,10 @@ export function DailyUsageChart({
 function DailyUsageTooltip({
   active,
   payload,
+  unitLabel,
 }: TooltipProps<number, string> & {
   payload?: readonly ChartTooltipPayload[];
+  unitLabel: string;
 }) {
   if (!active || !payload || payload.length === 0) {
     return null;
@@ -213,10 +206,11 @@ function DailyUsageTooltip({
   const datum = payload[0] as ChartTooltipPayload;
 
   return (
-    <div className="rounded-md border bg-card px-3 py-2 text-sm shadow-lg">
-      <p className="font-medium">{datum.payload.tooltipDate}</p>
-      <p className="text-muted-foreground text-xs">
-        {datum.payload.formattedCredits} credits
+    <div className="rounded-lg border bg-popover px-3 py-2 text-popover-foreground text-sm shadow-md">
+      <p className="text-muted-foreground text-xs">{datum.payload.tooltipDate}</p>
+      <p className="mt-0.5 font-semibold tabular-nums">
+        {datum.payload.formattedCredits}{" "}
+        <span className="font-normal text-muted-foreground text-xs">{unitLabel}</span>
       </p>
     </div>
   );

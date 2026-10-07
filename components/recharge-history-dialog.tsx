@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, EyeOff, InfoIcon, RefreshCcw } from "lucide-react";
+import { Eye, EyeOff, History, RefreshCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import { ReceiptDownloadButton } from "@/components/receipt-download-button";
@@ -32,6 +32,7 @@ type HistoryRow = {
 
 type RechargeHistoryDialogProps = {
   rows: HistoryRow[];
+  triggerClassName?: string;
   labels: {
     title: string;
     subtitle: string;
@@ -49,6 +50,7 @@ type RechargeHistoryDialogProps = {
 export function RechargeHistoryDialog({
   rows,
   labels,
+  triggerClassName,
 }: RechargeHistoryDialogProps) {
   const [open, setOpen] = useState(false);
   const [revealedCode, setRevealedCode] = useState<string | null>(null);
@@ -63,12 +65,12 @@ export function RechargeHistoryDialog({
       <DialogTrigger asChild>
         <Button
           aria-label={labels.trigger}
-          className="h-8 w-8 shrink-0"
-          size="icon"
+          className={cn("h-10 shrink-0 cursor-pointer px-4", triggerClassName)}
           title={labels.trigger}
-          variant="ghost"
+          variant="outline"
         >
-          <InfoIcon className="h-4 w-4" />
+          <History aria-hidden="true" className="h-4 w-4" />
+          {labels.title}
         </Button>
       </DialogTrigger>
       <DialogContent className="w-[calc(100%_-_1.5rem)] min-w-0 max-w-3xl max-h-[calc(100dvh_-_2rem)] overflow-y-auto">
@@ -79,15 +81,15 @@ export function RechargeHistoryDialog({
           </DialogDescription>
         </DialogHeader>
         {hasRows ? (
-          <div className="max-h-96 min-w-0 max-w-full overflow-auto rounded-md border" data-testid="recharge-history-scroll">
+          <div className="max-h-96 min-w-0 max-w-full overflow-auto rounded-xl border" data-testid="recharge-history-scroll">
             <table className="w-full divide-y divide-border whitespace-nowrap text-sm [&_td]:px-3 [&_th]:px-3">
-              <thead className="bg-muted/50 text-muted-foreground text-xs uppercase tracking-wide">
+              <thead className="bg-muted/50 text-muted-foreground text-xs">
                 <tr>
-                  <th className="px-4 py-2 text-left">{labels.plan}</th>
-                  <th className="px-4 py-2 text-left">{labels.amount}</th>
-                  <th className="px-4 py-2 text-center">{labels.status}</th>
-                  <th className="px-4 py-2 text-left">{labels.date}</th>
-                  <th className="px-4 py-2 text-center"><EditableTranslation translationKey="billing.receipt.title" defaultText="Receipt" /></th>
+                  <th className="px-4 py-2.5 text-left font-medium">{labels.plan}</th>
+                  <th className="px-4 py-2.5 text-left font-medium">{labels.amount}</th>
+                  <th className="px-4 py-2.5 text-center font-medium">{labels.status}</th>
+                  <th className="px-4 py-2.5 text-left font-medium">{labels.date}</th>
+                  <th className="px-4 py-2.5 text-center font-medium"><EditableTranslation translationKey="billing.receipt.title" defaultText="Receipt" /></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border bg-background">
@@ -104,7 +106,7 @@ export function RechargeHistoryDialog({
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3">{row.amountLabel}</td>
+                    <td className="px-4 py-3 tabular-nums">{row.amountLabel}</td>
                     <td className="px-4 py-3 text-center">
                       <div className="flex items-center justify-center gap-2">
                         <span
@@ -119,7 +121,7 @@ export function RechargeHistoryDialog({
                         {row.canRetry ? (
                           <Button
                             aria-label={labels.retry}
-                            className="h-7 w-7"
+                            className="h-8 w-8 cursor-pointer"
                             onClick={() => {
                               setOpen(false);
                               router.push("/recharge");
@@ -141,10 +143,12 @@ export function RechargeHistoryDialog({
             </table>
           </div>
         ) : (
-          <p className="text-muted-foreground text-sm">{labels.empty}</p>
+          <p className="rounded-xl border border-dashed bg-muted/30 px-4 py-8 text-center text-muted-foreground text-sm">
+            {labels.empty}
+          </p>
         )}
         {revealedCode ? (
-          <div className="min-w-0 rounded-md border p-3" id={fullCodeId}>
+          <div className="min-w-0 rounded-xl border p-3" id={fullCodeId}>
             <p className="mb-2 font-medium text-xs"><EditableTranslation translationKey="billing.transaction_code.full" defaultText="Full transaction code" /></p>
             <p className="max-w-full select-all overflow-x-auto whitespace-nowrap pb-1 font-mono text-xs" data-testid="full-transaction-code">{revealedCode}</p>
           </div>

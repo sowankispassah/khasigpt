@@ -1,14 +1,5 @@
 import { cookies } from "next/headers";
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import type { ReactNode } from "react";
-import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
-import { DailyUsageChartSwitcher } from "@/components/daily-usage-chart-switcher";
-import { DailyUsageRangeSelect } from "@/components/daily-usage-range-select";
-import { RechargeHistoryDialog } from "@/components/recharge-history-dialog";
-import { SessionUsageChatLink } from "@/components/session-usage-chat-link";
-import { SessionUsagePagination } from "@/components/session-usage-pagination";
-import { EditableTranslation } from "@/components/translation-edit-provider";
 import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import {
   getDailyTokenUsageForUser,
@@ -24,6 +15,7 @@ import {
 } from "@/lib/subscriptions/session-sort";
 import { withTimeout } from "@/lib/utils/async";
 import { getChatRouteSession } from "../chat-route-session";
+import { SubscriptionsUnavailableView, SubscriptionsView } from "./subscriptions-view";
 
 export const dynamic = "force-dynamic";
 
@@ -195,12 +187,11 @@ export default async function SubscriptionsPage({
 
   if (!balance) {
     return (
-      <SubscriptionsUnavailablePage
+      <SubscriptionsUnavailableView
         message={t(
           "subscriptions.error.balance_unavailable",
           "Your subscription balance could not be loaded right now. Please retry shortly."
         )}
-        title={t("subscriptions.title", "Subscriptions & Credits")}
       />
     );
   }
@@ -306,9 +297,9 @@ export default async function SubscriptionsPage({
           : "✖";
     const statusColor =
       normalizedStatus === "paid"
-        ? "bg-emerald-100 text-emerald-900"
+        ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
         : normalizedStatus === "processing"
-          ? "bg-amber-100 text-amber-900"
+          ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
           : "bg-destructive/10 text-destructive";
     const createdAt =
       entry.createdAt instanceof Date
@@ -353,11 +344,9 @@ export default async function SubscriptionsPage({
   const planPriceLabel = plan?.priceInPaise
     ? currencyFormatter.format(plan.priceInPaise / 100)
     : null;
-  const currentPlanLabel = hasPaidPlan
-    ? planPriceLabel
-      ? `${plan?.name} (${planPriceLabel})`
-      : (plan?.name ??
-        t("subscriptions.plan_overview.active_plan", "Active plan"))
+  const planName = hasPaidPlan
+    ? (plan?.name ??
+      t("subscriptions.plan_overview.active_plan", "Active plan"))
     : t("subscriptions.plan_overview.no_plan", "Free Plan");
 
   const freeCreditsRemaining = isManualPlan
@@ -382,15 +371,6 @@ export default async function SubscriptionsPage({
     expiresAt !== null
       ? istDateFormatter.format(expiresAt)
       : t("subscriptions.plan_overview.no_active_plan", "No active plan");
-  const expiryDaysLabel =
-    expiresAt !== null && daysRemaining !== null
-      ? t(
-          "subscriptions.plan_overview.days_remaining",
-          "({count} day{plural} left)"
-        )
-          .replace("{count}", String(daysRemaining))
-          .replace("{plural}", daysRemaining === 1 ? "" : "s")
-      : null;
 
   const dailySeries = buildDailySeries(rawDailyUsage, range);
   const dailyChartData = dailySeries.map((entry) => ({
@@ -401,6 +381,10 @@ export default async function SubscriptionsPage({
     (max, entry) => Math.max(max, entry.billableCreditUnits),
     0
   );
+  const rangeBillableCreditUnits = dailySeries.reduce(
+    (total, entry) => total + entry.billableCreditUnits,
+    0
+  );
   const peakEntry =
     dailySeries.length > 0
       ? dailySeries.reduce((prev, current) =>
@@ -409,438 +393,78 @@ export default async function SubscriptionsPage({
             : prev
         )
       : null;
-  const rangeStart = dailySeries[0]?.day ?? new Date();
-  const rangeEnd = dailySeries.at(-1)?.day ?? new Date();
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 md:gap-8">
-      <div className="flex items-center gap-3">
-        <BackToHomeButton
-          label="Back"
-          translationKey="navigation.back"
-        />
-      </div>
-
-      <header className="flex flex-col gap-1">
-        <h1 className="font-semibold text-2xl">
-          <EditableTranslation
-            defaultText="Subscriptions & Credits"
-            translationKey="subscriptions.title"
-          />
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          <EditableTranslation
-            defaultText="Track your current plan, credit balance, and recent usage."
-            translationKey="subscriptions.subtitle"
-          />
-        </p>
-      </header>
-
-      {hasDegradedOptionalSections ? (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900 text-sm">
-          <p className="font-semibold">
-            <EditableTranslation
-              defaultText="Some subscription details could not be confirmed."
-              translationKey="subscriptions.warning.partial_title"
-            />
-          </p>
-          <p className="mt-1">
-            <EditableTranslation
-              defaultText="Your balance is shown, but one or more usage or recharge sections is temporarily unavailable."
-              translationKey="subscriptions.warning.partial_body"
-            />
-          </p>
-        </div>
-      ) : null}
-
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          label={
-            <EditableTranslation
-              defaultText="Total credits used"
-              translationKey="subscriptions.metric.total_used"
-            />
-          }
-          value={formatCredits(billedTokensUsed)}
-        />
-        <MetricCard
-          label={
-            <EditableTranslation
-              defaultText="Credits remaining"
-              translationKey="subscriptions.metric.remaining"
-            />
-          }
-          value={formatCreditValue(effectiveCreditsRemaining)}
-        />
-        <MetricCard
-          label={
-            <EditableTranslation
-              defaultText="Credits allocated"
-              translationKey="subscriptions.metric.allocated"
-            />
-          }
-          value={formatCreditValue(effectiveCreditsTotal)}
-        />
-        <MetricCard
-          label={
-            <EditableTranslation
-              defaultText="Plan expires"
-              translationKey="subscriptions.metric.plan_expires"
-            />
-          }
-          value={
-            <div className="flex flex-col">
-              <span className="font-semibold text-2xl">{expiryDateLabel}</span>
-              {expiryDaysLabel ? (
-                <span className="text-muted-foreground text-xs">
-                  <EditableTranslation
-                    defaultText="({count} day{plural} left)"
-                    translationKey="subscriptions.plan_overview.days_remaining"
-                    values={{
-                      count: daysRemaining ?? 0,
-                      plural: daysRemaining === 1 ? "" : "s",
-                    }}
-                  />
-                </span>
-              ) : null}
-            </div>
-          }
-        />
-      </section>
-
-      <section className="grid gap-6 md:grid-cols-2">
-        <div className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="font-semibold text-lg">
-            <EditableTranslation
-              defaultText="Plan overview"
-              translationKey="subscriptions.plan_overview.title"
-            />
-          </h2>
-          <dl className="mt-4 space-y-2 text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <dt className="flex items-center gap-2 text-muted-foreground">
-                <EditableTranslation
-                  defaultText="Current plan"
-                  translationKey="subscriptions.plan_overview.current_plan"
-                />
-                <RechargeHistoryDialog
-                  labels={rechargeHistoryLabels}
-                  rows={rechargeHistoryRows}
-                />
-              </dt>
-              <dd>{currentPlanLabel}</dd>
-            </div>
-            {showFreeCredits ? (
-              <div className="flex items-center justify-between">
-                <dt className="text-muted-foreground">
-                  <EditableTranslation
-                    defaultText="Free credits"
-                    translationKey="subscriptions.plan_overview.free_credits"
-                  />
-                </dt>
-                <dd>
-                  {formatCreditValue(freeCreditsRemaining)}{" "}
-                  {t("subscriptions.unit.credits", "credits")}
-                </dd>
-              </div>
-            ) : null}
-            <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">
-                <EditableTranslation
-                  defaultText="Credits remaining"
-                  translationKey="subscriptions.plan_overview.credits_remaining"
-                />
-              </dt>
-              <dd>{formatCreditValue(effectiveCreditsRemaining)}</dd>
-            </div>
-            <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">
-                <EditableTranslation
-                  defaultText="Admin credits remaining"
-                  translationKey="subscriptions.plan_overview.credits_allocated"
-                />
-              </dt>
-              <dd>{formatCreditValue(allocatedCredits)}</dd>
-            </div>
-            <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">
-                <EditableTranslation
-                  defaultText="Paid credits remaining"
-                  translationKey="subscriptions.plan_overview.credits_recharged"
-                />
-              </dt>
-              <dd>{formatCreditValue(rechargedCredits)}</dd>
-            </div>
-            <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">
-                <EditableTranslation
-                  defaultText="Plan expires"
-                  translationKey="subscriptions.plan_overview.plan_expires"
-                />
-              </dt>
-              <dd>
-                <div className="flex flex-col items-end">
-                  <span>{expiryDateLabel}</span>
-                  {expiryDaysLabel ? (
-                    <span className="text-muted-foreground text-xs">
-                      <EditableTranslation
-                        defaultText="({count} day{plural} left)"
-                        translationKey="subscriptions.plan_overview.days_remaining"
-                        values={{
-                          count: daysRemaining ?? 0,
-                          plural: daysRemaining === 1 ? "" : "s",
-                        }}
-                      />
-                    </span>
-                  ) : null}
-                </div>
-              </dd>
-            </div>
-          </dl>
-        </div>
-
-        <div className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="font-semibold text-lg">
-            <EditableTranslation
-              defaultText="Quick actions"
-              translationKey="subscriptions.quick_actions.title"
-            />
-          </h2>
-          <p className="mt-2 text-muted-foreground text-sm">
-            <EditableTranslation
-              defaultText="Need more credits? Visit the"
-              translationKey="subscriptions.quick_actions.recharge_prefix"
-            />{" "}
-            <Link className="underline" href="/recharge">
-              <EditableTranslation
-                defaultText="recharge page"
-                translationKey="subscriptions.quick_actions.recharge_link"
-              />
-            </Link>
-            .
-          </p>
-          <p className="text-muted-foreground text-sm">
-            <EditableTranslation
-              defaultText="Receipts are emailed after purchase and can be downloaded from Recharge history."
-              translationKey="subscriptions.quick_actions.receipt_help"
-            />
-          </p>
-        </div>
-      </section>
-
-      <section className="rounded-lg border bg-card p-6 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="font-semibold text-lg">
-              <EditableTranslation
-                defaultText="Daily usage"
-                translationKey="subscriptions.daily_usage.title"
-              />
-            </h2>
-            <p className="text-muted-foreground text-sm">
-              <EditableTranslation
-                defaultText="Credits consumed per day."
-                translationKey="subscriptions.daily_usage.subtitle"
-              />
-            </p>
-          </div>
-          <DailyUsageRangeSelect currentRange={range} options={RANGE_OPTIONS} />
-        </div>
-
-        {!dailyUsageResult.ok ? (
-          <div className="mt-6 flex h-48 items-center justify-center rounded-md border border-amber-300 border-dashed bg-amber-50 text-amber-900 text-sm">
-            <EditableTranslation
-              defaultText="Daily usage could not be loaded right now."
-              translationKey="subscriptions.daily_usage.unavailable"
-            />
-          </div>
-        ) : maxBillableCreditUnits === 0 ? (
-          <div className="mt-6 flex h-48 items-center justify-center rounded-md border border-muted-foreground/30 border-dashed bg-muted/30 text-muted-foreground text-sm">
-            <EditableTranslation
-              defaultText="No usage recorded in this range."
-              translationKey="subscriptions.daily_usage.empty"
-            />
-          </div>
-        ) : (
-          <>
-            <div className="mt-6">
-              <DailyUsageChartSwitcher data={dailyChartData} />
-            </div>
-            <div className="mt-3 flex justify-between text-muted-foreground text-xs">
-              <span>{istMonthDayFormatter.format(rangeStart)}</span>
-              <span>{istMonthDayFormatter.format(rangeEnd)}</span>
-            </div>
-            {peakEntry ? (
-              <p className="mt-2 text-muted-foreground text-xs">
-                <EditableTranslation
-                  defaultText="Peak day: {date} • {credits} credits"
-                  translationKey="subscriptions.daily_usage.peak_day"
-                  values={{
-                    date: istMonthDayFormatter.format(peakEntry.day),
-                    credits: formatCredits(peakEntry.billableCreditUnits),
-                  }}
-                />
-              </p>
-            ) : null}
-          </>
-        )}
-      </section>
-
-      <section className="rounded-lg border bg-card p-6 shadow-sm">
-        <h2 className="font-semibold text-lg">
-          <EditableTranslation
-            defaultText="Usage by session"
-            translationKey="subscriptions.session_usage.title"
-          />
-        </h2>
-        <p className="text-muted-foreground text-sm">
-          <EditableTranslation
-            defaultText="Total credits used across your recent chats."
-            translationKey="subscriptions.session_usage.subtitle"
-          />
-        </p>
-        <div className="mt-4 overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="text-muted-foreground text-xs uppercase">
-              <tr>
-                <th className="py-2 text-left">
-                  <EditableTranslation
-                    defaultText="Chat"
-                    translationKey="subscriptions.session_usage.headers.chat"
-                  />
-                </th>
-                <th className="py-2 text-left">
-                  <EditableTranslation
-                    defaultText="Started on"
-                    translationKey="subscriptions.session_usage.headers.created"
-                  />
-                </th>
-                <th className="py-2 text-left">
-                  <EditableTranslation
-                    defaultText="Last activity"
-                    translationKey="subscriptions.session_usage.headers.last_used"
-                  />
-                </th>
-                <th className="py-2 text-right">
-                  <EditableTranslation
-                    defaultText="Credits used"
-                    translationKey="subscriptions.session_usage.headers.credits_used"
-                  />
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {!sessionUsageResult.ok ? (
-                <tr>
-                  <td className="py-4 text-amber-900" colSpan={4}>
-                    <EditableTranslation
-                      defaultText="Session usage could not be loaded right now."
-                      translationKey="subscriptions.session_usage.unavailable"
-                    />
-                  </td>
-                </tr>
-              ) : displayedSessions.length === 0 ? (
-                <tr>
-                  <td className="py-4 text-muted-foreground" colSpan={4}>
-                    <EditableTranslation
-                      defaultText="No usage recorded yet."
-                      translationKey="subscriptions.session_usage.empty"
-                    />
-                  </td>
-                </tr>
-              ) : (
-                displayedSessions.map((entry) => (
-                  <tr className="border-t" key={entry.chatId}>
-                    <td className="py-3">
-                      <SessionUsageChatLink
-                        className="flex cursor-pointer flex-col text-left"
-                        href={`/chat/${entry.chatId}`}
-                      >
-                        <span className="font-medium">
-                          {entry.chatTitle ??
-                            t(
-                              "subscriptions.session_usage.untitled_chat",
-                              "Untitled chat"
-                            )}
-                        </span>
-                        <span className="font-mono text-muted-foreground text-xs">
-                          {entry.chatId}
-                        </span>
-                      </SessionUsageChatLink>
-                    </td>
-                    <td className="py-2 text-muted-foreground text-sm">
-                      {formatDateTime(
-                        entry.chatCreatedAt,
-                        "subscriptions.session_usage.created.unknown",
-                        "Not available"
-                      )}
-                    </td>
-                    <td className="py-2 text-muted-foreground text-sm">
-                      {formatDateTime(
-                        entry.lastUsedAt,
-                        "subscriptions.session_usage.last_used.unknown",
-                        "Not available"
-                      )}
-                    </td>
-                    <td className="py-2 text-right">
-                      {formatCredits(entry.billableCreditUnits)}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        <SessionUsagePagination
-          range={range}
-          sessionSort={sessionSort}
-          sessionsPage={sessionsPage}
-          totalPages={totalSessionPages}
-        />
-      </section>
-    </div>
-  );
-}
-
-function SubscriptionsUnavailablePage({
-  message,
-  title,
-}: {
-  message: string;
-  title: string;
-}) {
-  return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8">
-      <div className="flex items-center gap-3">
-        <BackToHomeButton label="Back" translationKey="navigation.back" />
-      </div>
-      <section className="rounded-lg border border-amber-300 bg-amber-50 p-6 text-amber-900 shadow-sm">
-        <h1 className="font-semibold text-2xl">{title}</h1>
-        <p className="mt-2 text-sm">{message}</p>
-        <Link
-          className="mt-4 inline-flex cursor-pointer rounded-md border border-amber-300 bg-background px-3 py-2 font-medium text-sm transition hover:bg-amber-100"
-          href="/subscriptions"
-        >
-          Retry
-        </Link>
-      </section>
-    </div>
-  );
-}
-
-function MetricCard({ label, value }: { label: ReactNode; value: ReactNode }) {
-  const renderValue =
-    typeof value === "string" || typeof value === "number" ? (
-      <span className="font-semibold text-2xl">{value}</span>
-    ) : (
-      value
-    );
-
-  return (
-    <div className="rounded-lg border bg-card p-4 shadow-sm">
-      <p className="text-muted-foreground text-xs uppercase">{label}</p>
-      <div className="mt-2">{renderValue}</div>
-    </div>
+    <SubscriptionsView
+      dailyUsage={{
+        chartData: dailyChartData,
+        hasUsage: maxBillableCreditUnits > 0,
+        ok: dailyUsageResult.ok,
+        peak: peakEntry
+          ? {
+              creditsLabel: formatCredits(peakEntry.billableCreditUnits),
+              dateLabel: istMonthDayFormatter.format(peakEntry.day),
+            }
+          : null,
+        range,
+        rangeOptions: RANGE_OPTIONS,
+        rows: [...dailySeries].reverse().map((entry) => ({
+          creditsLabel: formatCredits(entry.billableCreditUnits),
+          dateLabel: istDateFormatter.format(entry.day),
+          key: entry.day.toISOString(),
+        })),
+        totalLabel: formatCredits(rangeBillableCreditUnits),
+      }}
+      degraded={hasDegradedOptionalSections}
+      overview={{
+        creditsRemainingLabel: formatCreditValue(effectiveCreditsRemaining),
+        creditsTotalLabel: formatCreditValue(effectiveCreditsTotal),
+        daysRemaining,
+        expiryDateLabel,
+        freeCreditsLabel: showFreeCredits
+          ? formatCreditValue(freeCreditsRemaining)
+          : null,
+        hasPaidPlan,
+        planName,
+        planPriceLabel: hasPaidPlan ? planPriceLabel : null,
+        remainingPercent:
+          effectiveCreditsTotal > 0
+            ? (effectiveCreditsRemaining / effectiveCreditsTotal) * 100
+            : null,
+      }}
+      rechargeHistory={{ labels: rechargeHistoryLabels, rows: rechargeHistoryRows }}
+      sessions={{
+        ok: sessionUsageResult.ok,
+        range,
+        rows: displayedSessions.map((entry) => ({
+          chatId: entry.chatId,
+          creditsLabel: formatCredits(entry.billableCreditUnits),
+          lastUsedLabel: formatDateTime(
+            entry.lastUsedAt,
+            "subscriptions.session_usage.last_used.unknown",
+            "Not available"
+          ),
+          startedLabel: formatDateTime(
+            entry.chatCreatedAt,
+            "subscriptions.session_usage.created.unknown",
+            "Not available"
+          ),
+          title:
+            entry.chatTitle ??
+            t("subscriptions.session_usage.untitled_chat", "Untitled chat"),
+        })),
+        sessionSort,
+        sessionsPage,
+        total: sessionUsage.length,
+        totalPages: totalSessionPages,
+      }}
+      stats={{
+        adminRemainingLabel: formatCreditValue(allocatedCredits),
+        allocatedLabel: formatCreditValue(effectiveCreditsTotal),
+        paidRemainingLabel: formatCreditValue(rechargedCredits),
+        usedLabel: formatCredits(billedTokensUsed),
+      }}
+    />
   );
 }
 
