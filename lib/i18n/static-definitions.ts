@@ -1001,6 +1001,66 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Admin user table actions column heading.",
   },
   {
+    key: "user_menu.admin_console",
+    defaultText: "Admin Console",
+    description: "User menu entry that opens the admin console from the mobile app.",
+  },
+  {
+    key: "delete_account.form.error",
+    defaultText: "We could not submit this request. Please try again.",
+    description: "Shown in the mobile app when an account deletion request could not be submitted.",
+  },
+  {
+    key: "profile.personal_knowledge.title",
+    defaultText: "Personal knowledge",
+    description: "Title of the personal knowledge section on the mobile profile screen.",
+  },
+  {
+    key: "profile.personal_knowledge.description",
+    defaultText: "Add information KhasiGPT may use in your chats. New and edited entries are reviewed before activation.",
+    description: "Description of the personal knowledge section on the mobile profile screen.",
+  },
+  {
+    key: "profile.location.title",
+    defaultText: "Location",
+    description: "Title of the location section on the mobile profile screen.",
+  },
+  {
+    key: "profile.location.description",
+    defaultText: "Save your current location to power nearby business searches. Location is optional.",
+    description: "Description of the location section on the mobile profile screen.",
+  },
+  {
+    key: "recharge.info.secure.body_play",
+    defaultText: "Payments are completed in Google Play's secure checkout.",
+    description: "Native app recharge note naming Google Play as the payment provider.",
+  },
+  {
+    key: "recharge.restore.hint",
+    defaultText: "Paid but your credits are not showing? Restore checks Google Play for completed purchases and adds them to your balance.",
+    description: "Native recharge screen hint under the Restore Purchase button.",
+  },
+  {
+    key: "user_menu.close",
+    defaultText: "Close menu",
+    description: "Accessible label for the backdrop that closes the native user menu.",
+  },
+  {
+    key: "subscriptions.daily_usage.tap_hint",
+    defaultText: "Tap a day to see its credits.",
+    description: "Hint above the daily usage chart in the mobile app explaining that tapping a day shows its value.",
+  },
+  {
+    key: "subscriptions.error.partial_details",
+    defaultText: "Some subscription details could not be refreshed. Showing the last available data.",
+    description: "Mobile subscriptions notice when the server returns degraded data and the last loaded details stay on screen.",
+  },
+  {
+    key: "profile.location.last_updated_label",
+    defaultText: "Last updated",
+    description: "Label before the time the profile location was last saved.",
+  },
+  {
     key: "subscriptions.plan_overview.days_left",
     defaultText: "{count} day{plural} left",
     description: "Days until the current plan's credits expire, shown beside the expiry date.",
