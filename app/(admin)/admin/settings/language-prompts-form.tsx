@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { AdminStatusPill } from "@/components/admin/admin-ui";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
@@ -74,18 +75,23 @@ export function LanguagePromptsForm({
 
   return (
     <form
-      className="flex flex-col gap-4 rounded-lg border bg-background p-4"
+      className="flex min-w-0 flex-col gap-3 rounded-lg bg-muted/40 p-4"
       onSubmit={handleSubmit}
     >
       <div className="flex flex-col gap-2">
-        <label
-          className="font-semibold text-sm"
-          htmlFor={`prompts-${language.code}`}
-        >
-          {language.name} prompts
-        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <label
+            className="font-semibold text-sm"
+            htmlFor={`prompts-${language.code}`}
+          >
+            {language.name} prompts
+          </label>
+          {language.isDefault ? (
+            <AdminStatusPill tone="info">Default</AdminStatusPill>
+          ) : null}
+        </div>
         <Textarea
-          className="min-h-[12rem]"
+          className="min-h-[12rem] bg-background"
           disabled={isSubmitting}
           id={`prompts-${language.code}`}
           onChange={(event) => setValue(event.target.value)}
@@ -99,8 +105,30 @@ export function LanguagePromptsForm({
             : `Displayed when ${language.name} is selected. Falls back to the default language if left unchanged.`}
         </p>
       </div>
-      <div className="flex justify-end">
-        <Button disabled={isSubmitting} type="submit" variant="default">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div
+          aria-live="polite"
+          className="min-h-[1.25rem] text-muted-foreground text-xs"
+        >
+          {statusMessage ? (
+            <span
+              className={isSubmitting ? "flex items-center gap-2" : undefined}
+            >
+              {isSubmitting ? (
+                <span className="h-3 w-3 animate-spin text-muted-foreground">
+                  <LoaderIcon size={12} />
+                </span>
+              ) : null}
+              {statusMessage}
+            </span>
+          ) : null}
+        </div>
+        <Button
+          className="cursor-pointer"
+          disabled={isSubmitting}
+          type="submit"
+          variant="default"
+        >
           {isSubmitting ? (
             <span className="flex items-center gap-2">
               <span className="h-4 w-4 animate-spin text-primary-foreground">
@@ -112,23 +140,6 @@ export function LanguagePromptsForm({
             <>Save {language.name} prompts</>
           )}
         </Button>
-      </div>
-      <div
-        aria-live="polite"
-        className="min-h-[1.25rem] text-muted-foreground text-xs"
-      >
-        {statusMessage ? (
-          <span
-            className={isSubmitting ? "flex items-center gap-2" : undefined}
-          >
-            {isSubmitting ? (
-              <span className="h-3 w-3 animate-spin text-muted-foreground">
-                <LoaderIcon size={12} />
-              </span>
-            ) : null}
-            {statusMessage}
-          </span>
-        ) : null}
       </div>
     </form>
   );

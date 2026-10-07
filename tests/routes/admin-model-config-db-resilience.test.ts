@@ -54,8 +54,9 @@ test.describe("admin model config database resilience", () => {
   });
 
   test("activates image models without refreshing the full settings page", async () => {
+    // The settings page loads data; its sections render from settings-view.
     const pageSource = await readWorkspaceFile(
-      "app/(admin)/admin/settings/page.tsx"
+      "app/(admin)/admin/settings/settings-view.tsx"
     );
     const controlSource = await readWorkspaceFile(
       "app/(admin)/admin/settings/image-model-activation-control.tsx"

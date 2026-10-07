@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { AdminStatusPill } from "@/components/admin/admin-ui";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 const SITE_ACCESS_API_ENDPOINT = "/api/admin/settings/site-access";
 const REQUEST_TIMEOUT_MS = 45_000;
@@ -103,17 +105,23 @@ class AdminSettingsRequestError extends Error {
 }
 
 function EnabledBadge({ enabled }: { enabled: boolean }) {
-  if (enabled) {
-    return (
-      <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 text-xs">
-        On
-      </span>
-    );
-  }
-
   return (
-    <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700 text-xs">
-      Off
+    <AdminStatusPill tone={enabled ? "success" : "neutral"}>
+      {enabled ? "On" : "Off"}
+    </AdminStatusPill>
+  );
+}
+
+const FIELD_INPUT_CLASS =
+  "h-9 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60";
+
+function SavingLabel({ children }: { children: string }) {
+  return (
+    <span className="flex items-center gap-2">
+      <span aria-hidden="true" className="h-4 w-4 animate-spin">
+        <LoaderIcon size={16} />
+      </span>
+      <span>{children}</span>
     </span>
   );
 }
@@ -336,167 +344,148 @@ export function SiteAccessSettingsPanel({
     }
   };
 
+  const controlsDisabled = isLoading || Boolean(savingField);
+
   return (
-    <div className="flex flex-col gap-6">
-      {TOGGLE_ROWS.map((row) => {
-        const enabled = state[row.field];
-        const isSaving = savingField === row.field;
-        return (
-          <div
-            className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
-            key={row.field}
-          >
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-sm">
+    <div className="flex flex-col gap-5">
+      <div className="divide-y divide-border/60 rounded-lg border">
+        {TOGGLE_ROWS.map((row) => {
+          const enabled = state[row.field];
+          const isSaving = savingField === row.field;
+          return (
+            <div
+              className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6"
+              key={row.field}
+            >
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-sm">
+                    <EditableTranslation
+                      defaultText={row.title}
+                      description={`${row.title} setting label in Admin Maintenance settings.`}
+                      translationKey={row.titleKey}
+                    />
+                  </span>
+                  <EnabledBadge enabled={enabled} />
+                </div>
+                <p className="max-w-2xl text-muted-foreground text-xs leading-relaxed">
                   <EditableTranslation
-                    defaultText={row.title}
-                    description={`${row.title} setting label in Admin Maintenance settings.`}
-                    translationKey={row.titleKey}
+                    defaultText={row.description}
+                    description={`${row.title} setting description in Admin Maintenance settings.`}
+                    translationKey={row.descriptionKey}
                   />
-                </span>
-                <EnabledBadge enabled={enabled} />
+                </p>
               </div>
-              <p className="text-muted-foreground text-xs">
-                <EditableTranslation
-                  defaultText={row.description}
-                  description={`${row.title} setting description in Admin Maintenance settings.`}
-                  translationKey={row.descriptionKey}
-                />
-              </p>
-            </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Button
-                className="cursor-pointer"
-                disabled={isLoading || Boolean(savingField)}
-                onClick={() => {
-                  void saveToggle(row.field, false);
-                }}
-                type="button"
-                variant={!enabled ? "default" : "outline"}
+              <fieldset
+                aria-busy={isSaving}
+                className="inline-flex shrink-0 self-start rounded-lg border bg-muted/40 p-0.5 sm:self-center"
               >
-                {isSaving && !enabled ? (
-                  <span className="flex items-center gap-2">
-                    <span className="h-4 w-4 animate-spin">
-                      <LoaderIcon size={16} />
-                    </span>
-                    <span>Saving...</span>
-                  </span>
-                ) : (
-                  "Off"
-                )}
-              </Button>
-              <Button
-                className="cursor-pointer"
-                disabled={isLoading || Boolean(savingField)}
-                onClick={() => {
-                  void saveToggle(row.field, true);
-                }}
-                type="button"
-                variant={enabled ? "default" : "outline"}
-              >
-                {isSaving && enabled ? (
-                  <span className="flex items-center gap-2">
-                    <span className="h-4 w-4 animate-spin">
-                      <LoaderIcon size={16} />
-                    </span>
-                    <span>Saving...</span>
-                  </span>
-                ) : (
-                  "On"
-                )}
-              </Button>
+                {[false, true].map((value) => {
+                  const isActive = enabled === value;
+                  return (
+                    <button
+                      aria-pressed={isActive}
+                      className={cn(
+                        "inline-flex h-8 min-w-14 cursor-pointer items-center justify-center rounded-md px-3 font-medium text-xs transition disabled:cursor-not-allowed",
+                        isActive
+                          ? "bg-primary text-primary-foreground shadow-xs"
+                          : "text-muted-foreground hover:bg-background hover:text-foreground disabled:opacity-60"
+                      )}
+                      disabled={controlsDisabled}
+                      key={String(value)}
+                      onClick={() => {
+                        void saveToggle(row.field, value);
+                      }}
+                      type="button"
+                    >
+                      {isSaving && enabled === value ? (
+                        <SavingLabel>Saving...</SavingLabel>
+                      ) : value ? (
+                        "On"
+                      ) : (
+                        "Off"
+                      )}
+                    </button>
+                  );
+                })}
+              </fieldset>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
 
-      <div className="grid gap-3 rounded-lg border bg-background p-4 md:grid-cols-[1fr_auto]">
-        <div className="space-y-1">
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <label className="font-medium text-sm" htmlFor="adminEntryPathClient">
             Admin entry path
           </label>
-          <input
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-            disabled={isLoading || Boolean(savingField)}
-            id="adminEntryPathClient"
-            onChange={(event) => setPathInput(event.target.value)}
-            placeholder="/your-secret-entry-path"
-            type="text"
-            value={pathInput}
-          />
-          <p className="text-muted-foreground text-xs">
+          <div className="flex gap-2">
+            <input
+              className={FIELD_INPUT_CLASS}
+              disabled={controlsDisabled}
+              id="adminEntryPathClient"
+              onChange={(event) => setPathInput(event.target.value)}
+              placeholder="/your-secret-entry-path"
+              type="text"
+              value={pathInput}
+            />
+            <Button
+              className="h-9 shrink-0 cursor-pointer"
+              disabled={controlsDisabled}
+              onClick={() => {
+                void savePath();
+              }}
+              type="button"
+            >
+              {savingField === "path" ? <SavingLabel>Saving...</SavingLabel> : "Save path"}
+            </Button>
+          </div>
+          <p className="break-all text-muted-foreground text-xs">
             Current URL:{" "}
             <span className="font-mono">
               {currentOrigin ? `${currentOrigin}${state.adminEntryPath}` : state.adminEntryPath}
             </span>
           </p>
         </div>
-        <div className="flex items-end">
-          <Button
-            disabled={isLoading || Boolean(savingField)}
-            onClick={() => {
-              void savePath();
-            }}
-            type="button"
-          >
-            {savingField === "path" ? (
-              <span className="flex items-center gap-2">
-                <span className="h-4 w-4 animate-spin">
-                  <LoaderIcon size={16} />
-                </span>
-                <span>Saving...</span>
-              </span>
-            ) : (
-              "Save path"
-            )}
-          </Button>
-        </div>
-      </div>
 
-      <div className="grid gap-3 rounded-lg border bg-background p-4 md:grid-cols-[1fr_auto]">
-        <div className="space-y-1">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <label className="font-medium text-sm" htmlFor="adminEntryCodeClient">
             Admin access code
           </label>
-          <input
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-            disabled={isLoading || Boolean(savingField)}
-            id="adminEntryCodeClient"
-            onChange={(event) => setCodeInput(event.target.value)}
-            placeholder="Set a new admin code (6+ chars)"
-            type="password"
-            value={codeInput}
-          />
-          <p className="text-muted-foreground text-xs">
-            Entry path: <span className="font-mono">{state.adminEntryPath}</span> |
-            Status: {state.adminEntryCodeConfigured ? " Code configured" : " Code not configured yet"}
+          <div className="flex gap-2">
+            <input
+              className={FIELD_INPUT_CLASS}
+              disabled={controlsDisabled}
+              id="adminEntryCodeClient"
+              onChange={(event) => setCodeInput(event.target.value)}
+              placeholder="Set a new admin code (6+ chars)"
+              type="password"
+              value={codeInput}
+            />
+            <Button
+              className="h-9 shrink-0 cursor-pointer"
+              disabled={controlsDisabled || codeInput.trim().length < 6}
+              onClick={() => {
+                void saveCode();
+              }}
+              type="button"
+            >
+              {savingField === "code" ? <SavingLabel>Saving...</SavingLabel> : "Save code"}
+            </Button>
+          </div>
+          <p className="flex flex-wrap items-center gap-1.5 text-muted-foreground text-xs">
+            <span>
+              Entry path: <span className="font-mono">{state.adminEntryPath}</span>
+            </span>
+            <AdminStatusPill tone={state.adminEntryCodeConfigured ? "success" : "warning"}>
+              {state.adminEntryCodeConfigured ? "Code configured" : "Code not configured yet"}
+            </AdminStatusPill>
           </p>
-        </div>
-        <div className="flex items-end">
-          <Button
-            disabled={isLoading || Boolean(savingField) || codeInput.trim().length < 6}
-            onClick={() => {
-              void saveCode();
-            }}
-            type="button"
-          >
-            {savingField === "code" ? (
-              <span className="flex items-center gap-2">
-                <span className="h-4 w-4 animate-spin">
-                  <LoaderIcon size={16} />
-                </span>
-                <span>Saving...</span>
-              </span>
-            ) : (
-              "Save code"
-            )}
-          </Button>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-4">
         <p className="text-muted-foreground text-xs">
           {syncedAt
             ? `Last synced: ${syncedAt.toLocaleString()}`
@@ -504,7 +493,7 @@ export function SiteAccessSettingsPanel({
         </p>
         <Button
           className="cursor-pointer"
-          disabled={isLoading || Boolean(savingField)}
+          disabled={controlsDisabled}
           onClick={() => {
             void syncFromServer();
           }}

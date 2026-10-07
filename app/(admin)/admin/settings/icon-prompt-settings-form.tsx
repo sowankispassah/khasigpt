@@ -578,9 +578,9 @@ export function IconPromptSettingsForm({
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm text-muted-foreground">
+        <p className="text-muted-foreground text-xs">
           Configure icon prompts for the home screen. Icons must be JPEG or PNG.
-        </div>
+        </p>
         <Button
           className="cursor-pointer"
           onClick={addItem}
@@ -592,14 +592,14 @@ export function IconPromptSettingsForm({
       </div>
 
       {items.length === 0 ? (
-        <div className="rounded-md border border-muted-foreground/30 border-dashed bg-muted/30 p-4 text-muted-foreground text-sm">
+        <p className="rounded-lg border border-dashed p-4 text-muted-foreground text-sm">
           No icon prompts configured yet. Add one to get started.
-        </div>
+        </p>
       ) : (
         <div className="space-y-4">
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full min-w-[980px] text-left text-sm">
-              <thead className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+              <thead className="border-b bg-muted/40 text-muted-foreground text-xs">
                 <tr>
                   <th className="w-16 px-3 py-3 font-medium" scope="col">
                     Order
@@ -624,11 +624,13 @@ export function IconPromptSettingsForm({
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody className="divide-y divide-border/60">
                 {items.map((item, index) => (
                   <tr
                     className={
-                      selectedItemId === item.id ? "bg-muted/30" : undefined
+                      selectedItemId === item.id
+                        ? "bg-muted/30"
+                        : "transition hover:bg-muted/30"
                     }
                     key={item.id}
                   >

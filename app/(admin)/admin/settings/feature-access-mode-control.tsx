@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { AdminStatusPill } from "@/components/admin/admin-ui";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
-import { Button } from "@/components/ui/button";
 import type { FeatureAccessMode } from "@/lib/feature-access";
 import type { FeatureAccessControlReadState } from "@/lib/settings/feature-access-settings";
+import { cn } from "@/lib/utils";
 
 const FEATURE_ACCESS_API_ENDPOINT = "/api/admin/feature-access";
 const FEATURE_TOGGLE_ATTEMPT_TIMEOUT_MS = 45_000;
@@ -117,59 +118,63 @@ function AccessModeBadge({
 }) {
   if (mode === null) {
     if (readState === "missing") {
-      return (
-        <span className="rounded-full bg-slate-200 px-2 py-0.5 font-medium text-slate-700 text-xs">
-          No saved value
-        </span>
-      );
+      return <AdminStatusPill>No saved value</AdminStatusPill>;
     }
 
     if (readState === "unreadable") {
-      return (
-        <span className="rounded-full bg-orange-100 px-2 py-0.5 font-medium text-orange-700 text-xs">
-          Invalid value
-        </span>
-      );
+      return <AdminStatusPill tone="danger">Invalid value</AdminStatusPill>;
     }
 
-    return (
-      <span className="rounded-full bg-slate-200 px-2 py-0.5 font-medium text-slate-700 text-xs">
-        Unavailable
-      </span>
-    );
+    return <AdminStatusPill>Unavailable</AdminStatusPill>;
   }
 
   if (mode === "enabled") {
     return (
-      <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 text-xs">
+      <AdminStatusPill tone="success">
         {readState === "stale" ? "Enabled for all (stale)" : "Enabled for all"}
-      </span>
+      </AdminStatusPill>
     );
   }
 
   if (mode === "admin_only") {
     return (
-      <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-700 text-xs">
+      <AdminStatusPill tone="warning">
         {readState === "stale" ? "Admin only (stale)" : "Admin only"}
-      </span>
+      </AdminStatusPill>
     );
   }
 
   return (
-    <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700 text-xs">
+    <AdminStatusPill tone="danger">
       {readState === "stale" ? "Disabled for all (stale)" : "Disabled for all"}
-    </span>
+    </AdminStatusPill>
   );
 }
 
 const MODE_BUTTONS: Array<{
   label: string;
+  fullLabel: string;
   mode: FeatureAccessMode;
-  activeVariant: "default" | "destructive";
+  activeClassName: string;
 }> = [
-  { label: "Disable for all", mode: "disabled", activeVariant: "destructive" },
-  { label: "Admin only", mode: "admin_only", activeVariant: "default" },
-  { label: "Enable for all", mode: "enabled", activeVariant: "default" },
+  {
+    label: "Off",
+    fullLabel: "Disable for all",
+    mode: "disabled",
+    activeClassName: "bg-destructive text-white shadow-xs",
+  },
+  {
+    label: "Admin only",
+    fullLabel: "Admin only",
+    mode: "admin_only",
+    activeClassName: "bg-primary text-primary-foreground shadow-xs",
+  },
+  {
+    label: "Everyone",
+    fullLabel: "Enable for all",
+    mode: "enabled",
+    activeClassName: "bg-primary text-primary-foreground shadow-xs",
+  },
 ];
 
 function getCurrentModeSummary({
@@ -308,75 +313,83 @@ export function FeatureAccessModeControl({
     }
   };
 
+  const showReadStateDetail = displayReadState !== "confirmed";
+
   return (
-    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+      <div className="min-w-0 space-y-1">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium text-sm">{title}</span>
           <AccessModeBadge mode={mode} readState={displayReadState} />
         </div>
-        <p className="text-muted-foreground text-xs">{description}</p>
-      </div>
-
-      <div className="flex flex-col gap-3 text-sm">
-        <div className="flex flex-wrap gap-2">
-          {MODE_BUTTONS.map((button) => {
-            const isActive = mode === button.mode;
-            const isSavingThis = pendingTarget === button.mode;
-
-            return (
-              <Button
-                disabled={isSaving}
-                key={button.mode}
-                onClick={() => {
-                  void submitMode(button.mode);
-                }}
-                type="button"
-                variant={
-                  isActive ? button.activeVariant : "outline"
-                }
-              >
-                {isSavingThis ? (
-                  <span className="flex items-center gap-2">
-                    <span className="h-4 w-4 animate-spin">
-                      <LoaderIcon size={16} />
-                    </span>
-                    <span>Saving...</span>
-                  </span>
-                ) : (
-                  button.label
-                )}
-              </Button>
-            );
-          })}
-        </div>
-        <p className="text-muted-foreground text-xs">
-          Disable for all: no users can access. Admin only: only admin users can
-          access. Enable for all: everyone can access.
+        <p className="max-w-2xl text-muted-foreground text-xs leading-relaxed">
+          {description}
         </p>
-        <p className="text-muted-foreground text-xs">{currentModeSummary}</p>
-        {displayReadState === "missing" ? (
-          <p className="text-amber-700 text-xs">
-            The database has no saved value for this setting. Choosing a value
-            here will write a new explicit database value.
-          </p>
-        ) : displayReadState === "unreadable" ? (
-          <p className="text-orange-700 text-xs">
-            The saved database value is not a recognized feature access mode.
-            Choosing a value here will replace it with a valid value.
-          </p>
-        ) : displayReadState === "unavailable" ? (
-          <p className="text-amber-700 text-xs">
-            The saved value could not be loaded. This page is not treating
-            fallback data as confirmed database state.
-          </p>
-        ) : displayReadState === "stale" ? (
-          <p className="text-amber-700 text-xs">
-            This value is stale. Saving will verify the database write before
-            showing success.
-          </p>
+        {showReadStateDetail ? (
+          <div className="space-y-0.5 pt-1 text-xs">
+            <p className="text-muted-foreground">{currentModeSummary}</p>
+            {displayReadState === "missing" ? (
+              <p className="text-amber-700 dark:text-amber-400">
+                The database has no saved value for this setting. Choosing a
+                value here will write a new explicit database value.
+              </p>
+            ) : displayReadState === "unreadable" ? (
+              <p className="text-rose-700 dark:text-rose-400">
+                The saved database value is not a recognized feature access
+                mode. Choosing a value here will replace it with a valid value.
+              </p>
+            ) : displayReadState === "unavailable" ? (
+              <p className="text-amber-700 dark:text-amber-400">
+                The saved value could not be loaded. This page is not treating
+                fallback data as confirmed database state.
+              </p>
+            ) : displayReadState === "stale" ? (
+              <p className="text-amber-700 dark:text-amber-400">
+                This value is stale. Saving will verify the database write
+                before showing success.
+              </p>
+            ) : null}
+          </div>
         ) : null}
       </div>
+
+      <fieldset
+        aria-busy={isSaving}
+        aria-label={`${title} access`}
+        className="inline-flex shrink-0 self-start rounded-lg border bg-muted/40 p-0.5"
+      >
+        {MODE_BUTTONS.map((button) => {
+          const isActive = mode === button.mode;
+          const isSavingThis = pendingTarget === button.mode;
+
+          return (
+            <button
+              aria-label={button.fullLabel}
+              aria-pressed={isActive}
+              className={cn(
+                "inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 font-medium text-xs transition disabled:cursor-not-allowed",
+                isActive
+                  ? button.activeClassName
+                  : "text-muted-foreground hover:bg-background hover:text-foreground disabled:opacity-60"
+              )}
+              disabled={isSaving}
+              key={button.mode}
+              onClick={() => {
+                void submitMode(button.mode);
+              }}
+              title={button.fullLabel}
+              type="button"
+            >
+              {isSavingThis ? (
+                <span aria-hidden="true" className="size-3.5 animate-spin">
+                  <LoaderIcon size={14} />
+                </span>
+              ) : null}
+              {isSavingThis ? "Saving..." : button.label}
+            </button>
+          );
+        })}
+      </fieldset>
     </div>
   );
 }

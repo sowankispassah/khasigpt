@@ -34,8 +34,9 @@ test.describe("prelaunch invite assignment guardrails", () => {
   });
 
   test("keeps site access and prelaunch invites visible on settings entry", async () => {
+    // The settings page loads data; its sections render from settings-view.
     const settings = await readWorkspaceFile(
-      "app/(admin)/admin/settings/page.tsx"
+      "app/(admin)/admin/settings/settings-view.tsx"
     );
     expect(settings).toContain('id="prelaunch-access"');
     expect(settings).toContain("defaultOpen");

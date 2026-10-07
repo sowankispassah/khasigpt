@@ -3,6 +3,7 @@
 import { formatDistanceToNow } from "date-fns";
 import { Eye } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AdminStatusPill } from "@/components/admin/admin-ui";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
 import { EditableTranslation } from "@/components/translation-edit-provider";
@@ -14,11 +15,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
 
 const PRELAUNCH_INVITE_API_ENDPOINT = "/api/admin/settings/prelaunch-invites";
 const REQUEST_TIMEOUT_MS = 12_000;
 const JOINED_USERS_PAGE_SIZE = 10;
+const FIELD_INPUT_CLASS =
+  "h-9 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60";
+const DESTRUCTIVE_OUTLINE_CLASS =
+  "border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive";
 
 type InviteListItem = {
   id: string;
@@ -132,6 +136,9 @@ export function PrelaunchInvitesPanel({
   loadOnMount?: boolean;
 }) {
   const [invites, setInvites] = useState<InviteListItem[]>(initialInvites);
+  const [hasLoaded, setHasLoaded] = useState(
+    loadOnMount || initialInvites.length > 0
+  );
   const [_access, setAccess] = useState<InviteAccessItem[]>(initialAccess);
   const [joinedUsers, setJoinedUsers] =
     useState<InviteJoinedUserItem[]>(initialJoinedUsers);
@@ -224,6 +231,7 @@ export function PrelaunchInvitesPanel({
   );
 
   const applyState = useCallback((state: InviteStateResponse) => {
+    setHasLoaded(true);
     setInvites(state.invites);
     setAccess(state.access);
     setJoinedUsers(state.joinedUsers);
@@ -305,21 +313,40 @@ export function PrelaunchInvitesPanel({
   };
 
   return (
-    <div className="space-y-4 rounded-lg border bg-background p-4">
-      <div className="space-y-1">
-        <h3 className="font-semibold text-sm">Prelaunch invites</h3>
-        <p className="text-muted-foreground text-xs">
-          <EditableTranslation
-            defaultText="Generate invite links for prelaunch access with a custom redemption limit. Invite-only prelaunch applies to each platform while its launch setting is off and maintenance is off."
-            description="Explanation of how prelaunch invites interact with independent web and mobile launch settings."
-            translationKey="admin.settings.site_access.prelaunch_invites.description"
-          />
-        </p>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 space-y-0.5">
+          <h3 className="font-semibold text-sm">Prelaunch invites</h3>
+          <p className="max-w-3xl text-muted-foreground text-xs leading-relaxed">
+            <EditableTranslation
+              defaultText="Generate invite links for prelaunch access with a custom redemption limit. Invite-only prelaunch applies to each platform while its launch setting is off and maintenance is off."
+              description="Explanation of how prelaunch invites interact with independent web and mobile launch settings."
+              translationKey="admin.settings.site_access.prelaunch_invites.description"
+            />
+          </p>
+        </div>
+        <Button
+          className="cursor-pointer"
+          disabled={Boolean(pendingAction)}
+          onClick={() => {
+            void refreshState();
+          }}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          {pendingAction === "refresh"
+            ? "Refreshing..."
+            : hasLoaded
+              ? "Refresh invites"
+              : "Load invites"}
+        </Button>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[1fr_220px_180px_auto]">
+      <div className="grid gap-2 rounded-lg bg-muted/40 p-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px_auto]">
         <input
-          className="rounded-md border bg-background px-3 py-2 text-sm"
+          aria-label="Invite label (optional)"
+          className={FIELD_INPUT_CLASS}
           disabled={Boolean(pendingAction)}
           onChange={(event) => {
             setInviteLabel(event.target.value);
@@ -328,7 +355,8 @@ export function PrelaunchInvitesPanel({
           value={inviteLabel}
         />
         <input
-          className="rounded-md border bg-background px-3 py-2 text-sm"
+          aria-label="Assigned email (optional)"
+          className={FIELD_INPUT_CLASS}
           disabled={Boolean(pendingAction)}
           onChange={(event) => {
             setInviteAssignedToEmail(event.target.value);
@@ -338,7 +366,8 @@ export function PrelaunchInvitesPanel({
           value={inviteAssignedToEmail}
         />
         <input
-          className="rounded-md border bg-background px-3 py-2 text-sm"
+          aria-label="Redeem limit"
+          className={FIELD_INPUT_CLASS}
           disabled={Boolean(pendingAction)}
           max={10000}
           min={1}
@@ -351,6 +380,7 @@ export function PrelaunchInvitesPanel({
           value={inviteMaxRedemptions}
         />
         <Button
+          className="h-9 cursor-pointer"
           disabled={Boolean(pendingAction)}
           onClick={() => {
             void onCreateInvite();
@@ -371,20 +401,19 @@ export function PrelaunchInvitesPanel({
       </div>
 
       {invites.length > 0 ? (
-        <div className="overflow-x-auto rounded-md border">
-          <table className="min-w-max border-collapse whitespace-nowrap text-sm">
-            <thead className="bg-muted/40">
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full min-w-max text-sm">
+            <thead className="border-b bg-muted/40 text-muted-foreground text-xs">
               <tr>
-                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Invite</th>
-                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Assigned to</th>
-                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Owner</th>
-                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Invite link</th>
-                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Status</th>
-                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Redemptions</th>
-                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Actions</th>
+                <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium">Invite</th>
+                <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium">Assigned to</th>
+                <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium">Invite link</th>
+                <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium">Status</th>
+                <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium">Redemptions</th>
+                <th className="whitespace-nowrap px-4 py-2.5 text-right font-medium">Actions</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-border/60">
               {invites.map((invite) => {
                 const invitePath = `/invite/${invite.token}`;
                 const inviteUrl = resolvedBaseUrl
@@ -405,21 +434,20 @@ export function PrelaunchInvitesPanel({
                 const clearAssignedActionKey = `assign-clear:${invite.id}`;
 
                 return (
-                  <tr className="border-t" key={invite.id}>
-                      <td className="px-3 py-3 align-top">
-                        <div className="flex items-center gap-2 whitespace-nowrap">
-                          <span className="font-medium">
-                            {invite.label?.trim() || "Untitled invite"}
-                          </span>
-                          <span className="text-muted-foreground text-xs">
-                            Created {formatRelativeDate(invite.createdAt)}
-                          </span>
+                  <tr className="align-top transition hover:bg-muted/30" key={invite.id}>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">
+                          {invite.label?.trim() || "Untitled invite"}
+                        </div>
+                        <div className="whitespace-nowrap text-muted-foreground text-xs">
+                          Created {formatRelativeDate(invite.createdAt)} by{" "}
+                          {invite.createdByAdminEmail ?? "Unknown admin"}
                         </div>
                       </td>
-                      <td className="px-3 py-3 align-top">
-                        <div className="flex min-w-[360px] items-center gap-2 whitespace-nowrap">
+                      <td className="px-4 py-3">
+                        <div className="flex min-w-[320px] items-center gap-2 whitespace-nowrap">
                           <input
-                            className="min-w-[220px] rounded-md border bg-background px-2 py-1 text-xs"
+                            className="h-8 min-w-[200px] flex-1 rounded-md border border-input bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             disabled={Boolean(pendingAction)}
                             onChange={(event) => {
                               const value = event.target.value;
@@ -434,7 +462,7 @@ export function PrelaunchInvitesPanel({
                           />
                           <div className="flex items-center gap-2 whitespace-nowrap">
                             <Button
-                              className="h-6 px-2 text-[11px]"
+                              className="h-8 cursor-pointer px-2 text-xs"
                               disabled={Boolean(pendingAction) || !hasAssignedToChanges}
                               onClick={() => {
                                 void runMutation(
@@ -457,7 +485,7 @@ export function PrelaunchInvitesPanel({
                                 : "Save"}
                             </Button>
                             <Button
-                              className="h-6 px-2 text-[11px]"
+                              className="h-8 cursor-pointer px-2 text-xs"
                               disabled={Boolean(pendingAction)}
                               onClick={() => {
                                 setAssignedEmailDraftByInvite((previous) => ({
@@ -484,40 +512,31 @@ export function PrelaunchInvitesPanel({
                           </div>
                         </div>
                       </td>
-                      <td className="px-3 py-3 align-top text-xs">
-                        {invite.createdByAdminEmail ?? "Unknown admin"}
-                      </td>
-                      <td className="px-3 py-3 align-top">
+                      <td className="px-4 py-3">
                         <input
-                          className="w-full min-w-[260px] rounded-md border bg-muted/30 px-2 py-1 font-mono text-xs"
+                          aria-label="Invite link"
+                          className="h-8 w-full min-w-[260px] rounded-md border border-input bg-muted/30 px-2 font-mono text-xs"
                           readOnly
                           value={inviteUrl}
                         />
                       </td>
-                      <td className="px-3 py-3 align-top">
-                        <span
-                          className={cn(
-                            "rounded-full px-2 py-0.5 font-medium text-xs",
-                            isRevoked
-                              ? "bg-rose-100 text-rose-700"
-                              : "bg-emerald-100 text-emerald-700"
-                          )}
-                        >
+                      <td className="px-4 py-3">
+                        <AdminStatusPill tone={isRevoked ? "neutral" : "success"}>
                           {isRevoked ? "Inactive" : "Active"}
-                        </span>
+                        </AdminStatusPill>
                       </td>
-                      <td className="px-3 py-3 align-top text-xs">
-                        <div>
-                          {invite.redemptionCount} / {inviteLimit}{" "}
-                          <span className="text-muted-foreground">
-                            | Active access: {invite.activeAccessCount}
-                          </span>
+                      <td className="whitespace-nowrap px-4 py-3 text-xs">
+                        <div className="font-medium text-sm tabular-nums">
+                          {invite.redemptionCount} / {inviteLimit}
+                        </div>
+                        <div className="text-muted-foreground">
+                          Active access: {invite.activeAccessCount}
                         </div>
                       </td>
-                      <td className="px-3 py-3 align-top">
-                        <div className="flex items-center gap-2 whitespace-nowrap">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-2 whitespace-nowrap">
                           <Button
-                            className="h-7 px-2 text-xs"
+                            className="h-8 cursor-pointer px-2 text-xs"
                             disabled={Boolean(pendingAction)}
                             onClick={() => {
                               const action = isRevoked ? "activateInvite" : "revokeInvite";
@@ -540,7 +559,7 @@ export function PrelaunchInvitesPanel({
                                 : "Make inactive"}
                           </Button>
                           <Button
-                            className="h-7 border-rose-300 px-2 text-rose-700 text-xs hover:bg-rose-50"
+                            className={`h-8 cursor-pointer px-2 text-xs ${DESTRUCTIVE_OUTLINE_CLASS}`}
                             disabled={Boolean(pendingAction)}
                             onClick={() => {
                               if (
@@ -561,7 +580,8 @@ export function PrelaunchInvitesPanel({
                             {pendingAction === deleteActionKey ? "Deleting..." : "Delete"}
                           </Button>
                           <Button
-                            className="h-7 px-2"
+                            aria-label="View users joined via this invite"
+                            className="h-8 cursor-pointer px-2"
                             disabled={Boolean(pendingAction)}
                             onClick={() => {
                               setViewerInviteId(invite.id);
@@ -581,8 +601,16 @@ export function PrelaunchInvitesPanel({
           </table>
         </div>
       ) : (
-        <p className="text-muted-foreground text-xs">
-          No prelaunch invites created yet.
+        <p className="rounded-lg border border-dashed p-4 text-muted-foreground text-sm">
+          {hasLoaded ? (
+            "No prelaunch invites created yet."
+          ) : (
+            <EditableTranslation
+              defaultText="Invites load on demand. Select Load invites to see existing links."
+              description="Admin settings: shown before the prelaunch invite list has been loaded."
+              translationKey="admin.settings.site_access.prelaunch_invites.not_loaded"
+            />
+          )}
         </p>
       )}
 
@@ -612,7 +640,8 @@ export function PrelaunchInvitesPanel({
             <div className="space-y-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <input
-                  className="w-full max-w-sm rounded-md border bg-background px-2 py-1 text-xs"
+                  aria-label="Search by email or user ID"
+                  className="h-9 w-full max-w-sm rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   disabled={Boolean(pendingAction)}
                   onChange={(event) => {
                     if (!viewerInviteId) {
@@ -640,18 +669,18 @@ export function PrelaunchInvitesPanel({
                 <p className="text-muted-foreground text-xs">No users match this search.</p>
               ) : (
                 <>
-                  <div className="overflow-x-auto rounded-md border bg-background">
-                    <table className="min-w-full border-collapse text-xs">
-                      <thead className="bg-muted/30">
+                  <div className="overflow-x-auto rounded-lg border">
+                    <table className="w-full min-w-max text-sm">
+                      <thead className="border-b bg-muted/40 text-muted-foreground text-xs">
                         <tr>
-                          <th className="px-2 py-2 text-left font-medium">User</th>
-                          <th className="px-2 py-2 text-left font-medium">Joined</th>
-                          <th className="px-2 py-2 text-left font-medium">Access</th>
-                          <th className="px-2 py-2 text-left font-medium">Invite link</th>
-                          <th className="px-2 py-2 text-left font-medium">Action</th>
+                          <th className="px-4 py-2.5 text-left font-medium">User</th>
+                          <th className="px-4 py-2.5 text-left font-medium">Joined</th>
+                          <th className="px-4 py-2.5 text-left font-medium">Access</th>
+                          <th className="px-4 py-2.5 text-left font-medium">Invite link</th>
+                          <th className="px-4 py-2.5 text-right font-medium">Action</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className="divide-y divide-border/60">
                         {pagedViewerInviteUsers.map((entry) => {
                           const revokeAccessActionKey = `revoke-access:${entry.inviteId}:${entry.userId}`;
                           const disableRedeemerActionKey = `disable-redeemer:${entry.inviteId}:${entry.userId}`;
@@ -659,40 +688,28 @@ export function PrelaunchInvitesPanel({
 
                           return (
                             <tr
-                              className="border-t"
+                              className="transition hover:bg-muted/30"
                               key={`${entry.inviteId}:${entry.userId}:${entry.redeemedAt}`}
                             >
-                              <td className="px-2 py-2">{entry.userEmail ?? entry.userId}</td>
-                              <td className="px-2 py-2">{formatRelativeDate(entry.redeemedAt)}</td>
-                              <td className="px-2 py-2">
-                                <span
-                                  className={cn(
-                                    "rounded-full px-2 py-0.5 font-medium",
-                                    entry.hasActiveAccess
-                                      ? "bg-emerald-100 text-emerald-700"
-                                      : "bg-zinc-200 text-zinc-700"
-                                  )}
-                                >
+                              <td className="px-4 py-3">{entry.userEmail ?? entry.userId}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                                {formatRelativeDate(entry.redeemedAt)}
+                              </td>
+                              <td className="px-4 py-3">
+                                <AdminStatusPill tone={entry.hasActiveAccess ? "success" : "neutral"}>
                                   {entry.hasActiveAccess ? "Active" : "Revoked"}
-                                </span>
+                                </AdminStatusPill>
                               </td>
-                              <td className="px-2 py-2">
-                                <span
-                                  className={cn(
-                                    "rounded-full px-2 py-0.5 font-medium",
-                                    entry.isInviteDisabled
-                                      ? "bg-rose-100 text-rose-700"
-                                      : "bg-blue-100 text-blue-700"
-                                  )}
-                                >
+                              <td className="px-4 py-3">
+                                <AdminStatusPill tone={entry.isInviteDisabled ? "danger" : "info"}>
                                   {entry.isInviteDisabled ? "Disabled" : "Enabled"}
-                                </span>
+                                </AdminStatusPill>
                               </td>
-                              <td className="px-2 py-2">
-                                <div className="flex items-center gap-2">
+                              <td className="px-4 py-3">
+                                <div className="flex items-center justify-end gap-2">
                                   {entry.isInviteDisabled ? (
                                     <Button
-                                      className="h-6 px-2 text-[11px]"
+                                      className="h-8 cursor-pointer px-2 text-xs"
                                       disabled={Boolean(pendingAction)}
                                       onClick={() => {
                                         void runMutation(
@@ -714,7 +731,7 @@ export function PrelaunchInvitesPanel({
                                     </Button>
                                   ) : (
                                     <Button
-                                      className="h-6 border-rose-300 px-2 text-[11px] text-rose-700 hover:bg-rose-50"
+                                      className={`h-8 cursor-pointer px-2 text-xs ${DESTRUCTIVE_OUTLINE_CLASS}`}
                                       disabled={Boolean(pendingAction)}
                                       onClick={() => {
                                         void runMutation(
@@ -738,7 +755,7 @@ export function PrelaunchInvitesPanel({
 
                                   {entry.hasActiveAccess ? (
                                     <Button
-                                      className="h-6 px-2 text-[11px]"
+                                      className="h-8 cursor-pointer px-2 text-xs"
                                       disabled={Boolean(pendingAction)}
                                       onClick={() => {
                                         void runMutation(
@@ -774,7 +791,7 @@ export function PrelaunchInvitesPanel({
                         Page {viewerCurrentPage} of {viewerTotalPages}
                       </span>
                       <Button
-                        className="h-6 px-2 text-[11px]"
+                        className="h-8 cursor-pointer px-2 text-xs"
                         disabled={Boolean(pendingAction) || viewerCurrentPage <= 1}
                         onClick={() => {
                           if (!viewerInviteId) {
@@ -791,7 +808,7 @@ export function PrelaunchInvitesPanel({
                         Previous
                       </Button>
                       <Button
-                        className="h-6 px-2 text-[11px]"
+                        className="h-8 cursor-pointer px-2 text-xs"
                         disabled={Boolean(pendingAction) || viewerCurrentPage >= viewerTotalPages}
                         onClick={() => {
                           if (!viewerInviteId) {
@@ -816,18 +833,6 @@ export function PrelaunchInvitesPanel({
         </DialogContent>
       </Dialog>
 
-      <div className="flex justify-end">
-        <Button
-          disabled={Boolean(pendingAction)}
-          onClick={() => {
-            void refreshState();
-          }}
-          type="button"
-          variant="outline"
-        >
-          {pendingAction === "refresh" ? "Refreshing..." : "Refresh invites"}
-        </Button>
-      </div>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { AdminStatusPill } from "@/components/admin/admin-ui";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
 import { toast } from "@/components/toast";
@@ -109,9 +110,9 @@ export function ImageModelActiveBadge({ modelId }: { modelId: string }) {
   }
 
   return (
-    <span className="rounded-full bg-blue-100 px-2 py-0.5 font-medium text-blue-700 text-xs">
+    <AdminStatusPill tone="success">
       {translate("admin.settings.image_model.active", "Active")}
-    </span>
+    </AdminStatusPill>
   );
 }
 

@@ -60,7 +60,7 @@ test.describe("admin icon prompt editor", () => {
         readWorkspaceFile(
           "app/(admin)/admin/settings/icon-prompt-settings-form.tsx"
         ),
-        readWorkspaceFile("app/(admin)/admin/settings/page.tsx"),
+        readWorkspaceFile("app/(admin)/admin/settings/settings-view.tsx"),
         readWorkspaceFile("lib/icon-prompts.ts"),
         readWorkspaceFile("app/(chat)/api/chat/route.ts"),
         readWorkspaceFile("app/(chat)/api/chat/schema.ts"),

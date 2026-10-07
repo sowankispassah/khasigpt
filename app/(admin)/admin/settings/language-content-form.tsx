@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AdminStatusPill } from "@/components/admin/admin-ui";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
@@ -107,18 +108,23 @@ export function LanguageContentForm({
 
   return (
     <form
-      className="flex flex-col gap-4 rounded-lg border bg-background p-4"
+      className="flex min-w-0 flex-col gap-3 rounded-lg bg-muted/40 p-4"
       onSubmit={handleSubmit}
     >
       <div className="flex flex-col gap-2">
-        <label
-          className="font-semibold text-sm"
-          htmlFor={`content-${language.code}`}
-        >
-          {language.name}
-        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <label
+            className="font-semibold text-sm"
+            htmlFor={`content-${language.code}`}
+          >
+            {language.name}
+          </label>
+          {language.isDefault ? (
+            <AdminStatusPill tone="info">Default</AdminStatusPill>
+          ) : null}
+        </div>
         <Textarea
-          className="min-h-[16rem]"
+          className="min-h-[16rem] bg-background"
           disabled={isSubmitting}
           id={`content-${language.code}`}
           onChange={(event) => setValue(event.target.value)}
@@ -132,11 +138,16 @@ export function LanguageContentForm({
           {language.isDefault ? helperDefault : helperLocalized}
         </p>
       </div>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div aria-live="polite" className="text-muted-foreground text-xs">
           {statusMessage}
         </div>
-        <Button disabled={isSubmitting} type="submit" variant="default">
+        <Button
+          className="cursor-pointer"
+          disabled={isSubmitting}
+          type="submit"
+          variant="default"
+        >
           {isSubmitting ? (
             <span className="flex items-center gap-2">
               <span className="h-4 w-4 animate-spin">
