@@ -1001,6 +1001,341 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Admin user table actions column heading.",
   },
   {
+    key: "subscriptions.plan_overview.days_left",
+    defaultText: "{count} day{plural} left",
+    description: "Days until the current plan's credits expire, shown beside the expiry date.",
+  },
+  {
+    key: "subscriptions.overview.percent_left",
+    defaultText: "{percent}% of your credits left",
+    description: "Share of the current credit allowance that is still available.",
+  },
+  {
+    key: "subscriptions.overview.low_credits",
+    defaultText: "You're running low on credits. Recharge to keep chatting without interruption.",
+    description: "Shown on the subscriptions page when 20% or less of the credit allowance is left.",
+  },
+  {
+    key: "subscriptions.daily_usage.total_in_range",
+    defaultText: "{credits} credits in this range",
+    description: "Total credits used across the selected daily usage range.",
+  },
+  {
+    key: "subscriptions.daily_usage.table_show",
+    defaultText: "Show as table",
+    description: "Reveals the daily usage chart values as a table.",
+  },
+  {
+    key: "subscriptions.daily_usage.table_hide",
+    defaultText: "Hide table",
+    description: "Hides the daily usage table.",
+  },
+  {
+    key: "subscriptions.error.unavailable_title",
+    defaultText: "Subscription details are unavailable",
+    description: "Heading shown when the subscriptions page cannot load the credit balance.",
+  },
+  {
+    key: "subscriptions.error.retry",
+    defaultText: "Retry",
+    description: "Reloads the subscriptions page after the balance failed to load.",
+  },
+  {
+    key: "recharge.current_balance.of_total",
+    defaultText: "of {total} credits left",
+    description: "Shown after the remaining credit balance on the recharge page.",
+  },
+  {
+    key: "recharge.current_balance.empty",
+    defaultText: "You have no credits right now. Choose a plan below to get started.",
+    description: "Recharge page balance card when the user has no active credits.",
+  },
+  {
+    key: "recharge.current_balance.days_left",
+    defaultText: "{days} days left",
+    description: "Days until the user's credits expire, shown on the recharge page.",
+  },
+  {
+    key: "recharge.current_balance.view_usage",
+    defaultText: "View usage and history",
+    description: "Recharge page link to the subscriptions dashboard.",
+  },
+  {
+    key: "recharge.plan.price_per_credit",
+    defaultText: "{price} per credit",
+    description: "Price of one credit in a recharge plan.",
+  },
+  {
+    key: "recharge.plan.bonus",
+    defaultText: "{percent}% more credits per rupee",
+    description: "Bonus shown on larger recharge packs compared with the smallest pack.",
+  },
+  {
+    key: "recharge.coupon.page_hint",
+    defaultText: "Have a coupon? You can apply it after choosing a plan.",
+    description: "Recharge page hint that coupons are entered in the checkout review step.",
+  },
+  {
+    key: "recharge.info.title",
+    defaultText: "How recharges work",
+    description: "Heading of the explanatory section on the recharge page.",
+  },
+  {
+    key: "recharge.info.description",
+    defaultText: "What happens when you buy credits.",
+    description: "Short description under the How recharges work heading on the recharge page.",
+  },
+  {
+    key: "recharge.info.stack.title",
+    defaultText: "Credits add up",
+    description: "Recharge page note title: new credits are added to the existing balance.",
+  },
+  {
+    key: "recharge.info.stack.body",
+    defaultText: "Each recharge adds its credits to your current balance, so nothing you already have is lost.",
+    description: "Recharge page note explaining that credits from a new recharge are added to the existing balance.",
+  },
+  {
+    key: "recharge.info.validity.title",
+    defaultText: "Validity never shortens",
+    description: "Recharge page note title about credit validity.",
+  },
+  {
+    key: "recharge.info.validity.body",
+    defaultText: "Your credits stay valid until the later of your current expiry date and the new plan's validity period.",
+    description: "Recharge page note explaining how a recharge sets the credit expiry date.",
+  },
+  {
+    key: "recharge.info.one_time.title",
+    defaultText: "One-time payment",
+    description: "Recharge page note title: recharges do not renew automatically.",
+  },
+  {
+    key: "recharge.info.one_time.body",
+    defaultText: "You pay once for each recharge. Nothing renews or charges you automatically.",
+    description: "Recharge page note explaining that recharges are one-time payments without auto-renewal.",
+  },
+  {
+    key: "recharge.info.secure.title",
+    defaultText: "Secure checkout",
+    description: "Recharge page note title about the payment provider.",
+  },
+  {
+    key: "recharge.info.secure.body",
+    defaultText: "Payments are completed in Razorpay's secure checkout.",
+    description: "Recharge page note naming the payment provider.",
+  },
+  {
+    key: "recharge.info.receipts.title",
+    defaultText: "Receipts",
+    description: "Recharge page note title about payment receipts.",
+  },
+  {
+    key: "recharge.info.receipts.body",
+    defaultText: "Download a receipt for any payment from your recharge history on the Subscriptions page.",
+    description: "Recharge page note explaining where to download payment receipts.",
+  },
+  {
+    key: "profile.account.view_usage",
+    defaultText: "View usage",
+    description: "Profile header link to the subscriptions and usage page.",
+  },
+  {
+    key: "profile.account.plan",
+    defaultText: "Plan",
+    description: "Profile header label for the user's current plan.",
+  },
+  {
+    key: "profile.account.unavailable",
+    defaultText: "Your plan and credits could not be loaded right now.",
+    description: "Shown in the profile header when the credit balance read fails.",
+  },
+  {
+    key: "profile.overview.member_since",
+    defaultText: "Member since {date}",
+    description: "Profile header pill showing when the account was created.",
+  },
+  {
+    key: "profile.overview.provider.google",
+    defaultText: "Google sign-in",
+    description: "Profile header pill for accounts that sign in with Google.",
+  },
+  {
+    key: "profile.overview.provider.credentials",
+    defaultText: "Email and password",
+    description: "Profile header pill for accounts that sign in with email and password.",
+  },
+  {
+    key: "profile.nav.security",
+    defaultText: "Security",
+    description: "Profile section index entry for the password section.",
+  },
+  {
+    key: "profile.nav.location",
+    defaultText: "Location",
+    description: "Profile section index entry for the location section.",
+  },
+  {
+    key: "profile.danger.title",
+    defaultText: "Delete or deactivate",
+    description: "Profile danger zone title and section index entry.",
+  },
+  {
+    key: "profile.danger.description",
+    defaultText: "These actions affect your whole account. Read each one carefully before continuing.",
+    description: "Description of the profile danger zone with data deletion and deactivation.",
+  },
+  {
+    key: "profile.knowledge.title",
+    defaultText: "Personal knowledge",
+    description: "Title of the personal knowledge section on the profile page.",
+  },
+  {
+    key: "profile.knowledge.description",
+    defaultText: "This information will be used to generate responses when users on the platform ask or search about you.",
+    description: "Description of the personal knowledge section on the profile page.",
+  },
+  {
+    key: "profile.knowledge.review_note",
+    defaultText: "New or edited entries stay pending until an admin approves them.",
+    description: "Explains that personal knowledge entries need admin approval.",
+  },
+  {
+    key: "profile.knowledge.add",
+    defaultText: "Add knowledge",
+    description: "Button that opens the dialog to add a personal knowledge entry.",
+  },
+  {
+    key: "profile.knowledge.empty",
+    defaultText: "No personal knowledge added yet.",
+    description: "Empty state of the personal knowledge section.",
+  },
+  {
+    key: "profile.knowledge.status.approved",
+    defaultText: "Approved",
+    description: "Approval status of a personal knowledge entry on the profile page.",
+  },
+  {
+    key: "profile.knowledge.status.pending",
+    defaultText: "Pending approval",
+    description: "Approval status of a personal knowledge entry on the profile page.",
+  },
+  {
+    key: "profile.knowledge.status.rejected",
+    defaultText: "Rejected",
+    description: "Approval status of a personal knowledge entry on the profile page.",
+  },
+  {
+    key: "profile.knowledge.updated",
+    defaultText: "Updated {date}",
+    description: "When a personal knowledge entry was last updated.",
+  },
+  {
+    key: "profile.knowledge.edit",
+    defaultText: "Edit",
+    description: "Edit a personal knowledge entry.",
+  },
+  {
+    key: "profile.knowledge.delete",
+    defaultText: "Delete",
+    description: "Delete a personal knowledge entry.",
+  },
+  {
+    key: "profile.knowledge.dialog.edit_title",
+    defaultText: "Edit entry",
+    description: "Title of the dialog for editing a personal knowledge entry.",
+  },
+  {
+    key: "profile.knowledge.dialog.add_title",
+    defaultText: "Add entry",
+    description: "Title of the dialog for adding a personal knowledge entry.",
+  },
+  {
+    key: "profile.knowledge.dialog.description",
+    defaultText: "Keep details concise and focused on information you want the platform to surface about you.",
+    description: "Guidance in the personal knowledge entry dialog.",
+  },
+  {
+    key: "profile.knowledge.field.full_name",
+    defaultText: "Full Name",
+    description: "Field label in the personal knowledge entry dialog.",
+  },
+  {
+    key: "profile.knowledge.field.full_name_placeholder",
+    defaultText: "e.g. Jane Doe",
+    description: "Placeholder for the full name field in the personal knowledge dialog.",
+  },
+  {
+    key: "profile.knowledge.field.gender",
+    defaultText: "Gender",
+    description: "Field label in the personal knowledge entry dialog.",
+  },
+  {
+    key: "profile.knowledge.field.gender_placeholder",
+    defaultText: "enter your gender or type Prefer not to say",
+    description: "Placeholder for the gender field in the personal knowledge dialog.",
+  },
+  {
+    key: "profile.knowledge.field.main_text",
+    defaultText: "Main text",
+    description: "Label of the main text field in the personal knowledge entry dialog.",
+  },
+  {
+    key: "profile.knowledge.field.main_text_placeholder",
+    defaultText: "Write what people should know about you when they search or ask about you. Your story, your profession, your achievements or anything that you do that people can know about",
+    description: "Placeholder for the main text field in the personal knowledge dialog.",
+  },
+  {
+    key: "profile.knowledge.save_changes",
+    defaultText: "Save changes",
+    description: "Save an edited personal knowledge entry.",
+  },
+  {
+    key: "profile.knowledge.submit",
+    defaultText: "Submit for approval",
+    description: "Submit a new personal knowledge entry for admin approval.",
+  },
+  {
+    key: "profile.knowledge.cancel",
+    defaultText: "Cancel",
+    description: "Close the personal knowledge entry dialog without saving.",
+  },
+  {
+    key: "profile.knowledge.toast.required",
+    defaultText: "{field} is required.",
+    description: "Error when a required personal knowledge field is empty.",
+  },
+  {
+    key: "profile.knowledge.toast.main_required",
+    defaultText: "Please add what people should know about you.",
+    description: "Error when the personal knowledge main text is empty.",
+  },
+  {
+    key: "profile.knowledge.toast.updated",
+    defaultText: "Entry updated",
+    description: "Toast after a personal knowledge entry is updated.",
+  },
+  {
+    key: "profile.knowledge.toast.submitted",
+    defaultText: "Entry submitted for review",
+    description: "Toast after a personal knowledge entry is submitted.",
+  },
+  {
+    key: "profile.knowledge.toast.save_error",
+    defaultText: "Unable to save your entry. Please try again.",
+    description: "Toast when saving a personal knowledge entry fails.",
+  },
+  {
+    key: "profile.knowledge.toast.deleted",
+    defaultText: "Entry deleted",
+    description: "Toast after a personal knowledge entry is deleted.",
+  },
+  {
+    key: "profile.knowledge.toast.delete_error",
+    defaultText: "Unable to delete entry. Please try again.",
+    description: "Toast when deleting a personal knowledge entry fails.",
+  },
+  {
     key: "admin.pricing.recharge_plans_title",
     defaultText: "Recharge plans",
     description: "Heading for the recharge plans section on Admin Pricing.",
