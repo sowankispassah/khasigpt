@@ -47,7 +47,7 @@ const validSearchInput = {
   location: resolvedLocation,
 };
 
-test.describe("Explore Meghalaya", () => {
+test.describe("Nearby", () => {
   const chatContext = [
     "Current Explore location: Shangpung, Meghalaya (25.4798471, 92.3567229).",
     "Current radius: 10 km.",
@@ -284,8 +284,8 @@ test.describe("Explore Meghalaya", () => {
     expect(contextRoute).toContain("Current Explore location");
     expect(searchRoute).not.toContain("saveChat");
     expect(searchRoute).not.toContain("saveMessages");
-    expect(webSidebar).toContain('translationKey="sidebar.explore_meghalaya"');
-    expect(nativeSidebar).toContain('translationKey="sidebar.explore_meghalaya"');
+    expect(webSidebar).toContain('translationKey="sidebar.nearby"');
+    expect(nativeSidebar).toContain('translationKey="sidebar.nearby"');
     expect(searchRoute).toContain("recordTokenUsage");
     expect(searchRoute).toContain("recordWebSearchUsage");
     expect(searchRoute).not.toContain("imageGeneration");

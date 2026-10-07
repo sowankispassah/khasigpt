@@ -752,7 +752,7 @@ export function AppSidebar({
                     {pendingNavigation === "explore" ? (
                       <SidebarEditableMenuLabel defaultText="Opening..." translationKey="navigation.opening" />
                     ) : (
-                      <SidebarEditableMenuLabel defaultText="Explore Meghalaya" translationKey="sidebar.explore_meghalaya" />
+                      <SidebarEditableMenuLabel defaultText="Nearby" translationKey="sidebar.nearby" />
                     )}
                   </Link>
                 </SidebarMenuButton>

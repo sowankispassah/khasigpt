@@ -124,7 +124,7 @@ export function ExplorePageClient({
   } = useEditableTranslation(
     "explore.location.manual_placeholder",
     "Enter a city, town, village or area",
-    "Placeholder for manually resolving an Explore Meghalaya location.",
+    "Placeholder for manually resolving a Nearby location.",
   );
   const [categories, setCategories] = useState(initialCategories ?? []);
   const [categoriesUnavailable, setCategoriesUnavailable] = useState(
@@ -640,15 +640,15 @@ export function ExplorePageClient({
         <header>
           <h1 className="font-semibold text-3xl tracking-tight">
             <EditableTranslation
-              defaultText="Explore Meghalaya"
-              description="Explore Meghalaya page title."
-              translationKey="explore.title"
+              defaultText="Nearby"
+              description="Nearby page title."
+              translationKey="nearby.title"
             />
           </h1>
           <p className="mt-2 text-muted-foreground">
             <EditableTranslation
               defaultText="First, choose your location to discover what's around you."
-              description="Location-first Explore Meghalaya entry instruction."
+              description="Location-first Nearby entry instruction."
               translationKey="explore.location.first_instruction"
             />
           </p>
@@ -821,15 +821,15 @@ export function ExplorePageClient({
       <header>
         <h1 className="font-semibold text-3xl tracking-tight">
           <EditableTranslation
-            defaultText="Explore Meghalaya"
-            description="Explore Meghalaya page title."
-            translationKey="explore.title"
+            defaultText="Nearby"
+            description="Nearby page title."
+            translationKey="nearby.title"
           />
         </h1>
         <p className="mt-2 text-muted-foreground">
           <EditableTranslation
             defaultText="Discover places, businesses, food, events and experiences around your selected location."
-            description="Explore Meghalaya location-first page subtitle."
+            description="Nearby location-first page subtitle."
             translationKey="explore.subtitle_location_first"
           />
         </p>

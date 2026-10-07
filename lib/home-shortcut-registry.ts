@@ -44,8 +44,8 @@ export const HOME_SHORTCUT_TARGETS = [
     androidScreen: "Explore",
     id: "explore_meghalaya",
     kind: "feature",
-    label: "Explore Meghalaya",
-    translationKey: "home_shortcut.target.explore_meghalaya",
+    label: "Nearby",
+    translationKey: "home_shortcut.target.nearby",
     webHref: "/explore",
   },
   {

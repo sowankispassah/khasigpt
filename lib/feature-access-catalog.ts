@@ -36,7 +36,7 @@ export const USER_FEATURE_ACCESS_CATALOG = [
   [IMAGE_GENERATION_FEATURE_FLAG_KEY, "Image generation", "Generate images in chat.", "disabled"],
   [IMAGE_WEB_REFERENCES_FEATURE_FLAG_KEY, "Image web references", "Use web references while creating images.", "admin_only"],
   [DOCUMENT_UPLOADS_FEATURE_FLAG_KEY, "Document uploads", "Upload supported documents to chat.", "disabled"],
-  [EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY, "Explore Meghalaya", "Use place discovery and local search.", "admin_only"],
+  [EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY, "Nearby", "Use place discovery and local search.", "admin_only"],
   [VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY, "Voice chat on Android", "Use live voice chat in the Android app.", "disabled"],
   [VOICE_CHAT_WEB_FEATURE_FLAG_KEY, "Voice chat on web", "Use live voice chat in the web app.", "disabled"],
   [LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY, "Live translation on Android", "Use live translation in the Android app.", "admin_only"],

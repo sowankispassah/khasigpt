@@ -16,7 +16,7 @@ export default async function ExploreAdminPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-semibold text-2xl">Explore Meghalaya</h1>
+        <h1 className="font-semibold text-2xl">Nearby</h1>
         <p className="mt-1 text-muted-foreground text-sm">
           Configure discovery categories, subcategories, search behavior, location rules, icons, and ordering.
         </p>

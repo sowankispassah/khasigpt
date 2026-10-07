@@ -10,6 +10,6 @@ export default function ExploreAdminError({
   reset: () => void;
 }) {
   return (
-    <AdminSectionError error={error} reset={reset} sectionName="Explore Meghalaya" />
+    <AdminSectionError error={error} reset={reset} sectionName="Nearby" />
   );
 }

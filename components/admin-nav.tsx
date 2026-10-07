@@ -121,7 +121,7 @@ const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         label: "Jobs",
       },
       { href: "/admin/rag", icon: Database, label: "RAG" },
-      { href: "/admin/explore", icon: Compass, label: "Explore Meghalaya" },
+      { href: "/admin/explore", icon: Compass, label: "Nearby" },
     ],
   },
   {

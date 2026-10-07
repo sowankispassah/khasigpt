@@ -1436,11 +1436,11 @@ export default async function AdminSettingsPage({
 
             <FeatureAccessModeControl
               currentMode={exploreMeghalayaAccessMode}
-              description="Show or hide the location-aware Explore Meghalaya discovery experience on web and Android."
+              description="Show or hide the location-aware Nearby discovery experience on web and Android."
               fieldName="exploreMeghalayaAccessMode"
               readState={exploreMeghalayaAccessState.readState}
-              successMessage="Explore Meghalaya availability updated."
-              title="Explore Meghalaya"
+              successMessage="Nearby availability updated."
+              title="Nearby"
             />
 
             <FeatureAccessModeControl
