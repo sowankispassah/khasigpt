@@ -15,14 +15,20 @@ export default async function ExploreAdminPage() {
     return null;
   });
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <AdminPageHeader
         description="Configure discovery categories, subcategories, search behavior, location rules, icons, and ordering."
         navHref="/admin/explore"
         title="Nearby"
       />
-      <ExploreProviderSettings />
-      <ExploreAdminManager initialCategories={categories} />
+      <div className="grid items-start gap-6 xl:grid-cols-5">
+        <div className="min-w-0 xl:col-span-3">
+          <ExploreAdminManager initialCategories={categories} />
+        </div>
+        <div className="min-w-0 xl:col-span-2">
+          <ExploreProviderSettings />
+        </div>
+      </div>
     </div>
   );
 }

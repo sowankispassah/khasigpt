@@ -101,70 +101,90 @@ export function ExploreAdminManager({ initialCategories }: { initialCategories: 
 
   if (unavailable) {
     return (
-      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
-        <p className="text-amber-800 text-sm">Explore configuration could not be confirmed. Existing data has not been replaced with an empty list.</p>
-        <button className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm" disabled={pending === "refresh"} onClick={refresh} type="button">
+      <section className="rounded-xl border bg-card p-5 shadow-xs">
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-800 text-sm dark:text-amber-300">
+          Explore configuration could not be confirmed. Existing data has not been replaced with an empty list.
+        </div>
+        <button className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50" disabled={pending === "refresh"} onClick={refresh} type="button">
           {pending === "refresh" ? <LoaderCircle className="size-4 animate-spin" /> : null} Retry
         </button>
-      </div>
+      </section>
     );
   }
 
+  const iconButton = "inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40";
+
   return (
-    <>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-muted-foreground text-sm">{categories.length} categories configured</p>
-        <button className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground text-sm" onClick={() => setEditor({ kind: "category", value: null })} type="button">
+    <section aria-busy={pending !== null} className="flex flex-col rounded-xl border bg-card shadow-xs">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b px-5 py-4">
+        <div className="min-w-0">
+          <h2 className="font-semibold text-base">Categories</h2>
+          <p className="mt-0.5 text-muted-foreground text-sm">
+            {categories.length} {categories.length === 1 ? "category" : "categories"} configured. Open one to edit it or manage its subcategories.
+          </p>
+        </div>
+        <button className="inline-flex min-h-9 shrink-0 cursor-pointer items-center gap-2 rounded-md bg-primary px-3 py-2 font-medium text-primary-foreground text-sm transition hover:bg-primary/90" onClick={() => setEditor({ kind: "category", value: null })} type="button">
           <Plus className="size-4" /> <EditableTranslation translationKey="admin.explore.category.add" defaultText="Add Category" />
         </button>
       </div>
-      {status ? <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm">{status}</p> : null}
+      {status ? <output className="mx-5 mt-4 block rounded-lg border bg-muted/40 px-3 py-2 text-sm">{status}</output> : null}
       {categories.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground text-sm">No categories yet. Add the first admin-managed Explore category.</div>
+        <div className="px-6 py-10 text-center text-muted-foreground text-sm">No categories yet. Add the first admin-managed Explore category.</div>
       ) : (
-        <div className="space-y-4">
+        <ul className="divide-y divide-border/60">
           {categories.map((category, categoryIndex) => (
-            <details className="overflow-hidden rounded-lg border bg-card" key={category.id} open={categoryIndex === 0}>
-              <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
-                <IconPreview name={category.iconName} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{category.name}</p>
-                  <p className="truncate text-muted-foreground text-xs">{category.searchQuery}</p>
-                </div>
-                <span className={`rounded-full px-2 py-0.5 text-xs ${category.isEnabled ? "bg-emerald-500/10 text-emerald-700" : "bg-muted text-muted-foreground"}`}>{category.isEnabled ? "Enabled" : "Disabled"}</span>
-                <span className="text-muted-foreground text-xs">{category.subcategories.length} subcategories</span>
-              </summary>
-              <div className="space-y-4 border-t p-4">
-                <div className="flex flex-wrap gap-2">
-                  <button className="inline-flex cursor-pointer items-center gap-1 rounded-md border px-3 py-2 text-sm" onClick={() => setEditor({ kind: "category", value: category })} type="button"><Pencil className="size-4" /> Edit</button>
-                  <button className="inline-flex cursor-pointer items-center gap-1 rounded-md border px-3 py-2 text-sm" disabled={categoryIndex === 0 || pending !== null} onClick={() => move("category", null, category.id, -1)} type="button"><ChevronUp className="size-4" /> Up</button>
-                  <button className="inline-flex cursor-pointer items-center gap-1 rounded-md border px-3 py-2 text-sm" disabled={categoryIndex === categories.length - 1 || pending !== null} onClick={() => move("category", null, category.id, 1)} type="button"><ChevronDown className="size-4" /> Down</button>
-                  <button className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-destructive/40 px-3 py-2 text-destructive text-sm" disabled={pending !== null} onClick={() => remove("category", category.id)} type="button"><Trash2 className="size-4" /> Delete</button>
-                  <button className="ml-auto inline-flex cursor-pointer items-center gap-1 rounded-md bg-primary px-3 py-2 text-primary-foreground text-sm" onClick={() => setEditor({ kind: "subcategory", category, value: null })} type="button"><Plus className="size-4" /> Add Subcategory</button>
-                </div>
-                <div className="rounded-md border bg-muted/20 p-3">
-                  <div className="flex items-center gap-2 font-medium"><IconPreview name={category.iconName} /> {category.name}</div>
-                  {category.description ? <p className="mt-1 text-muted-foreground text-sm">{category.description}</p> : null}
-                  <p className="mt-2 text-xs">{category.subcategories.map((item) => item.name).join(" · ") || "No subcategories"}</p>
-                </div>
-                {category.subcategories.map((subcategory, index) => (
-                  <div className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2" key={subcategory.id}>
-                    <IconPreview className="size-4" name={subcategory.iconName} />
-                    <div className="min-w-0 flex-1"><p className="truncate text-sm">{subcategory.name}</p><p className="truncate text-muted-foreground text-xs">{subcategory.searchQuery}</p></div>
-                    <span className="text-xs">{subcategory.isEnabled ? "Enabled" : "Disabled"}</span>
-                    <button className="cursor-pointer rounded border p-2" aria-label="Move subcategory up" disabled={index === 0 || pending !== null} onClick={() => move("subcategory", category.id, subcategory.id, -1)} type="button"><ChevronUp className="size-4" /></button>
-                    <button className="cursor-pointer rounded border p-2" aria-label="Move subcategory down" disabled={index === category.subcategories.length - 1 || pending !== null} onClick={() => move("subcategory", category.id, subcategory.id, 1)} type="button"><ChevronDown className="size-4" /></button>
-                    <button className="cursor-pointer rounded border p-2" aria-label="Edit subcategory" onClick={() => setEditor({ kind: "subcategory", category, value: subcategory })} type="button"><Pencil className="size-4" /></button>
-                    <button className="cursor-pointer rounded border border-destructive/40 p-2 text-destructive" aria-label="Delete subcategory" disabled={pending !== null} onClick={() => remove("subcategory", subcategory.id)} type="button"><Trash2 className="size-4" /></button>
+            <li key={category.id}>
+              <details className="group" open={categoryIndex === 0}>
+                <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-3 transition hover:bg-muted/30 [&::-webkit-details-marker]:hidden">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><IconPreview className="size-4" name={category.iconName} /></span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{category.name}</p>
+                    <p className="truncate text-muted-foreground text-xs">
+                      {category.subcategories.length} subcategories · <span className="font-mono">{category.searchQuery}</span>
+                    </p>
                   </div>
-                ))}
-              </div>
-            </details>
+                  <span className={`hidden shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 font-medium text-xs ring-1 ring-inset sm:inline-flex ${category.isEnabled ? "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:text-emerald-400" : "bg-muted text-muted-foreground ring-border"}`}>{category.isEnabled ? "Enabled" : "Disabled"}</span>
+                  <ChevronDown aria-hidden="true" className="size-4 shrink-0 text-muted-foreground transition-transform duration-150 group-open:rotate-180" />
+                </summary>
+                <div className="space-y-3 border-t bg-muted/20 px-5 py-4">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm transition hover:bg-muted" onClick={() => setEditor({ kind: "category", value: category })} type="button"><Pencil className="size-4" /> Edit</button>
+                    <button aria-label="Move category up" className={iconButton} disabled={categoryIndex === 0 || pending !== null} onClick={() => move("category", null, category.id, -1)} title="Move up" type="button"><ChevronUp className="size-4" /></button>
+                    <button aria-label="Move category down" className={iconButton} disabled={categoryIndex === categories.length - 1 || pending !== null} onClick={() => move("category", null, category.id, 1)} title="Move down" type="button"><ChevronDown className="size-4" /></button>
+                    <button className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-destructive text-sm transition hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50" disabled={pending !== null} onClick={() => remove("category", category.id)} type="button"><Trash2 className="size-4" /> Delete</button>
+                    <button className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-primary-foreground text-sm transition hover:bg-primary/90" onClick={() => setEditor({ kind: "subcategory", category, value: null })} type="button"><Plus className="size-4" /> Add Subcategory</button>
+                  </div>
+                  {category.description ? <p className="text-muted-foreground text-sm">{category.description}</p> : null}
+                  {category.subcategories.length === 0 ? (
+                    <p className="rounded-lg border border-dashed px-3 py-4 text-center text-muted-foreground text-xs">No subcategories yet.</p>
+                  ) : (
+                    <ul className="divide-y divide-border/60 overflow-hidden rounded-lg border bg-background">
+                      {category.subcategories.map((subcategory, index) => (
+                        <li className="flex items-center gap-3 px-3 py-2" key={subcategory.id}>
+                          <IconPreview className="size-4 shrink-0 text-muted-foreground" name={subcategory.iconName} />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm">{subcategory.name}</p>
+                            <p className="truncate font-mono text-muted-foreground text-xs">{subcategory.searchQuery}</p>
+                          </div>
+                          <span className={`hidden whitespace-nowrap text-xs sm:inline ${subcategory.isEnabled ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"}`}>{subcategory.isEnabled ? "Enabled" : "Disabled"}</span>
+                          <div className="flex shrink-0 items-center">
+                            <button className={iconButton} aria-label="Move subcategory up" disabled={index === 0 || pending !== null} onClick={() => move("subcategory", category.id, subcategory.id, -1)} title="Move up" type="button"><ChevronUp className="size-4" /></button>
+                            <button className={iconButton} aria-label="Move subcategory down" disabled={index === category.subcategories.length - 1 || pending !== null} onClick={() => move("subcategory", category.id, subcategory.id, 1)} title="Move down" type="button"><ChevronDown className="size-4" /></button>
+                            <button className={iconButton} aria-label="Edit subcategory" onClick={() => setEditor({ kind: "subcategory", category, value: subcategory })} title="Edit" type="button"><Pencil className="size-4" /></button>
+                            <button className={`${iconButton} hover:bg-destructive/10 hover:text-destructive`} aria-label="Delete subcategory" disabled={pending !== null} onClick={() => remove("subcategory", subcategory.id)} title="Delete" type="button"><Trash2 className="size-4" /></button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </details>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
       {editor ? <ExploreEditor editor={editor} onClose={() => setEditor(null)} onSaved={async () => { setEditor(null); await refresh(); setStatus("Explore configuration saved."); }} /> : null}
-    </>
+    </section>
   );
 }
 
@@ -216,21 +236,21 @@ function ExploreEditor({ editor, onClose, onSaved }: { editor: Exclude<EditorSta
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
       <form onSubmit={(event) => { event.preventDefault(); if (!pending) void submit(new FormData(event.currentTarget)); }} className={`max-h-[92vh] w-full ${isCategory ? "max-w-xl" : "max-w-3xl"} overflow-y-auto rounded-xl border bg-background p-5 shadow-xl`}>
-        <div className="flex items-center justify-between"><h2 className="font-semibold text-xl"><EditableTranslation translationKey={`admin.explore.category.${current ? "edit" : "add"}${isCategory ? "" : "_subcategory"}`} defaultText={`${current ? "Edit" : "Add"} ${isCategory ? "Category" : "Subcategory"}`} /></h2><button className="cursor-pointer rounded-md border px-3 py-1.5 text-sm" disabled={pending} onClick={onClose} type="button"><EditableTranslation translationKey="common.close" defaultText="Close" /></button></div>
+        <div className="flex items-center justify-between gap-3 border-b pb-4"><h2 className="font-semibold text-lg"><EditableTranslation translationKey={`admin.explore.category.${current ? "edit" : "add"}${isCategory ? "" : "_subcategory"}`} defaultText={`${current ? "Edit" : "Add"} ${isCategory ? "Category" : "Subcategory"}`} /></h2><button className="cursor-pointer rounded-md border px-3 py-1.5 text-sm transition hover:bg-muted" disabled={pending} onClick={onClose} type="button"><EditableTranslation translationKey="common.close" defaultText="Close" /></button></div>
         <div className="mt-5 grid gap-4 md:grid-cols-2">
-          <Field label="Name"><input className="rounded-md border bg-background px-3 py-2" defaultValue={current?.name ?? ""} name="name" required /></Field>
-          <Field label="Display order"><input className="rounded-md border bg-background px-3 py-2" defaultValue={current?.displayOrder ?? 0} min={0} name="displayOrder" type="number" /></Field>
-          {!isCategory ? <Field className="md:col-span-2" label="Description"><textarea className="min-h-20 rounded-md border bg-background px-3 py-2" defaultValue={current?.description ?? ""} name="description" /></Field> : null}
-          <Field className="md:col-span-2" label="Internal search query"><input className="rounded-md border bg-background px-3 py-2" defaultValue={current?.searchQuery ?? ""} name="searchQuery" required /></Field>
-          {!isCategory ? <Field className="md:col-span-2" label="Icon"><div className="flex items-center gap-2"><IconPreview name={iconSearch} /><input className="flex-1 rounded-md border bg-background px-3 py-2" list="explore-icons" name="iconName" onChange={(event) => setIconSearch(event.target.value)} value={iconSearch} /><Search className="size-4" /></div><datalist id="explore-icons">{iconMatches.map((name) => <option key={name} value={name} />)}</datalist><div className="mt-2 flex flex-wrap gap-1">{iconMatches.slice(0, 12).map((name) => <button className="cursor-pointer rounded border p-2" key={name} onClick={() => setIconSearch(name)} title={name} type="button"><IconPreview className="size-4" name={name} /></button>)}</div></Field> : null}
+          <Field label="Name"><input className="h-9 rounded-md border bg-background px-3 text-sm" defaultValue={current?.name ?? ""} name="name" required /></Field>
+          <Field label="Display order"><input className="h-9 rounded-md border bg-background px-3 text-sm" defaultValue={current?.displayOrder ?? 0} min={0} name="displayOrder" type="number" /></Field>
+          {!isCategory ? <Field className="md:col-span-2" label="Description"><textarea className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm" defaultValue={current?.description ?? ""} name="description" /></Field> : null}
+          <Field className="md:col-span-2" label="Internal search query"><input className="h-9 rounded-md border bg-background px-3 text-sm" defaultValue={current?.searchQuery ?? ""} name="searchQuery" required /></Field>
+          {!isCategory ? <Field className="md:col-span-2" label="Icon"><div className="flex items-center gap-2"><IconPreview name={iconSearch} /><input className="h-9 flex-1 rounded-md border bg-background px-3 text-sm" list="explore-icons" name="iconName" onChange={(event) => setIconSearch(event.target.value)} value={iconSearch} /><Search className="size-4" /></div><datalist id="explore-icons">{iconMatches.map((name) => <option key={name} value={name} />)}</datalist><div className="mt-2 flex flex-wrap gap-1">{iconMatches.slice(0, 12).map((name) => <button className="cursor-pointer rounded border p-2" key={name} onClick={() => setIconSearch(name)} title={name} type="button"><IconPreview className="size-4" name={name} /></button>)}</div></Field> : null}
           {!isCategory ? <>
-            <Field label="Search type override"><select className="rounded-md border bg-background px-3 py-2" defaultValue={(current as ExploreSubcategoryDto | null)?.searchTypeOverride ?? ""} name="searchTypeOverride"><option value="">Use parent</option>{SEARCH_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></Field>
-            <Field label="Location override"><select className="rounded-md border bg-background px-3 py-2" defaultValue={(current as ExploreSubcategoryDto | null)?.locationModeOverride ?? ""} name="locationModeOverride"><option value="">Use parent</option>{LOCATION_MODES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></Field>
+            <Field label="Search type override"><select className="h-9 rounded-md border bg-background px-3 text-sm" defaultValue={(current as ExploreSubcategoryDto | null)?.searchTypeOverride ?? ""} name="searchTypeOverride"><option value="">Use parent</option>{SEARCH_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></Field>
+            <Field label="Location override"><select className="h-9 rounded-md border bg-background px-3 text-sm" defaultValue={(current as ExploreSubcategoryDto | null)?.locationModeOverride ?? ""} name="locationModeOverride"><option value="">Use parent</option>{LOCATION_MODES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></Field>
           </> : null}
           {!isCategory ? <label className="flex cursor-pointer items-center gap-2"><input defaultChecked={current?.isEnabled ?? true} name="isEnabled" type="checkbox" /> Enabled</label> : null}
         </div>
-        {error ? <p className="mt-4 text-destructive text-sm">{error}</p> : null}
-        <div className="mt-5 flex justify-end gap-2"><button className="cursor-pointer rounded-md border px-4 py-2 text-sm" disabled={pending} onClick={onClose} type="button"><EditableTranslation translationKey="common.cancel" defaultText="Cancel" /></button><button className="inline-flex min-w-28 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm" disabled={pending} type="submit">{pending ? <><LoaderCircle className="size-4 animate-spin" /> <EditableTranslation translationKey="common.saving" defaultText="Saving..." /></> : <EditableTranslation translationKey="common.save" defaultText="Save" />}</button></div>
+        {error ? <p className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-rose-800 text-sm dark:text-rose-300" role="alert">{error}</p> : null}
+        <div className="mt-5 flex justify-end gap-2 border-t pt-4"><button className="cursor-pointer rounded-md border px-4 py-2 text-sm" disabled={pending} onClick={onClose} type="button"><EditableTranslation translationKey="common.cancel" defaultText="Cancel" /></button><button className="inline-flex min-w-28 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm" disabled={pending} type="submit">{pending ? <><LoaderCircle className="size-4 animate-spin" /> <EditableTranslation translationKey="common.saving" defaultText="Saving..." /></> : <EditableTranslation translationKey="common.save" defaultText="Save" />}</button></div>
       </form>
     </div>
   );

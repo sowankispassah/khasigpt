@@ -59,7 +59,7 @@ export function ExplorePhotoCacheSettings() {
     } catch { setError(true); setConfirmReset(false); }
     finally { setPending(null); }
   }
-  return <div className="mt-4 space-y-3 rounded-lg border p-4" aria-busy={loading || Boolean(pending)}>
+  return <div className="mt-4 space-y-3 border-t pt-4" aria-busy={loading || Boolean(pending)}>
     <h3 className="font-medium text-sm"><Copy name="cache_title" /></h3>
     <p className="text-muted-foreground text-xs"><Copy name="cache_description" /></p>
     {loading ? <output className="flex items-center gap-2 text-sm"><Loader2 className="size-4 animate-spin" /><Copy name="cache_loading" /></output> : policy && <>
@@ -81,8 +81,8 @@ export function ExplorePhotoCacheSettings() {
       </div>
       <p className="text-muted-foreground text-xs"><Copy name="cache_note" /></p>
     </>}
-    {error && <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive"><Copy name="cache_error" /><Button variant="outline" className="cursor-pointer" disabled={loading || Boolean(pending)} onClick={() => void load()}><Copy name="cache_retry" /></Button></div>}
-    {result && <output className="block text-sm"><Copy name={result === "save" ? "cache_saved" : "cache_reset_done"} /></output>}
+    {error && <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-rose-800 text-sm dark:text-rose-300"><Copy name="cache_error" /><Button variant="outline" className="cursor-pointer" disabled={loading || Boolean(pending)} onClick={() => void load()}><Copy name="cache_retry" /></Button></div>}
+    {result && <output className="block rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-emerald-800 text-sm dark:text-emerald-300"><Copy name={result === "save" ? "cache_saved" : "cache_reset_done"} /></output>}
     <AlertDialog open={confirmReset} onOpenChange={(open) => { if (!pending) setConfirmReset(open); }}>
       <AlertDialogContent>
         <AlertDialogHeader><AlertDialogTitle><Copy name="cache_reset_title" /></AlertDialogTitle><AlertDialogDescription><Copy name="cache_reset_description" /></AlertDialogDescription></AlertDialogHeader>

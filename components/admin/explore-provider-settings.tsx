@@ -55,20 +55,24 @@ export function ExploreProviderSettings() {
       setSerpentPhotoSource(parseSerpentPhotoSource(value.serpentPhotoSource));
     } catch { setError(true); } finally { setSaving(false); }
   }
-  return <section className="rounded-xl border bg-card p-5" aria-busy={loading || saving}>
-    <h2 className="font-semibold text-lg"><Copy name="title" text="Place search provider" /></h2>
-    <p className="mt-1 text-muted-foreground text-sm"><Copy name="description" text={EXPLORE_PROVIDER_COPY.description} /></p>
-    {loading ? <output className="mt-4 flex items-center gap-2 text-sm"><Loader2 className="size-4 animate-spin" /><Copy name="loading" text="Loading provider settings…" /></output> : configuration ? <>
-      <label htmlFor="explore-provider" className="mt-4 block text-sm">{translate("admin.explore.provider.label", "Provider")}</label>
+  return <section className="flex flex-col rounded-xl border bg-card shadow-xs" aria-busy={loading || saving}>
+    <div className="border-b px-5 py-4">
+      <h2 className="font-semibold text-base"><Copy name="title" text="Place search provider" /></h2>
+      <p className="mt-0.5 text-muted-foreground text-sm"><Copy name="description" text={EXPLORE_PROVIDER_COPY.description} /></p>
+    </div>
+    <div className="p-5">
+    {loading ? <output className="flex items-center gap-2 text-muted-foreground text-sm"><Loader2 className="size-4 animate-spin" /><Copy name="loading" text="Loading provider settings…" /></output> : configuration ? <>
+      <ul className="mb-4 flex flex-wrap gap-2 text-xs">{(["google", "serper", "serpent"] as const).map((provider) => <li className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 font-medium ring-1 ring-inset ${configuration.configured[provider] ? "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:text-emerald-400" : "bg-rose-500/10 text-rose-700 ring-rose-500/20 dark:text-rose-400"}`} key={provider}><Copy name={provider} text={names[provider]} />: <Copy name={configuration.configured[provider] ? "configured" : "missing"} text={configuration.configured[provider] ? "Key configured" : "Key missing"} /></li>)}</ul>
+      <label htmlFor="explore-provider" className="block font-medium text-sm">{translate("admin.explore.provider.label", "Provider")}</label>
       <div className="mt-2 flex flex-wrap items-center gap-3">
-        <select id="explore-provider" className="h-10 cursor-pointer rounded-md border bg-background px-3 text-sm" value={selected} disabled={saving} onChange={(event) => { setSelected(event.target.value as ExploreProvider); setSaved(false); }}>
+        <select id="explore-provider" className="h-10 min-w-0 flex-1 cursor-pointer rounded-md border bg-background px-3 text-sm sm:flex-none" value={selected} disabled={saving} onChange={(event) => { setSelected(event.target.value as ExploreProvider); setSaved(false); }}>
           {EXPLORE_PROVIDERS.map((provider) => <option key={provider} value={provider} disabled={!configuration.configured[provider]}>{translate(`admin.explore.provider.${provider}`, names[provider])}</option>)}
         </select>
         <Button className="cursor-pointer" disabled={saving || (selected === configuration.provider && JSON.stringify(budget) === JSON.stringify(configuration.googleBudget) && serpentMapsQuickEnabled === parseSerpentMapsQuickEnabled(configuration.serpentMapsQuickEnabled) && serpentPhotoSource === parseSerpentPhotoSource(configuration.serpentPhotoSource)) || !configuration.configured[selected] || (selected === "google" && budget.enabled && !configuration.configured[budget.fallbackProvider]) || budget.month !== googleBillingMonth()} onClick={save}>
           {saving && <Loader2 className="mr-2 size-4 animate-spin" />}<Copy name={saving ? "saving" : "save"} text={saving ? "Saving…" : "Save provider"} />
         </Button>
       </div>
-      {selected === "google" && <div className="mt-4 space-y-3 rounded-lg border p-4">
+      {selected === "google" && <div className="mt-5 space-y-3 border-t pt-4">
         <label aria-label={translate("admin.explore.provider.fallback_enabled", EXPLORE_PROVIDER_COPY.fallback_enabled)} className="flex cursor-pointer items-center gap-2 text-sm"><input type="checkbox" className="cursor-pointer" checked={budget.enabled} disabled={saving} onChange={(event) => { setBudget({ ...budget, enabled: event.target.checked }); setSaved(false); }} /><Copy name="fallback_enabled" text={EXPLORE_PROVIDER_COPY.fallback_enabled} /></label>
         {budget.enabled && <>
           <label aria-label={translate("admin.explore.provider.fallback_label", EXPLORE_PROVIDER_COPY.fallback_label)} htmlFor="explore-fallback" className="block text-sm"><Copy name="fallback_label" text={EXPLORE_PROVIDER_COPY.fallback_label} /></label>
@@ -84,7 +88,7 @@ export function ExploreProviderSettings() {
           <p className="text-muted-foreground text-xs"><Copy name="reservation_note" text={EXPLORE_PROVIDER_COPY.reservation_note} /></p>
         </>}
       </div>}
-      {(selected === "serpent" || (selected === "google" && budget.enabled && budget.fallbackProvider === "serpent")) && <div className="mt-4 space-y-2 rounded-lg border p-4">
+      {(selected === "serpent" || (selected === "google" && budget.enabled && budget.fallbackProvider === "serpent")) && <div className="mt-5 space-y-2 border-t pt-4">
         <h3 className="font-medium text-sm"><Copy name="serpent_options" text={EXPLORE_PROVIDER_COPY.serpent_options} /></h3>
         <label aria-label={translate("admin.explore.provider.serpent_maps_quick", EXPLORE_PROVIDER_COPY.serpent_maps_quick)} className="flex cursor-pointer items-center gap-2 text-sm">
           <input type="checkbox" className="cursor-pointer" checked={serpentMapsQuickEnabled} disabled={saving} onChange={(event) => { setSerpentMapsQuickEnabled(event.target.checked); setSaved(false); }} />
@@ -99,10 +103,10 @@ export function ExploreProviderSettings() {
         <p className="text-muted-foreground text-xs"><Copy name="serpent_maps_quick_description" text={EXPLORE_PROVIDER_COPY.serpent_maps_quick_description} /></p>
         <ExplorePhotoCacheSettings />
       </div>}
-      <p className="mt-3 text-muted-foreground text-xs"><Copy name="credentials" text="Services without a configured server API key are unavailable. A configured key still requires an active account, sufficient credits, and the appropriate API enabled." /></p>
-      <ul className="mt-3 flex flex-wrap gap-3 text-xs">{(["google", "serper", "serpent"] as const).map((provider) => <li key={provider}><Copy name={provider} text={names[provider]} />: <Copy name={configuration.configured[provider] ? "configured" : "missing"} text={configuration.configured[provider] ? "Key configured" : "Key missing"} /></li>)}</ul>
+      <p className="mt-5 border-t pt-4 text-muted-foreground text-xs"><Copy name="credentials" text="Services without a configured server API key are unavailable. A configured key still requires an active account, sufficient credits, and the appropriate API enabled." /></p>
     </> : null}
-    {error && <div role="alert" className="mt-4 flex items-center gap-3 text-sm text-destructive"><Copy name="error" text="Provider settings could not be loaded or saved. Please try again." /><Button variant="outline" className="cursor-pointer" disabled={loading || saving} onClick={() => void load()}><Copy name="retry" text="Reload settings" /></Button></div>}
-    {saved && <output className="mt-3 block text-sm"><Copy name="saved" text="Provider saved. New searches will use this selection." /></output>}
+    {error && <div role="alert" className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-rose-800 text-sm dark:text-rose-300"><Copy name="error" text="Provider settings could not be loaded or saved. Please try again." /><Button variant="outline" className="cursor-pointer" disabled={loading || saving} onClick={() => void load()}><Copy name="retry" text="Reload settings" /></Button></div>}
+    {saved && <output className="mt-4 block rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-emerald-800 text-sm dark:text-emerald-300"><Copy name="saved" text="Provider saved. New searches will use this selection." /></output>}
+    </div>
   </section>;
 }

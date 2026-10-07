@@ -1,5 +1,15 @@
 "use client";
 
+import {
+  ImageIcon,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  TriangleAlert,
+  UserRound,
+  UserRoundCheck,
+} from "lucide-react";
 import Image from "next/image";
 import {
   useCallback,
@@ -16,7 +26,14 @@ import {
   deleteCharacterAction,
   updateCharacterAction,
 } from "@/app/(admin)/actions";
-import { AdminPageHeader } from "@/components/admin/admin-ui";
+import {
+  AdminEmptyState,
+  AdminNotice,
+  AdminPageHeader,
+  AdminPanel,
+  AdminStatCard,
+  AdminStatusPill,
+} from "@/components/admin/admin-ui";
 import { useTranslation } from "@/components/language-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,6 +63,7 @@ import {
   normalizeCharacterReferences,
 } from "@/lib/ai/character-reference-types";
 import type { CharacterRefImage } from "@/lib/db/schema";
+import { doneGlobalProgress, startGlobalProgress } from "@/lib/ui/global-progress";
 import { cn } from "@/lib/utils";
 
 const IDENTITY_REFERENCE_SLOTS: Array<{
@@ -172,6 +190,11 @@ function normalizeAliases(value: string) {
     .filter(Boolean);
 }
 
+const updatedFormatter = new Intl.DateTimeFormat("en-IN", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
 function formatDate(value: string) {
   if (!value) {
     return "—";
@@ -180,7 +203,45 @@ function formatDate(value: string) {
   if (Number.isNaN(parsed.getTime())) {
     return value;
   }
-  return parsed.toLocaleString();
+  return updatedFormatter.format(parsed);
+}
+
+function frontReferenceUrl(refImages: CharacterRefImage[]) {
+  const front = normalizeCharacterReferences(refImages).find(
+    (ref) => ref.category === "identity" && ref.type === "front"
+  );
+  return front?.url && isOptimizedPreviewUrl(front.url) ? front.url : null;
+}
+
+function CharacterAvatar({ character }: { character: SerializedCharacter }) {
+  const url = frontReferenceUrl(character.refImages ?? []);
+  if (url) {
+    return (
+      <Image
+        alt=""
+        className="size-9 shrink-0 rounded-full border object-cover"
+        height={36}
+        src={url}
+        width={36}
+      />
+    );
+  }
+  return (
+    <span
+      aria-hidden="true"
+      className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted font-medium text-muted-foreground text-xs uppercase"
+    >
+      {character.canonicalName.slice(0, 1)}
+    </span>
+  );
+}
+
+function CharacterStatusPill({ enabled }: { enabled: boolean }) {
+  return (
+    <AdminStatusPill tone={enabled ? "success" : "neutral"}>
+      {enabled ? "Enabled" : "Disabled"}
+    </AdminStatusPill>
+  );
 }
 
 function buildEditableRefImages(refImages: CharacterRefImage[]) {
@@ -218,9 +279,6 @@ export function AdminCharactersManager({
   const [urlLabel, setUrlLabel] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [isPending, startTransition] = useTransition();
-  const [progressVisible, setProgressVisible] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const progressTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const uploadTargetRef = useRef<UploadTarget | null>(null);
   const [galleryOpen, setGalleryOpen] = useState(false);
@@ -231,34 +289,9 @@ export function AdminCharactersManager({
     setCharactersState(characters.map(serializeCharacter));
   }, [characters]);
 
-  const clearProgressTimers = useCallback(() => {
-    for (const timer of progressTimers.current) {
-      clearTimeout(timer);
-    }
-    progressTimers.current = [];
-  }, []);
-
-  const beginProgress = useCallback(() => {
-    clearProgressTimers();
-    setProgressVisible(true);
-    setProgress(12);
-    progressTimers.current = [
-      setTimeout(() => setProgress(38), 140),
-      setTimeout(() => setProgress(62), 320),
-      setTimeout(() => setProgress(86), 620),
-    ];
-  }, [clearProgressTimers]);
-
-  const finishProgress = useCallback(() => {
-    clearProgressTimers();
-    setProgress(100);
-    setTimeout(() => {
-      setProgressVisible(false);
-      setProgress(0);
-    }, 260);
-  }, [clearProgressTimers]);
-
-  useEffect(() => () => clearProgressTimers(), [clearProgressTimers]);
+  // Reuse the app-wide top progress bar for uploads and saves.
+  const beginProgress = useCallback(() => startGlobalProgress(), []);
+  const finishProgress = useCallback(() => doneGlobalProgress(), []);
 
   const filteredCharacters = useMemo(() => {
     const normalized = searchTerm.trim().toLowerCase();
@@ -274,6 +307,17 @@ export function AdminCharactersManager({
       );
     });
   }, [charactersState, searchTerm]);
+
+  const stats = useMemo(
+    () => ({
+      enabled: charactersState.filter((character) => character.enabled).length,
+      missingFront: charactersState.filter(
+        (character) => !hasFrontReference(character.refImages)
+      ).length,
+      total: charactersState.length,
+    }),
+    [charactersState]
+  );
 
   const openCreateSheet = useCallback(() => {
     setEditingCharacter(null);
@@ -595,15 +639,6 @@ export function AdminCharactersManager({
 
   return (
     <div className="flex flex-col gap-6">
-      {progressVisible ? (
-        <div className="fixed inset-x-0 top-0 z-30 h-1 bg-border/50">
-          <div
-            className="h-full bg-primary transition-[width] duration-200"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      ) : null}
-
       <AdminPageHeader
         actions={
           <Button
@@ -611,130 +646,254 @@ export function AdminCharactersManager({
             onClick={openCreateSheet}
             type="button"
           >
+            <Plus className="size-4" />
             New character
           </Button>
         }
-        description="Manage aliases and reference images for character injection."
+        description="Manage the people image generation can draw: names, aliases and reference photos."
         navHref="/admin/characters"
         title="Characters"
       />
 
-      <section className="rounded-2xl border bg-card/60 p-4 shadow-sm">
-        {!charactersConfirmed ? (
-          <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
-            Character rows could not be confirmed. The table is hidden instead
-            of showing an empty fallback; refresh this section to retry.
-          </div>
-        ) : null}
-        <div className="flex flex-wrap items-center gap-3">
-          <Input
-            className="max-w-xs"
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search name or alias"
-            value={searchTerm}
+      {charactersConfirmed ? (
+        <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+          <AdminStatCard
+            hint="In the character library"
+            icon={UserRound}
+            label="Characters"
+            value={stats.total.toLocaleString("en-IN")}
           />
-          <span className="text-muted-foreground text-xs">
-            Reference images are selected automatically from the stored set for each prompt.
-          </span>
+          <AdminStatCard
+            hint="Available to image generation"
+            icon={UserRoundCheck}
+            label="Enabled"
+            value={stats.enabled.toLocaleString("en-IN")}
+          />
+          <AdminStatCard
+            hint="Need a front face before use"
+            icon={TriangleAlert}
+            label="Missing front face"
+            value={stats.missingFront.toLocaleString("en-IN")}
+          />
+        </section>
+      ) : (
+        <AdminNotice>
+          Character rows could not be confirmed. The list is hidden instead of
+          showing an empty fallback; refresh this section to retry.
+        </AdminNotice>
+      )}
+
+      <AdminPanel
+        description="Reference images are selected automatically from the stored set for each prompt."
+        title="Character library"
+      >
+        <div className="flex flex-col gap-2 border-b px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative w-full sm:max-w-xs">
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              aria-label="Search characters"
+              className="pl-9"
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search name or alias"
+              value={searchTerm}
+            />
+          </div>
+          {charactersConfirmed ? (
+            <span className="text-muted-foreground text-xs">
+              {filteredCharacters.length.toLocaleString("en-IN")} of{" "}
+              {charactersState.length.toLocaleString("en-IN")} characters
+            </span>
+          ) : null}
         </div>
 
-        <div className="mt-4 overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b bg-muted/40 text-muted-foreground text-xs">
               <tr>
-                <th className="px-3 py-3 text-left font-medium">Character</th>
-                <th className="px-3 py-3 text-left font-medium">Aliases</th>
-                <th className="px-3 py-3 text-left font-medium">Refs</th>
-                <th className="px-3 py-3 text-left font-medium">Status</th>
-                <th className="px-3 py-3 text-left font-medium">Updated</th>
-                <th className="px-3 py-3 text-left font-medium">Actions</th>
+                <th className="px-4 py-2.5 text-left font-medium" scope="col">
+                  Character
+                </th>
+                <th
+                  className="hidden px-4 py-2.5 text-left font-medium md:table-cell"
+                  scope="col"
+                >
+                  Aliases
+                </th>
+                <th
+                  className="hidden px-4 py-2.5 text-left font-medium sm:table-cell"
+                  scope="col"
+                >
+                  References
+                </th>
+                <th
+                  className="hidden px-4 py-2.5 text-left font-medium sm:table-cell"
+                  scope="col"
+                >
+                  Status
+                </th>
+                <th
+                  className="hidden px-4 py-2.5 text-left font-medium lg:table-cell"
+                  scope="col"
+                >
+                  Updated
+                </th>
+                <th className="px-4 py-2.5 text-right font-medium" scope="col">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-border/60">
               {!charactersConfirmed ? (
                 <tr>
-                  <td
-                    className="px-3 py-6 text-center text-muted-foreground"
-                    colSpan={6}
-                  >
-                    Unable to load characters.
+                  <td colSpan={6}>
+                    <AdminEmptyState
+                      description="Refresh this section to retry."
+                      title="Unable to load characters"
+                    />
                   </td>
                 </tr>
               ) : filteredCharacters.length === 0 ? (
                 <tr>
-                  <td
-                    className="px-3 py-6 text-center text-muted-foreground"
-                    colSpan={6}
-                  >
-                    No characters yet.
+                  <td colSpan={6}>
+                    <AdminEmptyState
+                      description={
+                        searchTerm.trim()
+                          ? "Try a different name or alias."
+                          : "Add the first character to use it in image generation."
+                      }
+                      title={
+                        searchTerm.trim()
+                          ? "No characters match your search"
+                          : "No characters yet"
+                      }
+                    />
                   </td>
                 </tr>
               ) : (
-                filteredCharacters.map((character) => (
-                  <tr
-                    className="border-b last:border-b-0"
-                    key={character.id}
-                  >
-                    <td className="px-3 py-3">
-                      <div className="font-medium">
-                        {character.canonicalName}
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-xs text-muted-foreground">
-                      {character.aliases.length > 0
-                        ? character.aliases.join(", ")
-                        : "—"}
-                    </td>
-                    <td className="px-3 py-3">
-                      {character.refImages.length > 0 ? (
-                        <Button
-                          className="cursor-pointer"
-                          onClick={() => openGallery(character)}
-                          size="sm"
-                          type="button"
-                          variant="ghost"
-                        >
-                          {character.refImages.length}
-                        </Button>
-                      ) : (
-                        <span className="text-muted-foreground text-xs">0</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3">
-                      <Badge variant={character.enabled ? "default" : "outline"}>
-                        {character.enabled ? "Enabled" : "Disabled"}
-                      </Badge>
-                    </td>
-                    <td className="px-3 py-3 text-xs text-muted-foreground">
-                      {formatDate(character.updatedAt)}
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          className="cursor-pointer"
-                          onClick={() => openEditSheet(character)}
-                          size="sm"
-                          variant="outline"
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          className="cursor-pointer"
-                          onClick={() => handleDelete(character.id)}
-                          size="sm"
-                          variant="destructive"
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                filteredCharacters.map((character) => {
+                  const aliases =
+                    character.aliases.length > 0
+                      ? character.aliases.join(", ")
+                      : null;
+                  const missingFront = !hasFrontReference(character.refImages);
+                  return (
+                    <tr
+                      className="align-middle transition hover:bg-muted/30"
+                      key={character.id}
+                    >
+                      <td className="w-full max-w-0 px-4 py-3 sm:w-auto sm:max-w-[18rem]">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <CharacterAvatar character={character} />
+                          <div className="min-w-0">
+                            <div className="break-words font-medium sm:truncate">
+                              {character.canonicalName}
+                            </div>
+                            <div className="truncate text-muted-foreground text-xs md:hidden">
+                              {aliases ?? "No aliases"}
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-muted-foreground text-xs sm:hidden">
+                              <CharacterStatusPill enabled={character.enabled} />
+                              {character.refImages.length > 0 ? (
+                                <button
+                                  className="inline-flex cursor-pointer items-center gap-1 hover:text-primary hover:underline"
+                                  onClick={() => openGallery(character)}
+                                  type="button"
+                                >
+                                  <ImageIcon aria-hidden="true" className="size-3.5" />
+                                  {character.refImages.length} refs
+                                </button>
+                              ) : (
+                                <span>No refs</span>
+                              )}
+                              {missingFront ? (
+                                <AdminStatusPill tone="warning">
+                                  No front face
+                                </AdminStatusPill>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="hidden max-w-[22rem] px-4 py-3 md:table-cell">
+                        <p className="line-clamp-2 text-muted-foreground text-xs">
+                          {aliases ?? "—"}
+                        </p>
+                      </td>
+                      <td className="hidden px-4 py-3 sm:table-cell">
+                        <div className="flex flex-col items-start gap-1">
+                          {character.refImages.length > 0 ? (
+                            <button
+                              className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md text-sm hover:text-primary hover:underline"
+                              onClick={() => openGallery(character)}
+                              type="button"
+                            >
+                              <ImageIcon
+                                aria-hidden="true"
+                                className="size-4 text-muted-foreground"
+                              />
+                              {character.refImages.length}
+                              <span className="sr-only">
+                                reference images for {character.canonicalName}
+                              </span>
+                            </button>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">
+                              None
+                            </span>
+                          )}
+                          {missingFront ? (
+                            <AdminStatusPill tone="warning">
+                              No front face
+                            </AdminStatusPill>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="hidden px-4 py-3 sm:table-cell">
+                        <CharacterStatusPill enabled={character.enabled} />
+                      </td>
+                      <td className="hidden whitespace-nowrap px-4 py-3 text-muted-foreground text-xs lg:table-cell">
+                        <time dateTime={character.updatedAt} suppressHydrationWarning>
+                          {formatDate(character.updatedAt)}
+                        </time>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            aria-label={`Edit ${character.canonicalName}`}
+                            className="cursor-pointer"
+                            onClick={() => openEditSheet(character)}
+                            size="icon"
+                            title="Edit"
+                            type="button"
+                            variant="ghost"
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                          <Button
+                            aria-label={`Delete ${character.canonicalName}`}
+                            className="cursor-pointer text-destructive hover:text-destructive"
+                            disabled={isPending}
+                            onClick={() => handleDelete(character.id)}
+                            size="icon"
+                            title="Delete"
+                            type="button"
+                            variant="ghost"
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
-      </section>
+      </AdminPanel>
 
       <Sheet onOpenChange={setSheetOpen} open={sheetOpen}>
         <SheetContent className="flex w-full flex-col gap-6 overflow-y-auto sm:max-w-2xl">
@@ -812,7 +971,7 @@ export function AdminCharactersManager({
                 />
               </div>
 
-              <div className="rounded-lg border bg-muted/20 p-4">
+              <div className="rounded-lg border p-4">
                 <h3 className="font-medium text-sm">Physical traits</h3>
                 <p className="text-muted-foreground text-xs">
                   These fields are injected into the prompt for more accurate
@@ -864,7 +1023,7 @@ export function AdminCharactersManager({
                 </div>
               </div>
 
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
                 <input
                   checked={formState.enabled}
                   className="cursor-pointer"
@@ -880,7 +1039,7 @@ export function AdminCharactersManager({
               </label>
             </div>
 
-            <div className="rounded-xl border bg-muted/30 p-4">
+            <div className="border-t pt-6">
               <input
                 accept="image/png,image/jpeg"
                 className="hidden"
@@ -1207,10 +1366,14 @@ export function AdminCharactersManager({
               </Button>
               <Button
                 className="cursor-pointer"
-                disabled={isPending}
+                disabled={isPending || isUploading}
                 type="submit"
               >
-                {editingCharacter ? "Save changes" : "Create character"}
+                {isPending
+                  ? "Saving..."
+                  : editingCharacter
+                    ? "Save changes"
+                    : "Create character"}
               </Button>
             </div>
           </form>
