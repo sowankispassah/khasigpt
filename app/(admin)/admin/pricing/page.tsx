@@ -26,6 +26,8 @@ import { KHASIGPT_GENERAL_SYSTEM_PROMPT } from "@/lib/ai/identity";
 import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
 import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import {
+  type CreditPlanForConversion,
+  calculatePlanModelEconomics,
   calculateWalletUnitsPerInr,
   normalizeMarkupMultiplier,
   selectBaseCreditPlan,
@@ -56,7 +58,10 @@ import { LIVE_VOICE_MODEL_CONFIG_CACHE_TAG } from "@/lib/voice/live";
 import { isDurationVoiceModel, readDurationVoicePricing } from "@/lib/voice/pricing";
 import { loadWebSearchConfig } from "@/lib/web-search/config";
 import { FeatureAccessModeControl } from "../settings/feature-access-mode-control";
-import { PlanPricingFields } from "../settings/plan-pricing-fields";
+import {
+  type ModelCostPreview,
+  PlanPricingFields,
+} from "../settings/plan-pricing-fields";
 import { PricingPlanEditForm } from "../settings/pricing-plan-edit-form";
 import {
   ChatModelConfigurationForm,
@@ -110,15 +115,6 @@ const PROVIDER_LABELS: Record<string, string> = {
   openai: "OpenAI",
 };
 
-type ModelCostPreview = {
-  id: string;
-  isDefault: boolean;
-  name: string;
-  providerCostPerMillionInr: number;
-  providerCostPerMillionUsd: number;
-  providerLabel: string;
-};
-
 type PlanTranslation = { description: string; name: string };
 
 function toIsoString(value: Date | string | null | undefined) {
@@ -129,28 +125,27 @@ function toIsoString(value: Date | string | null | undefined) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function buildModelCostPreviews(
-  models: AdminModelPricingSnapshotRow[],
-  usdToInr: number
-) {
+function buildModelCostPreviews(models: AdminModelPricingSnapshotRow[]) {
   return models
     .filter(
       (model) =>
         model.type === "chat" && model.isEnabled && !model.deletedAt
     )
-    .map<ModelCostPreview>((model) => {
-      const providerCostPerMillionUsd =
-        Number(model.inputProviderCostPerMillion ?? 0) +
-        Number(model.outputProviderCostPerMillion ?? 0);
-      return {
-        id: model.id,
-        isDefault: model.isDefault,
-        name: model.displayName,
-        providerCostPerMillionInr: providerCostPerMillionUsd * usdToInr,
-        providerCostPerMillionUsd,
-        providerLabel: PROVIDER_LABELS[model.provider] ?? model.provider,
-      };
-    });
+    .map<ModelCostPreview>((model) => ({
+      id: model.id,
+      inputCostPerMillionUsd: Math.max(
+        0,
+        Number(model.inputProviderCostPerMillion ?? 0)
+      ),
+      isDefault: model.isDefault,
+      markupMultiplier: normalizeMarkupMultiplier(model.markupMultiplier),
+      name: model.displayName,
+      outputCostPerMillionUsd: Math.max(
+        0,
+        Number(model.outputProviderCostPerMillion ?? 0)
+      ),
+      providerLabel: PROVIDER_LABELS[model.provider] ?? model.provider,
+    }));
 }
 
 function buildPlanTranslations(
@@ -179,7 +174,24 @@ function buildPlanTranslations(
   return { activeLanguages, result };
 }
 
-function CreatePricingPlanForm({ modelCosts, usdToInr }: { modelCosts: ModelCostPreview[]; usdToInr: number }) {
+function toBasePlanCandidates(plans: PricingPlans): CreditPlanForConversion[] {
+  return plans
+    .filter((plan) => plan.isActive && !plan.deletedAt)
+    .map((plan) => ({
+      priceInPaise: plan.priceInPaise,
+      tokenAllowance: plan.tokenAllowance,
+    }));
+}
+
+function CreatePricingPlanForm({
+  basePlanCandidates,
+  modelCosts,
+  usdToInr,
+}: {
+  basePlanCandidates: CreditPlanForConversion[];
+  modelCosts: ModelCostPreview[];
+  usdToInr: number;
+}) {
   return (
     <form action={createPricingPlanAction} className="grid gap-4 md:grid-cols-2">
       <div className="flex flex-col gap-2">
@@ -196,7 +208,13 @@ function CreatePricingPlanForm({ modelCosts, usdToInr }: { modelCosts: ModelCost
         <p className="text-muted-foreground text-xs">Must exactly match the in-app product id configured in Google Play Console.</p>
       </div>
       <div className="space-y-3 md:col-span-2">
-        <PlanPricingFields inputIdPrefix="plan-create" modelCosts={modelCosts} usdToInr={usdToInr} />
+        <PlanPricingFields
+          basePlanCandidates={basePlanCandidates}
+          includeDraftInBase
+          inputIdPrefix="plan-create"
+          modelCosts={modelCosts}
+          usdToInr={usdToInr}
+        />
         <p className="text-muted-foreground text-xs">Display credits are calculated automatically ({TOKENS_PER_CREDIT} tokens per credit).</p>
       </div>
       <div className="flex flex-col gap-2">
@@ -268,60 +286,49 @@ type PricingPlans = Awaited<ReturnType<typeof listAdminPricingPlans>>;
 function serializePlans({
   activePlans,
   referenceModel,
-  models,
   recommendedPlanId,
   usdToInr,
 }: {
   activePlans: PricingPlans;
   referenceModel: ModelCostPreview | null;
-  models: AdminModelPricingSnapshotRow[];
   recommendedPlanId: string | null;
   usdToInr: number;
 }) {
-  const referenceModelRecord = referenceModel
-    ? models.find((model) => model.id === referenceModel.id)
-    : null;
+  const basePlan = selectBaseCreditPlan(toBasePlanCandidates(activePlans));
 
   return activePlans.map((plan) => {
     const priceInRupees = plan.priceInPaise / 100;
     const credits = Math.floor(plan.tokenAllowance / TOKENS_PER_CREDIT);
     const userCreditCostInr = credits > 0 ? priceInRupees / credits : null;
-    const effectivePerMillionInr = plan.tokenAllowance > 0
-      ? (priceInRupees / plan.tokenAllowance) * 1_000_000
+    const economics = referenceModel
+      ? calculatePlanModelEconomics({
+          basePlan,
+          inputCostPerMillionUsd: referenceModel.inputCostPerMillionUsd,
+          markupMultiplier: referenceModel.markupMultiplier,
+          outputCostPerMillionUsd: referenceModel.outputCostPerMillionUsd,
+          plan,
+          usdToInr,
+        })
       : null;
-    const effectivePerMillionUsd =
-      effectivePerMillionInr !== null && usdToInr > 0
-        ? effectivePerMillionInr / usdToInr
-        : null;
-    const marginPercent =
-      effectivePerMillionInr !== null &&
-      effectivePerMillionInr > 0 &&
-      referenceModel
-        ? ((effectivePerMillionInr -
-            referenceModel.providerCostPerMillionInr) /
-          effectivePerMillionInr) *
-          100
-        : null;
 
     return {
       billingCycleDays: plan.billingCycleDays,
       credits,
+      customerInputPerMillionInr:
+        economics?.customerInputPerMillionInr ?? null,
+      customerOutputPerMillionInr:
+        economics?.customerOutputPerMillionInr ?? null,
       deletedAt: toIsoString(plan.deletedAt),
       description: plan.description,
-      effectivePerMillionInr,
-      effectivePerMillionUsd,
       id: plan.id,
       isActive: plan.isActive,
       isRecommended: recommendedPlanId === plan.id,
-      marginPercent,
+      marginPercent: economics?.marginPercent ?? null,
       name: plan.name,
       priceInPaise: plan.priceInPaise,
-      providerInputCostUsd: referenceModelRecord
-        ? Number(referenceModelRecord.inputProviderCostPerMillion ?? 0)
-        : null,
-      providerOutputCostUsd: referenceModelRecord
-        ? Number(referenceModelRecord.outputProviderCostPerMillion ?? 0)
-        : null,
+      providerInputCostUsd: referenceModel?.inputCostPerMillionUsd ?? null,
+      providerOutputCostUsd: referenceModel?.outputCostPerMillionUsd ?? null,
+      realizedMarkup: economics?.realizedMarkup ?? null,
       tokenAllowance: plan.tokenAllowance,
       updatedAt: toIsoString(plan.updatedAt),
       userCreditCostInr,
@@ -629,7 +636,7 @@ async function PricingManagementContent({
     ? recommendedState.data
     : null;
   const usdToInr = exchangeRateState.data.rate;
-  const modelCosts = buildModelCostPreviews(modelsState.data, usdToInr);
+  const modelCosts = buildModelCostPreviews(modelsState.data);
   const referenceModel =
     modelCosts.find((model) => model.isDefault) ??
     modelCosts[0] ??
@@ -663,7 +670,6 @@ async function PricingManagementContent({
   const serializedPlans = serializePlans({
     activePlans,
     referenceModel,
-    models: modelsState.data,
     recommendedPlanId,
     usdToInr,
   });
@@ -672,6 +678,9 @@ async function PricingManagementContent({
       plan.id,
       <div className="space-y-6" key={plan.id}>
         <PricingPlanEditForm
+          basePlanCandidates={toBasePlanCandidates(
+            activePlans.filter((candidate) => candidate.id !== plan.id)
+          )}
           modelCosts={modelCosts}
           plan={plan}
           usdToInr={usdToInr}
@@ -726,7 +735,11 @@ async function PricingManagementContent({
     <PricingManagementTable
       referenceModelName={referenceModel?.name ?? null}
       createForm={
-        <CreatePricingPlanForm modelCosts={modelCosts} usdToInr={usdToInr} />
+        <CreatePricingPlanForm
+          basePlanCandidates={toBasePlanCandidates(activePlans)}
+          modelCosts={modelCosts}
+          usdToInr={usdToInr}
+        />
       }
       deletedForms={buildDeletedForms(deletedPlans)}
       editForms={editForms}
@@ -748,7 +761,6 @@ function PricingManagementLoading({
   const serializedPlans = serializePlans({
     activePlans,
     referenceModel: null,
-    models: [],
     recommendedPlanId: null,
     usdToInr,
   });
@@ -757,7 +769,11 @@ function PricingManagementLoading({
     <PricingManagementTable
       referenceModelName={null}
       createForm={
-        <CreatePricingPlanForm modelCosts={[]} usdToInr={usdToInr} />
+        <CreatePricingPlanForm
+          basePlanCandidates={toBasePlanCandidates(activePlans)}
+          modelCosts={[]}
+          usdToInr={usdToInr}
+        />
       }
       deletedForms={buildDeletedForms(deletedPlans)}
       detailsLoading
@@ -1042,6 +1058,7 @@ export default async function AdminPricingPage({
           referenceModelName={null}
           createForm={
             <CreatePricingPlanForm
+              basePlanCandidates={[]}
               modelCosts={[]}
               usdToInr={getFallbackUsdToInrRate()}
             />

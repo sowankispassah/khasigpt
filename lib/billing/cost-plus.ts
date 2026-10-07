@@ -85,6 +85,7 @@ export type CreditPlanForConversion = {
 };
 
 export type CostPlusPreview = {
+  billedChargeInr: number;
   creditUnits: number;
   credits: number;
   customerChargeInr: number;
@@ -234,6 +235,63 @@ export function calculateWalletUnitsPerInr(
   return (plan.tokenAllowance * 100) / plan.priceInPaise;
 }
 
+export type PlanModelEconomics = {
+  /** This plan's INR per credit unit divided by the base plan's (<= 1). */
+  creditValueRatio: number;
+  /** INR a buyer of this plan effectively pays per 1M input tokens. */
+  customerInputPerMillionInr: number;
+  /** INR a buyer of this plan effectively pays per 1M output tokens. */
+  customerOutputPerMillionInr: number;
+  marginPercent: number;
+  providerInputPerMillionInr: number;
+  providerOutputPerMillionInr: number;
+  realizedMarkup: number;
+};
+
+/**
+ * Charges are converted to wallet units at the base plan's rate, so a buyer of
+ * a plan with bonus units pays less INR per unit. The configured markup is
+ * therefore scaled by (plan INR per unit / base INR per unit) for that buyer.
+ */
+export function calculatePlanModelEconomics({
+  basePlan,
+  inputCostPerMillionUsd,
+  markupMultiplier,
+  outputCostPerMillionUsd,
+  plan,
+  usdToInr,
+}: {
+  basePlan: CreditPlanForConversion | null | undefined;
+  inputCostPerMillionUsd: number;
+  markupMultiplier: number;
+  outputCostPerMillionUsd: number;
+  plan: CreditPlanForConversion;
+  usdToInr: number;
+}): PlanModelEconomics | null {
+  const baseUnitsPerInr = calculateWalletUnitsPerInr(basePlan);
+  const planUnitsPerInr = calculateWalletUnitsPerInr(plan);
+  const safeUsdToInr = finiteNonNegative(usdToInr);
+  if (baseUnitsPerInr <= 0 || planUnitsPerInr <= 0 || safeUsdToInr <= 0) {
+    return null;
+  }
+  const creditValueRatio = baseUnitsPerInr / planUnitsPerInr;
+  const realizedMarkup =
+    normalizeMarkupMultiplier(markupMultiplier) * creditValueRatio;
+  const providerInputPerMillionInr =
+    finiteNonNegative(inputCostPerMillionUsd) * safeUsdToInr;
+  const providerOutputPerMillionInr =
+    finiteNonNegative(outputCostPerMillionUsd) * safeUsdToInr;
+  return {
+    creditValueRatio,
+    customerInputPerMillionInr: providerInputPerMillionInr * realizedMarkup,
+    customerOutputPerMillionInr: providerOutputPerMillionInr * realizedMarkup,
+    marginPercent: (1 - 1 / realizedMarkup) * 100,
+    providerInputPerMillionInr,
+    providerOutputPerMillionInr,
+    realizedMarkup,
+  };
+}
+
 export function priceCostPlusLineItems({
   lineItems,
   usdToInr,
@@ -338,16 +396,18 @@ export function calculateCostPlusPreview({
   }
 
   const providerCostInr = lineItem.providerCostUsd * usdToInr;
-  const profitInr = lineItem.customerChargeInr - providerCostInr;
+  // Whole credit units are deducted, so small charges are rounded up. Profit
+  // and margin use the amount actually billed at the base recharge rate.
+  const billedChargeInr = priced.totalCreditUnits / walletUnitsPerInr;
+  const profitInr = billedChargeInr - providerCostInr;
 
   return {
+    billedChargeInr,
     creditUnits: priced.totalCreditUnits,
     credits: priced.totalCreditUnits / walletUnitsPerCredit,
     customerChargeInr: lineItem.customerChargeInr,
     marginPercent:
-      lineItem.customerChargeInr > 0
-        ? (profitInr / lineItem.customerChargeInr) * 100
-        : 0,
+      billedChargeInr > 0 ? (profitInr / billedChargeInr) * 100 : 0,
     profitInr,
     providerCostInr,
   };

@@ -137,6 +137,7 @@ import {
   type RagEntry,
   ragEntry,
   ragRetrievalLog,
+  referralCommission,
   type Suggestion,
   stream,
   suggestion,
@@ -11523,6 +11524,21 @@ export async function recordTokenUsage({
                   0,
                   Math.round(inputTokens - resolvedBillableInputTokens)
                 ),
+                // The provider bills the full prompt, including the internal
+                // system prompt that is excluded from the customer charge.
+                // Profit reporting reads these snapshot values.
+                inputCostPerMillionUsd:
+                  tokenCostPlusSnapshot.inputCostPerMillionUsd,
+                outputCostPerMillionUsd:
+                  tokenCostPlusSnapshot.outputCostPerMillionUsd,
+                actualProviderCostUsd: calculateTokenProviderCostUsd({
+                  inputCostPerMillionUsd:
+                    tokenCostPlusSnapshot.inputCostPerMillionUsd,
+                  inputTokens,
+                  outputCostPerMillionUsd:
+                    tokenCostPlusSnapshot.outputCostPerMillionUsd,
+                  outputTokens,
+                }),
               },
             });
           }
@@ -13169,7 +13185,13 @@ function getEstimatedEmbeddingCostUsdPerMillion(model: string | null | undefined
 export type AdminApiCostMethod = "exact" | "estimated" | "untracked";
 
 export type AdminApiCostFeatureSummary = {
-  featureKey: "chat_completions" | "embeddings" | "live_voice" | "other_api_usage";
+  featureKey:
+    | "chat_completions"
+    | "embeddings"
+    | "image_generation"
+    | "live_voice"
+    | "other_api_usage"
+    | "web_search";
   featureLabel: string;
   method: AdminApiCostMethod;
   totalCostUsd: number | null;
@@ -13183,7 +13205,12 @@ export type AdminApiCostFeatureSummary = {
 };
 
 export type AdminApiCostModelSummary = {
-  featureKey: "chat_completions" | "embeddings" | "live_voice";
+  featureKey:
+    | "chat_completions"
+    | "embeddings"
+    | "image_generation"
+    | "live_voice"
+    | "web_search";
   featureLabel: string;
   modelKey: string;
   modelLabel: string;
@@ -13202,6 +13229,9 @@ export type AdminApiCostDailySummary = {
   date: string;
   totalCostUsd: number;
   chatCostUsd: number;
+  liveVoiceCostUsd: number;
+  imageCostUsd: number;
+  webSearchCostUsd: number;
   embeddingCostUsd: number;
   otherUsageCount: number;
 };
@@ -13230,201 +13260,98 @@ export async function getAdminApiCostBreakdown({
   range?: DateRange;
 } = {}): Promise<AdminApiCostBreakdown> {
   try {
-    const chatConditions = buildDateRangeConditions(tokenUsage.createdAt, range);
-    const chatWhere =
-      chatConditions.length > 0 ? and(...chatConditions) : undefined;
-
-    const chatModelRows = await (chatWhere
-      ? db
-          .select({
-            modelConfigId: modelConfig.id,
-            displayName: modelConfig.displayName,
-            provider: modelConfig.provider,
-            providerModelId: modelConfig.providerModelId,
-            usageCount: sql<number>`COUNT(*)`,
-            inputTokens: sql<number>`COALESCE(SUM(${tokenUsage.inputTokens}), 0)`,
-            outputTokens: sql<number>`COALESCE(SUM(${tokenUsage.outputTokens}), 0)`,
-            totalCostUsd: sql<number>`
-              COALESCE(SUM(
-                (
-                  ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
-                  ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
-                ) / 1000000.0
-              ), 0)
-            `,
-          })
-          .from(tokenUsage)
-          .innerJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id))
-          .where(chatWhere)
-      : db
-          .select({
-            modelConfigId: modelConfig.id,
-            displayName: modelConfig.displayName,
-            provider: modelConfig.provider,
-            providerModelId: modelConfig.providerModelId,
-            usageCount: sql<number>`COUNT(*)`,
-            inputTokens: sql<number>`COALESCE(SUM(${tokenUsage.inputTokens}), 0)`,
-            outputTokens: sql<number>`COALESCE(SUM(${tokenUsage.outputTokens}), 0)`,
-            totalCostUsd: sql<number>`
-              COALESCE(SUM(
-                (
-                  ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
-                  ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
-                ) / 1000000.0
-              ), 0)
-            `,
-          })
-          .from(tokenUsage)
-          .innerJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id)))
-      .groupBy(
-        modelConfig.id,
-        modelConfig.displayName,
-        modelConfig.provider,
-        modelConfig.providerModelId
-      )
-      .orderBy(desc(sql<number>`
-        COALESCE(SUM(
-          (
-            ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
-            ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
-          ) / 1000000.0
-        ), 0)
-      `));
-
-    const liveVoiceModelRows = await (chatWhere
-      ? db
-          .select({
-            modelConfigId: liveVoiceModelConfig.id,
-            displayName: liveVoiceModelConfig.displayName,
-            provider: liveVoiceModelConfig.provider,
-            providerModelId: liveVoiceModelConfig.providerModelId,
-            usageCount: sql<number>`COUNT(*)`,
-            inputTokens: sql<number>`COALESCE(SUM(${tokenUsage.inputTokens}), 0)`,
-            outputTokens: sql<number>`COALESCE(SUM(${tokenUsage.outputTokens}), 0)`,
-            totalCostUsd: sql<number>`
-              COALESCE(SUM(
-                (
-                  ${tokenUsage.inputTokens} * COALESCE(${liveVoiceModelConfig.inputProviderCostPerMillion}, 0) +
-                  ${tokenUsage.outputTokens} * COALESCE(${liveVoiceModelConfig.outputProviderCostPerMillion}, 0)
-                ) / 1000000.0
-              ), 0)
-            `,
-          })
-          .from(tokenUsage)
-          .innerJoin(
-            liveVoiceModelConfig,
-            eq(tokenUsage.liveVoiceModelConfigId, liveVoiceModelConfig.id)
-          )
-          .where(chatWhere)
-      : db
-          .select({
-            modelConfigId: liveVoiceModelConfig.id,
-            displayName: liveVoiceModelConfig.displayName,
-            provider: liveVoiceModelConfig.provider,
-            providerModelId: liveVoiceModelConfig.providerModelId,
-            usageCount: sql<number>`COUNT(*)`,
-            inputTokens: sql<number>`COALESCE(SUM(${tokenUsage.inputTokens}), 0)`,
-            outputTokens: sql<number>`COALESCE(SUM(${tokenUsage.outputTokens}), 0)`,
-            totalCostUsd: sql<number>`
-              COALESCE(SUM(
-                (
-                  ${tokenUsage.inputTokens} * COALESCE(${liveVoiceModelConfig.inputProviderCostPerMillion}, 0) +
-                  ${tokenUsage.outputTokens} * COALESCE(${liveVoiceModelConfig.outputProviderCostPerMillion}, 0)
-                ) / 1000000.0
-              ), 0)
-            `,
-          })
-          .from(tokenUsage)
-          .innerJoin(
-            liveVoiceModelConfig,
-            eq(tokenUsage.liveVoiceModelConfigId, liveVoiceModelConfig.id)
-          ))
-      .groupBy(
-        liveVoiceModelConfig.id,
-        liveVoiceModelConfig.displayName,
-        liveVoiceModelConfig.provider,
-        liveVoiceModelConfig.providerModelId
-      )
-      .orderBy(desc(sql<number>`
-        COALESCE(SUM(
-          (
-            ${tokenUsage.inputTokens} * COALESCE(${liveVoiceModelConfig.inputProviderCostPerMillion}, 0) +
-            ${tokenUsage.outputTokens} * COALESCE(${liveVoiceModelConfig.outputProviderCostPerMillion}, 0)
-          ) / 1000000.0
-        ), 0)
-      `));
-
-    const chatDailyRows = await (chatWhere
-      ? db
-          .select({
-            date: sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`,
-            totalCostUsd: sql<number>`
-              COALESCE(SUM(
-                (
-                  ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
-                  ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
-                ) / 1000000.0
-              ), 0)
-            `,
-          })
-          .from(tokenUsage)
-          .innerJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id))
-          .where(chatWhere)
-      : db
-          .select({
-            date: sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`,
-            totalCostUsd: sql<number>`
-              COALESCE(SUM(
-                (
-                  ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
-                  ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
-                ) / 1000000.0
-              ), 0)
-            `,
-          })
-          .from(tokenUsage)
-          .innerJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id)))
-      .groupBy(sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`)
-      .orderBy(sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`);
-
-    const liveVoiceDailyRows = await (chatWhere
-      ? db
-          .select({
-            date: sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`,
-            totalCostUsd: sql<number>`
-              COALESCE(SUM(
-                (
-                  ${tokenUsage.inputTokens} * COALESCE(${liveVoiceModelConfig.inputProviderCostPerMillion}, 0) +
-                  ${tokenUsage.outputTokens} * COALESCE(${liveVoiceModelConfig.outputProviderCostPerMillion}, 0)
-                ) / 1000000.0
-              ), 0)
-            `,
-          })
-          .from(tokenUsage)
-          .innerJoin(
-            liveVoiceModelConfig,
-            eq(tokenUsage.liveVoiceModelConfigId, liveVoiceModelConfig.id)
-          )
-          .where(chatWhere)
-      : db
-          .select({
-            date: sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`,
-            totalCostUsd: sql<number>`
-              COALESCE(SUM(
-                (
-                  ${tokenUsage.inputTokens} * COALESCE(${liveVoiceModelConfig.inputProviderCostPerMillion}, 0) +
-                  ${tokenUsage.outputTokens} * COALESCE(${liveVoiceModelConfig.outputProviderCostPerMillion}, 0)
-                ) / 1000000.0
-              ), 0)
-            `,
-          })
-          .from(tokenUsage)
-          .innerJoin(
-            liveVoiceModelConfig,
-            eq(tokenUsage.liveVoiceModelConfigId, liveVoiceModelConfig.id)
-          ))
-      .groupBy(sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`)
-      .orderBy(sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`);
+    // Revenue columns are unused here, so no exchange rate is needed.
+    const usageCtes = buildUsageCostCtes({ range, usdToInr: 0 });
+    const [
+      chatModelRows,
+      liveVoiceModelRows,
+      imageModelRows,
+      webSearchProviderRows,
+      usageDailyRows,
+    ] = await Promise.all([
+      db.execute<Record<string, unknown>>(sql`
+        ${usageCtes}
+        SELECT
+          mc."id" AS "modelConfigId",
+          mc."displayName",
+          mc."provider",
+          mc."providerModelId",
+          COUNT(*) AS "usageCount",
+          COALESCE(SUM(uc."inputTokens"), 0) AS "inputTokens",
+          COALESCE(SUM(uc."outputTokens"), 0) AS "outputTokens",
+          COALESCE(SUM(uc."chatCostUsd"), 0) AS "totalCostUsd"
+        FROM usage_costs uc
+        INNER JOIN "ModelConfig" mc ON mc."id" = uc."modelConfigId"
+        GROUP BY mc."id", mc."displayName", mc."provider", mc."providerModelId"
+        ORDER BY COALESCE(SUM(uc."chatCostUsd"), 0) DESC
+      `),
+      db.execute<Record<string, unknown>>(sql`
+        ${usageCtes}
+        SELECT
+          lv."id" AS "modelConfigId",
+          lv."displayName",
+          lv."provider",
+          lv."providerModelId",
+          COUNT(*) AS "usageCount",
+          COALESCE(SUM(uc."inputTokens"), 0) AS "inputTokens",
+          COALESCE(SUM(uc."outputTokens"), 0) AS "outputTokens",
+          COALESCE(SUM(uc."liveVoiceCostUsd"), 0) AS "totalCostUsd"
+        FROM usage_costs uc
+        INNER JOIN "LiveVoiceModelConfig" lv ON lv."id" = uc."liveVoiceModelConfigId"
+        WHERE uc."modelConfigId" IS NULL
+        GROUP BY lv."id", lv."displayName", lv."provider", lv."providerModelId"
+        ORDER BY COALESCE(SUM(uc."liveVoiceCostUsd"), 0) DESC
+      `),
+      db.execute<Record<string, unknown>>(sql`
+        ${usageCtes}
+        SELECT
+          cl."imageModelConfigId" AS "modelConfigId",
+          im."displayName",
+          im."provider",
+          im."providerModelId",
+          COUNT(DISTINCT cl."usageId") AS "usageCount",
+          COALESCE(SUM(cl."actualCostUsd"), 0) AS "totalCostUsd"
+        FROM charge_lines cl
+        LEFT JOIN "ImageModelConfig" im ON im."id" = cl."imageModelConfigId"
+        WHERE cl."category" = 'image'
+        GROUP BY cl."imageModelConfigId", im."displayName", im."provider", im."providerModelId"
+        ORDER BY COALESCE(SUM(cl."actualCostUsd"), 0) DESC
+      `),
+      db.execute<Record<string, unknown>>(sql`
+        ${usageCtes}
+        SELECT
+          COALESCE(cl."providerKey", 'unknown') AS "providerKey",
+          COUNT(DISTINCT cl."usageId") AS "usageCount",
+          COALESCE(SUM(cl."actualCostUsd"), 0) AS "totalCostUsd"
+        FROM charge_lines cl
+        WHERE cl."category" = 'web_search'
+        GROUP BY COALESCE(cl."providerKey", 'unknown')
+        ORDER BY COALESCE(SUM(cl."actualCostUsd"), 0) DESC
+      `),
+      db.execute<Record<string, unknown>>(sql`
+        ${usageCtes}
+        SELECT
+          date_trunc('day', uc."createdAt")::date::text AS "date",
+          COALESCE(SUM(uc."chatCostUsd"), 0) AS "chatCostUsd",
+          COALESCE(SUM(uc."liveVoiceCostUsd"), 0) AS "liveVoiceCostUsd",
+          COALESCE(SUM(uc."imageCostUsd"), 0) AS "imageCostUsd",
+          COALESCE(SUM(uc."webSearchCostUsd"), 0) AS "webSearchCostUsd",
+          COALESCE(SUM(uc."providerCostUsd"), 0) AS "usageCostUsd",
+          COUNT(*) FILTER (
+            WHERE uc."modelConfigId" IS NULL
+              AND uc."liveVoiceModelConfigId" IS NULL
+              AND uc."providerCostUsd" = 0
+          ) AS "otherUsageCount",
+          COALESCE(SUM(uc."inputTokens" + uc."outputTokens") FILTER (
+            WHERE uc."modelConfigId" IS NULL
+              AND uc."liveVoiceModelConfigId" IS NULL
+              AND uc."providerCostUsd" = 0
+          ), 0) AS "otherUsageTokens"
+        FROM usage_costs uc
+        GROUP BY 1
+        ORDER BY 1
+      `),
+    ]);
 
     const embeddingConditions: SQL<boolean>[] = [
       isNull(ragEntry.deletedAt) as SQL<boolean>,
@@ -13450,38 +13377,27 @@ export async function getAdminApiCostBreakdown({
       .where(and(...embeddingConditions))
       .orderBy(desc(ragEntry.embeddingUpdatedAt));
 
-    const otherUsageConditions: SQL<boolean>[] = [
-      isNull(tokenUsage.modelConfigId) as SQL<boolean>,
-      isNull(tokenUsage.liveVoiceModelConfigId) as SQL<boolean>,
-      ...buildDateRangeConditions(tokenUsage.createdAt, range),
-    ];
+    const sumRows = (rows: Iterable<Record<string, unknown>>, key: string) =>
+      Array.from(rows).reduce(
+        (total, row) => total + toFiniteNumber(row[key]),
+        0
+      );
+    const chatCostUsd = sumRows(chatModelRows, "totalCostUsd");
+    const liveVoiceCostUsd = sumRows(liveVoiceModelRows, "totalCostUsd");
+    const imageCostUsd = sumRows(imageModelRows, "totalCostUsd");
+    const webSearchCostUsd = sumRows(webSearchProviderRows, "totalCostUsd");
+    const usageCostUsd = sumRows(usageDailyRows, "usageCostUsd");
+    const toLabel = (value: unknown, fallback: string) =>
+      typeof value === "string" && value.length > 0 ? value : fallback;
 
-    const otherUsageRows = await db
-      .select({
-        date: sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`,
-        usageCount: sql<number>`COUNT(*)`,
-        totalTokens: sql<number>`COALESCE(SUM(${tokenUsage.totalTokens}), 0)`,
-      })
-      .from(tokenUsage)
-      .where(and(...otherUsageConditions))
-      .groupBy(sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`)
-      .orderBy(sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`);
-
-    const chatCostUsd = chatModelRows.reduce(
-      (total, row) => total + toFiniteNumber(row.totalCostUsd),
-      0
-    );
-    const liveVoiceCostUsd = liveVoiceModelRows.reduce(
-      (total, row) => total + toFiniteNumber(row.totalCostUsd),
-      0
-    );
-
-    const modelSummaries: AdminApiCostModelSummary[] = chatModelRows.map((row) => ({
+    const modelSummaries: AdminApiCostModelSummary[] = Array.from(
+      chatModelRows
+    ).map((row) => ({
       featureKey: "chat_completions",
       featureLabel: "Chat completions",
-      modelKey: row.modelConfigId,
-      modelLabel: row.displayName,
-      providerLabel: `${row.provider}/${row.providerModelId}`,
+      modelKey: toLabel(row.modelConfigId, "unknown-model"),
+      modelLabel: toLabel(row.displayName, "Unknown model"),
+      providerLabel: `${toLabel(row.provider, "unknown")}/${toLabel(row.providerModelId, "unknown")}`,
       method: "exact",
       totalCostUsd: toFiniteNumber(row.totalCostUsd),
       usageCount: toFiniteNumber(row.usageCount),
@@ -13489,24 +13405,62 @@ export async function getAdminApiCostBreakdown({
       outputTokens: toFiniteNumber(row.outputTokens),
       indexedEntries: 0,
       indexedChars: 0,
-      note: "Exact provider cost from token usage records.",
+      note: "Provider tokens, including the internal system prompt, at the price captured when billed.",
     }));
-    const liveVoiceModelSummaries: AdminApiCostModelSummary[] =
-      liveVoiceModelRows.map((row) => ({
-        featureKey: "live_voice",
-        featureLabel: "Live voice",
-        modelKey: row.modelConfigId,
-        modelLabel: row.displayName,
-        providerLabel: `${row.provider}/${row.providerModelId}`,
-        method: "exact",
-        totalCostUsd: toFiniteNumber(row.totalCostUsd),
-        usageCount: toFiniteNumber(row.usageCount),
-        inputTokens: toFiniteNumber(row.inputTokens),
-        outputTokens: toFiniteNumber(row.outputTokens),
-        indexedEntries: 0,
-        indexedChars: 0,
-        note: "Exact provider cost from live voice token usage records.",
-      }));
+    const liveVoiceModelSummaries: AdminApiCostModelSummary[] = Array.from(
+      liveVoiceModelRows
+    ).map((row) => ({
+      featureKey: "live_voice",
+      featureLabel: "Live voice",
+      modelKey: `live-voice:${toLabel(row.modelConfigId, "unknown")}`,
+      modelLabel: toLabel(row.displayName, "Unknown live voice model"),
+      providerLabel: `${toLabel(row.provider, "unknown")}/${toLabel(row.providerModelId, "unknown")}`,
+      method: "exact",
+      totalCostUsd: toFiniteNumber(row.totalCostUsd),
+      usageCount: toFiniteNumber(row.usageCount),
+      inputTokens: toFiniteNumber(row.inputTokens),
+      outputTokens: toFiniteNumber(row.outputTokens),
+      indexedEntries: 0,
+      indexedChars: 0,
+      note: "Per-minute, per-response and token costs captured when billed.",
+    }));
+    const imageModelSummaries: AdminApiCostModelSummary[] = Array.from(
+      imageModelRows
+    ).map((row) => ({
+      featureKey: "image_generation",
+      featureLabel: "Image generation",
+      modelKey: `image:${toLabel(row.modelConfigId, "unknown")}`,
+      modelLabel: toLabel(row.displayName, "Deleted image model"),
+      providerLabel:
+        typeof row.provider === "string"
+          ? `${row.provider}/${toLabel(row.providerModelId, "unknown")}`
+          : null,
+      method: "exact",
+      totalCostUsd: toFiniteNumber(row.totalCostUsd),
+      usageCount: toFiniteNumber(row.usageCount),
+      inputTokens: 0,
+      outputTokens: 0,
+      indexedEntries: 0,
+      indexedChars: 0,
+      note: "Provider cost captured when the image was billed.",
+    }));
+    const webSearchSummaries: AdminApiCostModelSummary[] = Array.from(
+      webSearchProviderRows
+    ).map((row) => ({
+      featureKey: "web_search",
+      featureLabel: "Web search",
+      modelKey: `web-search:${toLabel(row.providerKey, "unknown")}`,
+      modelLabel: toLabel(row.providerKey, "unknown"),
+      providerLabel: "search provider",
+      method: "exact",
+      totalCostUsd: toFiniteNumber(row.totalCostUsd),
+      usageCount: toFiniteNumber(row.usageCount),
+      inputTokens: 0,
+      outputTokens: 0,
+      indexedEntries: 0,
+      indexedChars: 0,
+      note: "Actual provider cost per search, captured when billed.",
+    }));
 
     const embeddingModelMap = new Map<
       string,
@@ -13598,14 +13552,12 @@ export async function getAdminApiCostBreakdown({
       0
     );
 
-    const otherUsageCount = otherUsageRows.reduce(
-      (total, row) => total + toFiniteNumber(row.usageCount),
-      0
-    );
-    const otherUsageTokens = otherUsageRows.reduce(
-      (total, row) => total + toFiniteNumber(row.totalTokens),
-      0
-    );
+    const otherUsageCount = sumRows(usageDailyRows, "otherUsageCount");
+    const otherUsageTokens = sumRows(usageDailyRows, "otherUsageTokens");
+    const sumSummaries = (
+      rows: AdminApiCostModelSummary[],
+      key: "usageCount" | "inputTokens" | "outputTokens"
+    ) => rows.reduce((total, row) => total + row[key], 0);
 
     const featureSummaries: AdminApiCostFeatureSummary[] = [
       {
@@ -13613,71 +13565,83 @@ export async function getAdminApiCostBreakdown({
         featureLabel: "Chat completions",
         method: "exact",
         totalCostUsd: chatCostUsd,
-        usageCount: chatModelRows.reduce(
-          (total, row) => total + toFiniteNumber(row.usageCount),
-          0
-        ),
-        modelCount: chatModelRows.length,
-        inputTokens: chatModelRows.reduce(
-          (total, row) => total + toFiniteNumber(row.inputTokens),
-          0
-        ),
-        outputTokens: chatModelRows.reduce(
-          (total, row) => total + toFiniteNumber(row.outputTokens),
-          0
-        ),
+        usageCount: sumSummaries(modelSummaries, "usageCount"),
+        modelCount: modelSummaries.length,
+        inputTokens: sumSummaries(modelSummaries, "inputTokens"),
+        outputTokens: sumSummaries(modelSummaries, "outputTokens"),
         indexedEntries: 0,
         indexedChars: 0,
-        note: "Exact provider cost from token usage records.",
-      },
-      {
-        featureKey: "embeddings",
-        featureLabel: "Embeddings",
-        method: "estimated",
-        totalCostUsd: embeddingCostUsd,
-        usageCount: embeddingModelSummaries.reduce(
-          (total, row) => total + row.usageCount,
-          0
-        ),
-        modelCount: embeddingModelSummaries.length,
-        inputTokens: 0,
-        outputTokens: 0,
-        indexedEntries: embeddingModelSummaries.reduce(
-          (total, row) => total + row.indexedEntries,
-          0
-        ),
-        indexedChars: embeddingModelSummaries.reduce(
-          (total, row) => total + row.indexedChars,
-          0
-        ),
-        note:
-          "Estimated from indexed content size because provider-reported embedding token usage is not stored.",
+        note: "Provider tokens, including the internal system prompt, at the price captured when billed. Unbilled usage uses current model prices.",
       },
     ];
-    if (liveVoiceModelRows.length > 0) {
-      featureSummaries.splice(1, 0, {
+    if (liveVoiceModelSummaries.length > 0) {
+      featureSummaries.push({
         featureKey: "live_voice",
         featureLabel: "Live voice",
         method: "exact",
         totalCostUsd: liveVoiceCostUsd,
-        usageCount: liveVoiceModelRows.reduce(
-          (total, row) => total + toFiniteNumber(row.usageCount),
-          0
-        ),
-        modelCount: liveVoiceModelRows.length,
-        inputTokens: liveVoiceModelRows.reduce(
-          (total, row) => total + toFiniteNumber(row.inputTokens),
-          0
-        ),
-        outputTokens: liveVoiceModelRows.reduce(
-          (total, row) => total + toFiniteNumber(row.outputTokens),
-          0
-        ),
+        usageCount: sumSummaries(liveVoiceModelSummaries, "usageCount"),
+        modelCount: liveVoiceModelSummaries.length,
+        inputTokens: sumSummaries(liveVoiceModelSummaries, "inputTokens"),
+        outputTokens: sumSummaries(liveVoiceModelSummaries, "outputTokens"),
         indexedEntries: 0,
         indexedChars: 0,
-        note: "Exact provider cost from live voice token usage records.",
+        note: "Per-minute, per-response and token costs captured when billed.",
       });
     }
+    if (imageModelSummaries.length > 0) {
+      featureSummaries.push({
+        featureKey: "image_generation",
+        featureLabel: "Image generation",
+        method: "exact",
+        totalCostUsd: imageCostUsd,
+        usageCount: sumSummaries(imageModelSummaries, "usageCount"),
+        modelCount: imageModelSummaries.length,
+        inputTokens: 0,
+        outputTokens: 0,
+        indexedEntries: 0,
+        indexedChars: 0,
+        note: "Provider cost captured when each image was billed.",
+      });
+    }
+    if (webSearchSummaries.length > 0) {
+      featureSummaries.push({
+        featureKey: "web_search",
+        featureLabel: "Web search",
+        method: "exact",
+        totalCostUsd: webSearchCostUsd,
+        usageCount: sumSummaries(webSearchSummaries, "usageCount"),
+        modelCount: webSearchSummaries.length,
+        inputTokens: 0,
+        outputTokens: 0,
+        indexedEntries: 0,
+        indexedChars: 0,
+        note: "Actual search provider cost, including searches the customer allowance did not fully cover.",
+      });
+    }
+    featureSummaries.push({
+      featureKey: "embeddings",
+      featureLabel: "Embeddings",
+      method: "estimated",
+      totalCostUsd: embeddingCostUsd,
+      usageCount: embeddingModelSummaries.reduce(
+        (total, row) => total + row.usageCount,
+        0
+      ),
+      modelCount: embeddingModelSummaries.length,
+      inputTokens: 0,
+      outputTokens: 0,
+      indexedEntries: embeddingModelSummaries.reduce(
+        (total, row) => total + row.indexedEntries,
+        0
+      ),
+      indexedChars: embeddingModelSummaries.reduce(
+        (total, row) => total + row.indexedChars,
+        0
+      ),
+      note:
+        "Estimated from indexed content size because provider-reported embedding token usage is not stored.",
+    });
 
     const otherUsageSummaries: AdminTrackedOtherApiUsageSummary[] = [];
     if (otherUsageCount > 0) {
@@ -13693,7 +13657,7 @@ export async function getAdminApiCostBreakdown({
         indexedEntries: 0,
         indexedChars: 0,
         note:
-          "Tracked usage exists, but historical provider cost is not stored for this feature in the current schema.",
+          "Usage rows with no model and no recorded provider cost, typically legacy image credits or usage whose model was deleted.",
       });
       otherUsageSummaries.push({
         featureKey: "other_api_usage",
@@ -13701,7 +13665,7 @@ export async function getAdminApiCostBreakdown({
         usageCount: otherUsageCount,
         totalTokens: otherUsageTokens,
         note:
-          "These events are currently unattributed token usage rows, typically image generation credits.",
+          "These usage rows have no model and no recorded provider cost, so their cost cannot be reconstructed.",
       });
     }
 
@@ -13715,6 +13679,9 @@ export async function getAdminApiCostBreakdown({
         date,
         totalCostUsd: 0,
         chatCostUsd: 0,
+        liveVoiceCostUsd: 0,
+        imageCostUsd: 0,
+        webSearchCostUsd: 0,
         embeddingCostUsd: 0,
         otherUsageCount: 0,
       };
@@ -13722,41 +13689,39 @@ export async function getAdminApiCostBreakdown({
       return initial;
     };
 
-    for (const row of chatDailyRows) {
+    for (const row of usageDailyRows) {
+      if (typeof row.date !== "string") {
+        continue;
+      }
       const daily = ensureDailySummary(row.date);
-      daily.chatCostUsd += toFiniteNumber(row.totalCostUsd);
-    }
-
-    for (const row of liveVoiceDailyRows) {
-      const daily = ensureDailySummary(row.date);
-      daily.chatCostUsd += toFiniteNumber(row.totalCostUsd);
+      daily.chatCostUsd += toFiniteNumber(row.chatCostUsd);
+      daily.liveVoiceCostUsd += toFiniteNumber(row.liveVoiceCostUsd);
+      daily.imageCostUsd += toFiniteNumber(row.imageCostUsd);
+      daily.webSearchCostUsd += toFiniteNumber(row.webSearchCostUsd);
+      daily.totalCostUsd += toFiniteNumber(row.usageCostUsd);
+      daily.otherUsageCount += toFiniteNumber(row.otherUsageCount);
     }
 
     for (const [date, row] of embeddingDailyMap.entries()) {
       const daily = ensureDailySummary(date);
       daily.embeddingCostUsd += toFiniteNumber(row.embeddingCostUsd);
+      daily.totalCostUsd += toFiniteNumber(row.embeddingCostUsd);
     }
 
-    for (const row of otherUsageRows) {
-      const daily = ensureDailySummary(row.date);
-      daily.otherUsageCount += toFiniteNumber(row.usageCount);
-    }
-
-    const dailySummaries = Array.from(dailyMap.values())
-      .map((row) => ({
-        ...row,
-        totalCostUsd: row.chatCostUsd + row.embeddingCostUsd,
-      }))
-      .sort((a, b) => b.date.localeCompare(a.date));
+    const dailySummaries = Array.from(dailyMap.values()).sort((a, b) =>
+      b.date.localeCompare(a.date)
+    );
 
     return {
-      totalCostUsd: chatCostUsd + liveVoiceCostUsd + embeddingCostUsd,
-      exactCostUsd: chatCostUsd + liveVoiceCostUsd,
+      totalCostUsd: usageCostUsd + embeddingCostUsd,
+      exactCostUsd: usageCostUsd,
       estimatedCostUsd: embeddingCostUsd,
       featureSummaries,
       modelSummaries: [
         ...modelSummaries,
         ...liveVoiceModelSummaries,
+        ...imageModelSummaries,
+        ...webSearchSummaries,
         ...embeddingModelSummaries,
       ].sort(
         (a, b) =>
@@ -13971,6 +13936,7 @@ export type ChatFinancialSummary = {
   usageStartedAt: Date | null;
   totalInputTokens: number;
   totalOutputTokens: number;
+  creditUnits: number;
   userChargeInr: number;
   providerCostUsd: number;
 };
@@ -13980,184 +13946,270 @@ export type ChatFinancialSummariesResult = {
   totals: {
     totalInputTokens: number;
     totalOutputTokens: number;
+    creditUnits: number;
     userChargeInr: number;
     providerCostUsd: number;
   };
   records: ChatFinancialSummary[];
 };
 
+function parseDbTimestamp(value: unknown): Date | null {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value !== "string" || value.length === 0) {
+    return null;
+  }
+  // Timestamp columns are stored without a zone and written as UTC.
+  const normalized = value.includes("T") ? value : value.replace(" ", "T");
+  const hasZone = /(?:Z|[+-]\d{2}(?::?\d{2})?)$/.test(normalized);
+  const parsed = new Date(hasZone ? normalized : `${normalized}Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/**
+ * Builds the CTEs that cost every token_usage row in the range exactly once.
+ *
+ * - CreditCharge rows carry the provider cost captured at billing time. Token
+ *   lines also record `actualProviderCostUsd`, which includes the internal
+ *   system prompt that is excluded from the customer charge; older token lines
+ *   add that prompt back at the model's current input price.
+ * - Image, web-search and per-unit live-voice costs only exist on CreditCharge
+ *   rows, so they are read from there (web search prefers the provider's
+ *   actual cost over the allowance-capped billable cost).
+ * - Usage without a token charge line (free usage, Explore answers that bill
+ *   only the search) is costed from its provider tokens at current prices.
+ * - Revenue values each paid wallet unit at what that user actually paid per
+ *   unit across their paid recharges (after coupons), because recharges pool
+ *   into one balance. Usage without payment history falls back to the
+ *   subscription plan's list price.
+ */
+function buildUsageCostCtes({
+  range,
+  usdToInr,
+}: {
+  range?: DateRange;
+  usdToInr: number;
+}) {
+  const conditions: SQL[] = [sql`TRUE`];
+  if (range?.start) {
+    conditions.push(
+      sql`tu."createdAt" >= ${range.start.toISOString()}::timestamp`
+    );
+  }
+  if (range?.end) {
+    conditions.push(
+      sql`tu."createdAt" <= ${normalizeEndOfDay(range.end).toISOString()}::timestamp`
+    );
+  }
+  const safeUsdToInr =
+    Number.isFinite(usdToInr) && usdToInr > 0 ? usdToInr : 0;
+
+  return sql`
+    WITH usage_rows AS (
+      SELECT
+        tu."id",
+        tu."userId",
+        tu."chatId",
+        tu."subscriptionId",
+        tu."modelConfigId",
+        tu."liveVoiceModelConfigId",
+        tu."inputTokens",
+        tu."outputTokens",
+        tu."paidTokens",
+        tu."createdAt"
+      FROM "token_usage" tu
+      WHERE ${sql.join(conditions, sql` AND `)}
+    ),
+    charge_lines AS (
+      SELECT
+        cc."tokenUsageId" AS "usageId",
+        cc."category",
+        cc."providerKey",
+        cc."imageModelConfigId",
+        cc."creditUnits",
+        (cc."category" IN ('chat', 'live_voice') AND cc."unitCount" = 0) AS "isTokenLine",
+        CASE
+          WHEN jsonb_typeof(cc."pricingMetadata" -> 'actualProviderCostUsd') = 'number'
+            THEN GREATEST((cc."pricingMetadata" ->> 'actualProviderCostUsd')::double precision, 0)
+          ELSE cc."providerCostUsd"
+        END AS "actualCostUsd",
+        CASE
+          WHEN jsonb_typeof(cc."pricingMetadata" -> 'actualProviderCostUsd') = 'number'
+            THEN 0
+          WHEN jsonb_typeof(cc."pricingMetadata" -> 'estimatedInternalSystemPromptTokens') = 'number'
+            THEN GREATEST((cc."pricingMetadata" ->> 'estimatedInternalSystemPromptTokens')::double precision, 0)
+          ELSE 0
+        END AS "unpricedPromptTokens"
+      FROM "CreditCharge" cc
+      WHERE cc."tokenUsageId" IN (SELECT "id" FROM usage_rows)
+    ),
+    usage_charges AS (
+      SELECT
+        "usageId",
+        COUNT(*) FILTER (WHERE "isTokenLine") AS "tokenLineCount",
+        COALESCE(SUM("actualCostUsd") FILTER (WHERE "isTokenLine"), 0) AS "tokenLineCostUsd",
+        COALESCE(SUM("unpricedPromptTokens") FILTER (WHERE "isTokenLine"), 0) AS "unpricedPromptTokens",
+        COALESCE(SUM("actualCostUsd") FILTER (WHERE "category" = 'image'), 0) AS "imageCostUsd",
+        COALESCE(SUM("actualCostUsd") FILTER (WHERE "category" = 'web_search'), 0) AS "webSearchCostUsd",
+        COALESCE(SUM("actualCostUsd") FILTER (WHERE "category" = 'live_voice' AND NOT "isTokenLine"), 0) AS "liveVoiceUnitCostUsd",
+        COALESCE(SUM("actualCostUsd") FILTER (
+          WHERE NOT "isTokenLine" AND "category" NOT IN ('image', 'web_search', 'live_voice')
+        ), 0) AS "otherCostUsd",
+        COALESCE(SUM("creditUnits"), 0) AS "creditUnits"
+      FROM charge_lines
+      GROUP BY "usageId"
+    ),
+    paid_unit_values AS (
+      SELECT
+        pt."userId",
+        SUM(
+          pt."amount" / 100.0 *
+          CASE WHEN UPPER(pt."currency") = 'USD' THEN ${safeUsdToInr}::double precision ELSE 1 END
+        ) / NULLIF(SUM(pp."tokenAllowance"), 0) AS "inrPerUnit"
+      FROM "PaymentTransaction" pt
+      INNER JOIN "PricingPlan" pp ON pp."id" = pt."planId"
+      WHERE pt."status" = 'paid'
+        AND pp."tokenAllowance" > 0
+        AND pt."userId" IN (SELECT DISTINCT "userId" FROM usage_rows)
+      GROUP BY pt."userId"
+    ),
+    usage_token_costs AS (
+      SELECT
+        u.*,
+        COALESCE(c."imageCostUsd", 0) AS "imageCostUsd",
+        COALESCE(c."webSearchCostUsd", 0) AS "webSearchCostUsd",
+        COALESCE(c."liveVoiceUnitCostUsd", 0) AS "liveVoiceUnitCostUsd",
+        COALESCE(c."otherCostUsd", 0) AS "otherCostUsd",
+        COALESCE(c."creditUnits", 0) AS "creditUnits",
+        CASE
+          WHEN COALESCE(c."tokenLineCount", 0) > 0 THEN
+            c."tokenLineCostUsd" +
+            c."unpricedPromptTokens" *
+              COALESCE(mc."inputProviderCostPerMillion", lv."inputProviderCostPerMillion", 0) / 1000000.0
+          WHEN u."modelConfigId" IS NOT NULL THEN
+            (
+              u."inputTokens" * COALESCE(mc."inputProviderCostPerMillion", 0) +
+              u."outputTokens" * COALESCE(mc."outputProviderCostPerMillion", 0)
+            ) / 1000000.0
+          WHEN c."usageId" IS NULL AND u."liveVoiceModelConfigId" IS NOT NULL THEN
+            (
+              u."inputTokens" * COALESCE(lv."inputProviderCostPerMillion", 0) +
+              u."outputTokens" * COALESCE(lv."outputProviderCostPerMillion", 0)
+            ) / 1000000.0
+          ELSE 0
+        END AS "tokenCostUsd",
+        u."paidTokens" * COALESCE(
+          puv."inrPerUnit",
+          CASE
+            WHEN pp."tokenAllowance" > 0 THEN pp."priceInPaise" / 100.0 / pp."tokenAllowance"
+          END,
+          0
+        ) AS "revenueInr"
+      FROM usage_rows u
+      LEFT JOIN usage_charges c ON c."usageId" = u."id"
+      LEFT JOIN "ModelConfig" mc ON mc."id" = u."modelConfigId"
+      LEFT JOIN "LiveVoiceModelConfig" lv ON lv."id" = u."liveVoiceModelConfigId"
+      LEFT JOIN paid_unit_values puv ON puv."userId" = u."userId"
+      LEFT JOIN "UserSubscription" us ON us."id" = u."subscriptionId"
+      LEFT JOIN "PricingPlan" pp ON pp."id" = us."planId"
+    ),
+    usage_costs AS (
+      SELECT
+        t.*,
+        CASE WHEN t."modelConfigId" IS NOT NULL THEN t."tokenCostUsd" ELSE 0 END AS "chatCostUsd",
+        CASE
+          WHEN t."modelConfigId" IS NULL AND t."liveVoiceModelConfigId" IS NOT NULL THEN t."tokenCostUsd"
+          ELSE 0
+        END + t."liveVoiceUnitCostUsd" AS "liveVoiceCostUsd",
+        t."tokenCostUsd" + t."imageCostUsd" + t."webSearchCostUsd" +
+          t."liveVoiceUnitCostUsd" + t."otherCostUsd" AS "providerCostUsd"
+      FROM usage_token_costs t
+    )
+  `;
+}
+
 export async function listChatFinancialSummaries({
   range,
   limit = 25,
   offset = 0,
+  usdToInr,
 }: {
   range?: DateRange;
   limit?: number;
   offset?: number;
+  usdToInr: number;
 }): Promise<ChatFinancialSummariesResult> {
   try {
-    const toNumber = (value: unknown) => {
-      if (typeof value === "number") {
-        return Number.isFinite(value) ? value : 0;
-      }
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? parsed : 0;
-    };
+    const ctes = buildUsageCostCtes({ range, usdToInr });
+    const safeLimit = Math.max(1, Math.min(500, Math.trunc(limit)));
+    const safeOffset = Math.max(0, Math.trunc(offset));
 
-    const usageConditions = buildDateRangeConditions(
-      tokenUsage.createdAt,
-      range
+    const [totalsRows, usageRows] = await Promise.all([
+      db.execute<Record<string, unknown>>(sql`
+        ${ctes}
+        SELECT
+          COUNT(DISTINCT "chatId") AS "total",
+          COALESCE(SUM("inputTokens"), 0) AS "totalInputTokens",
+          COALESCE(SUM("outputTokens"), 0) AS "totalOutputTokens",
+          COALESCE(SUM("creditUnits"), 0) AS "creditUnits",
+          COALESCE(SUM("revenueInr"), 0) AS "userChargeInr",
+          COALESCE(SUM("providerCostUsd"), 0) AS "providerCostUsd"
+        FROM usage_costs
+      `),
+      db.execute<Record<string, unknown>>(sql`
+        ${ctes}
+        SELECT
+          uc."chatId",
+          uc."userId",
+          usr."email",
+          ch."createdAt" AS "chatCreatedAt",
+          MIN(uc."createdAt") AS "usageStartedAt",
+          COALESCE(SUM(uc."inputTokens"), 0) AS "totalInputTokens",
+          COALESCE(SUM(uc."outputTokens"), 0) AS "totalOutputTokens",
+          COALESCE(SUM(uc."creditUnits"), 0) AS "creditUnits",
+          COALESCE(SUM(uc."revenueInr"), 0) AS "userChargeInr",
+          COALESCE(SUM(uc."providerCostUsd"), 0) AS "providerCostUsd"
+        FROM usage_costs uc
+        LEFT JOIN "Chat" ch ON ch."id" = uc."chatId"
+        LEFT JOIN "User" usr ON usr."id" = uc."userId"
+        WHERE uc."chatId" IS NOT NULL
+        GROUP BY uc."chatId", uc."userId", usr."email", ch."createdAt"
+        ORDER BY MIN(uc."createdAt") DESC
+        LIMIT ${safeLimit}
+        OFFSET ${safeOffset}
+      `),
+    ]);
+
+    const totalsRow = Array.from(totalsRows)[0] ?? {};
+    const records: ChatFinancialSummary[] = Array.from(usageRows).flatMap(
+      (row) =>
+        typeof row.chatId === "string"
+          ? [
+              {
+                chatId: row.chatId,
+                userId: typeof row.userId === "string" ? row.userId : null,
+                email: typeof row.email === "string" ? row.email : null,
+                chatCreatedAt: parseDbTimestamp(row.chatCreatedAt),
+                usageStartedAt: parseDbTimestamp(row.usageStartedAt),
+                totalInputTokens: toFiniteNumber(row.totalInputTokens),
+                totalOutputTokens: toFiniteNumber(row.totalOutputTokens),
+                creditUnits: toFiniteNumber(row.creditUnits),
+                userChargeInr: toFiniteNumber(row.userChargeInr),
+                providerCostUsd: toFiniteNumber(row.providerCostUsd),
+              },
+            ]
+          : []
     );
-    const whereClause =
-      usageConditions.length > 0 ? and(...usageConditions) : undefined;
-
-    const [totalsRow] = await (whereClause
-      ? db
-          .select({
-            total: sql<number>`COUNT(DISTINCT ${tokenUsage.chatId})`,
-            totalInputTokens: sql<number>`COALESCE(SUM(${tokenUsage.inputTokens}), 0)`,
-            totalOutputTokens: sql<number>`COALESCE(SUM(${tokenUsage.outputTokens}), 0)`,
-            userChargeInr: sql<number>`
-              COALESCE(SUM(
-                CASE
-                  WHEN ${tokenUsage.subscriptionId} IS NULL
-                    OR ${pricingPlan.tokenAllowance} IS NULL
-                    OR ${pricingPlan.tokenAllowance} <= 0
-                  THEN 0
-                  ELSE ${tokenUsage.paidTokens} *
-                    ((${pricingPlan.priceInPaise} / 100.0) / ${pricingPlan.tokenAllowance})
-                END
-              ), 0)
-            `,
-            providerCostUsd: sql<number>`
-              COALESCE(SUM(
-                (
-                  ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, ${liveVoiceModelConfig.inputProviderCostPerMillion}, 0) +
-                  ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, ${liveVoiceModelConfig.outputProviderCostPerMillion}, 0)
-                ) / 1000000.0
-              ), 0)
-            `,
-          })
-          .from(tokenUsage)
-          .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id))
-          .leftJoin(
-            liveVoiceModelConfig,
-            eq(tokenUsage.liveVoiceModelConfigId, liveVoiceModelConfig.id)
-          )
-          .leftJoin(
-            userSubscription,
-            eq(tokenUsage.subscriptionId, userSubscription.id)
-          )
-          .leftJoin(pricingPlan, eq(userSubscription.planId, pricingPlan.id))
-          .where(whereClause)
-      : db
-          .select({
-            total: sql<number>`COUNT(DISTINCT ${tokenUsage.chatId})`,
-            totalInputTokens: sql<number>`COALESCE(SUM(${tokenUsage.inputTokens}), 0)`,
-            totalOutputTokens: sql<number>`COALESCE(SUM(${tokenUsage.outputTokens}), 0)`,
-            userChargeInr: sql<number>`
-              COALESCE(SUM(
-                CASE
-                  WHEN ${tokenUsage.subscriptionId} IS NULL
-                    OR ${pricingPlan.tokenAllowance} IS NULL
-                    OR ${pricingPlan.tokenAllowance} <= 0
-                  THEN 0
-                  ELSE ${tokenUsage.paidTokens} *
-                    ((${pricingPlan.priceInPaise} / 100.0) / ${pricingPlan.tokenAllowance})
-                END
-              ), 0)
-            `,
-            providerCostUsd: sql<number>`
-              COALESCE(SUM(
-                (
-                  ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, ${liveVoiceModelConfig.inputProviderCostPerMillion}, 0) +
-                  ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, ${liveVoiceModelConfig.outputProviderCostPerMillion}, 0)
-                ) / 1000000.0
-              ), 0)
-            `,
-          })
-          .from(tokenUsage)
-          .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id))
-          .leftJoin(
-            liveVoiceModelConfig,
-            eq(tokenUsage.liveVoiceModelConfigId, liveVoiceModelConfig.id)
-          )
-          .leftJoin(
-            userSubscription,
-            eq(tokenUsage.subscriptionId, userSubscription.id)
-          )
-          .leftJoin(pricingPlan, eq(userSubscription.planId, pricingPlan.id)));
-
-    const query = db
-      .select({
-        chatId: tokenUsage.chatId,
-        userId: tokenUsage.userId,
-        email: user.email,
-        chatCreatedAt: chat.createdAt,
-        usageStartedAt: sql<Date>`MIN(${tokenUsage.createdAt})`,
-        totalInputTokens: sql<number>`COALESCE(SUM(${tokenUsage.inputTokens}), 0)`,
-        totalOutputTokens: sql<number>`COALESCE(SUM(${tokenUsage.outputTokens}), 0)`,
-        userChargeInr: sql<number>`
-          COALESCE(SUM(
-            CASE
-              WHEN ${tokenUsage.subscriptionId} IS NULL
-                OR ${pricingPlan.tokenAllowance} IS NULL
-                OR ${pricingPlan.tokenAllowance} <= 0
-              THEN 0
-              ELSE ${tokenUsage.paidTokens} *
-                ((${pricingPlan.priceInPaise} / 100.0) / ${pricingPlan.tokenAllowance})
-            END
-          ), 0)
-        `,
-        providerCostUsd: sql<number>`
-          COALESCE(SUM(
-            (
-              ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, ${liveVoiceModelConfig.inputProviderCostPerMillion}, 0) +
-              ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, ${liveVoiceModelConfig.outputProviderCostPerMillion}, 0)
-            ) / 1000000.0
-          ), 0)
-        `,
-      })
-      .from(tokenUsage)
-      .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id))
-      .leftJoin(
-        liveVoiceModelConfig,
-        eq(tokenUsage.liveVoiceModelConfigId, liveVoiceModelConfig.id)
-      )
-      .leftJoin(chat, eq(tokenUsage.chatId, chat.id))
-      .leftJoin(user, eq(tokenUsage.userId, user.id))
-      .leftJoin(
-        userSubscription,
-        eq(tokenUsage.subscriptionId, userSubscription.id)
-      )
-      .leftJoin(pricingPlan, eq(userSubscription.planId, pricingPlan.id))
-      .groupBy(
-        tokenUsage.chatId,
-        tokenUsage.userId,
-        user.email,
-        chat.createdAt
-      );
-
-    const usageRows = await query.where(and(whereClause, isNotNull(tokenUsage.chatId)))
-      .orderBy(desc(sql<Date>`MIN(${tokenUsage.createdAt})`))
-      .limit(limit)
-      .offset(offset);
-
-    const records = usageRows.filter((row): row is typeof row & { chatId: string } => row.chatId !== null).map((row) => ({
-      ...row,
-      totalInputTokens: toNumber(row.totalInputTokens),
-      totalOutputTokens: toNumber(row.totalOutputTokens),
-      userChargeInr: toNumber(row.userChargeInr),
-      providerCostUsd: toNumber(row.providerCostUsd),
-    }));
 
     return {
-      total: toNumber(totalsRow?.total),
+      total: toFiniteNumber(totalsRow.total),
       totals: {
-        totalInputTokens: toNumber(totalsRow?.totalInputTokens),
-        totalOutputTokens: toNumber(totalsRow?.totalOutputTokens),
-        userChargeInr: toNumber(totalsRow?.userChargeInr),
-        providerCostUsd: toNumber(totalsRow?.providerCostUsd),
+        totalInputTokens: toFiniteNumber(totalsRow.totalInputTokens),
+        totalOutputTokens: toFiniteNumber(totalsRow.totalOutputTokens),
+        creditUnits: toFiniteNumber(totalsRow.creditUnits),
+        userChargeInr: toFiniteNumber(totalsRow.userChargeInr),
+        providerCostUsd: toFiniteNumber(totalsRow.providerCostUsd),
       },
       records,
     };
@@ -14168,6 +14220,7 @@ export async function listChatFinancialSummaries({
         totals: {
           totalInputTokens: 0,
           totalOutputTokens: 0,
+          creditUnits: 0,
           userChargeInr: 0,
           providerCostUsd: 0,
         },
@@ -14175,9 +14228,99 @@ export async function listChatFinancialSummaries({
       };
     }
 
+    console.error(
+      "[admin.account] Failed to load chat financial summaries",
+      error
+    );
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to load chat financial summaries"
+    );
+  }
+}
+
+export type PartnerPayoutTotals = {
+  couponRewardsInr: number;
+  referralCommissionsInr: number;
+};
+
+/**
+ * Creator payouts accrued on recharges in the range: coupon creator rewards
+ * (a percentage of the discounted payment) and non-reversed referral
+ * commissions. Both are paid out of recharge cash, so they reduce profit.
+ */
+export async function getPartnerPayoutTotals({
+  range,
+  usdToInr,
+}: {
+  range?: DateRange;
+  usdToInr: number;
+}): Promise<PartnerPayoutTotals> {
+  try {
+    const couponConditions = buildDateRangeConditions(
+      couponRedemption.createdAt,
+      range
+    );
+    const referralConditions = buildDateRangeConditions(
+      referralCommission.createdAt,
+      range
+    );
+    const [couponRows, referralRows] = await Promise.all([
+      db
+        .select({
+          currency: paymentTransaction.currency,
+          amount: sql<number>`COALESCE(SUM(${couponRedemption.paymentAmount} * ${coupon.creatorRewardPercentage} / 100.0), 0)`,
+        })
+        .from(couponRedemption)
+        .innerJoin(coupon, eq(couponRedemption.couponId, coupon.id))
+        .innerJoin(
+          paymentTransaction,
+          eq(couponRedemption.orderId, paymentTransaction.orderId)
+        )
+        .where(
+          and(
+            eq(paymentTransaction.status, PAYMENT_STATUS_PAID),
+            ...couponConditions
+          )
+        )
+        .groupBy(paymentTransaction.currency),
+      db
+        .select({
+          currency: referralCommission.currency,
+          amount: sql<number>`COALESCE(SUM(${referralCommission.amount}), 0)`,
+        })
+        .from(referralCommission)
+        .where(
+          and(eq(referralCommission.reversed, false), ...referralConditions)
+        )
+        .groupBy(referralCommission.currency),
+    ]);
+
+    const toInr = (rows: { currency: string | null; amount: unknown }[]) =>
+      rows.reduce((total, row) => {
+        const currency = (row.currency ?? "INR").toUpperCase();
+        const amount = convertSubunitAmount(
+          toFiniteNumber(row.amount),
+          currency
+        );
+        return total + (currency === "USD" ? amount * usdToInr : amount);
+      }, 0);
+
+    return {
+      couponRewardsInr: toInr(couponRows),
+      referralCommissionsInr: toInr(referralRows),
+    };
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return { couponRewardsInr: 0, referralCommissionsInr: 0 };
+    }
+    console.error(
+      "[admin.account] Failed to load partner payout totals",
+      error
+    );
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load partner payout totals"
     );
   }
 }

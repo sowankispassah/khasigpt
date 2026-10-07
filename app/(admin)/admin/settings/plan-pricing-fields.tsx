@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  type CreditPlanForConversion,
+  calculatePlanModelEconomics,
+  selectBaseCreditPlan,
+} from "@/lib/billing/cost-plus";
 import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
@@ -13,16 +18,21 @@ const currencyFormatter = (value: number, currency: "INR" | "USD"): string => {
   });
 };
 
-type ModelCostPreview = {
+export type ModelCostPreview = {
   id: string;
+  inputCostPerMillionUsd: number;
   isDefault: boolean;
+  markupMultiplier: number;
   name: string;
+  outputCostPerMillionUsd: number;
   providerLabel: string;
-  providerCostPerMillionInr: number;
-  providerCostPerMillionUsd: number;
 };
 
 type PlanPricingFieldsProps = {
+  /** Active plans other than this one; the base plan is chosen from these. */
+  basePlanCandidates: CreditPlanForConversion[];
+  /** Whether this plan, once saved, can become the base conversion plan. */
+  includeDraftInBase: boolean;
   modelCosts: ModelCostPreview[];
   usdToInr: number;
   initialPriceInRupees?: number;
@@ -31,6 +41,8 @@ type PlanPricingFieldsProps = {
 };
 
 export function PlanPricingFields({
+  basePlanCandidates,
+  includeDraftInBase,
   modelCosts,
   usdToInr,
   initialPriceInRupees,
@@ -62,43 +74,56 @@ export function PlanPricingFields({
 
   const preview = useMemo(() => {
     const price = Number(priceInRupees);
-    const tokens = Number(tokenAllowance);
+    const units = Number(tokenAllowance);
 
     if (
       !Number.isFinite(price) ||
       price <= 0 ||
-      !Number.isFinite(tokens) ||
-      tokens <= 0
+      !Number.isFinite(units) ||
+      units <= 0
     ) {
       return null;
     }
 
-    const perMillionInr = (price / tokens) * 1_000_000;
-    const perMillionUsd = usdToInr > 0 ? perMillionInr / usdToInr : 0;
-    return { perMillionInr, perMillionUsd };
-  }, [priceInRupees, tokenAllowance, usdToInr]);
+    const draftPlan = {
+      priceInPaise: Math.round(price * 100),
+      tokenAllowance: units,
+    };
+    const basePlan = selectBaseCreditPlan(
+      includeDraftInBase
+        ? [...basePlanCandidates, draftPlan]
+        : basePlanCandidates
+    );
+    const credits = units / TOKENS_PER_CREDIT;
+    const baseCreditInr = basePlan
+      ? basePlan.priceInPaise / 100 / (basePlan.tokenAllowance / TOKENS_PER_CREDIT)
+      : null;
+    return {
+      basePlan,
+      baseCreditInr,
+      creditInr: price / credits,
+      draftPlan,
+      isBase: basePlan === draftPlan,
+    };
+  }, [basePlanCandidates, includeDraftInBase, priceInRupees, tokenAllowance]);
 
-  const providerBreakdowns = useMemo(() => {
+  const modelBreakdowns = useMemo(() => {
     if (!preview) {
       return [];
     }
 
-    return modelCosts.map((model) => {
-      const profitInr = preview.perMillionInr - model.providerCostPerMillionInr;
-      const profitUsd = preview.perMillionUsd - model.providerCostPerMillionUsd;
-      const marginPercent =
-        preview.perMillionInr > 0
-          ? (profitInr / preview.perMillionInr) * 100
-          : 0;
-
-      return {
-        ...model,
-        profitInr,
-        profitUsd,
-        marginPercent,
-      };
+    return modelCosts.flatMap((model) => {
+      const economics = calculatePlanModelEconomics({
+        basePlan: preview.basePlan,
+        inputCostPerMillionUsd: model.inputCostPerMillionUsd,
+        markupMultiplier: model.markupMultiplier,
+        outputCostPerMillionUsd: model.outputCostPerMillionUsd,
+        plan: preview.draftPlan,
+        usdToInr,
+      });
+      return economics ? [{ ...model, economics }] : [];
     });
-  }, [preview, modelCosts]);
+  }, [preview, modelCosts, usdToInr]);
 
   const handlePriceChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setPriceInRupees(event.target.value);
@@ -132,7 +157,7 @@ export function PlanPricingFields({
         </div>
         <div className="flex flex-col gap-2">
           <label className="font-medium text-sm" htmlFor="plan-tokens">
-            Token allowance
+            Credit units
           </label>
           <input
             className="rounded-md border bg-background px-3 py-2 text-sm"
@@ -148,8 +173,8 @@ export function PlanPricingFields({
           <p className="text-muted-foreground text-xs">
             {Number.isFinite(Number(tokenAllowance)) &&
             Number(tokenAllowance) > 0
-              ? `~ ${(Number(tokenAllowance) / TOKENS_PER_CREDIT).toLocaleString("en-IN")} credits (${TOKENS_PER_CREDIT} tokens = 1 credit)`
-              : `Credits auto-calculate at ${TOKENS_PER_CREDIT} tokens per credit.`}
+              ? `~ ${(Number(tokenAllowance) / TOKENS_PER_CREDIT).toLocaleString("en-IN")} credits (${TOKENS_PER_CREDIT} units = 1 credit)`
+              : `Credits auto-calculate at ${TOKENS_PER_CREDIT} units per credit.`}
           </p>
         </div>
       </div>
@@ -157,17 +182,25 @@ export function PlanPricingFields({
         {preview ? (
           <>
             <p className="font-medium text-foreground">
-              Effective price / 1M tokens:
+              Price per credit:
               <span className="ml-1 font-semibold">
-                {currencyFormatter(preview.perMillionInr, "INR")}
-              </span>
-              <span className="ml-1 text-muted-foreground">
-                ({currencyFormatter(preview.perMillionUsd, "USD")})
+                {currencyFormatter(preview.creditInr, "INR")}
               </span>
             </p>
-            {providerBreakdowns.length > 0 ? (
+            <p className="mt-1 text-muted-foreground">
+              {preview.isBase
+                ? "This plan sets the base credit price, so customers pay exactly each model's configured markup."
+                : preview.baseCreditInr !== null
+                  ? `Charges convert to credits at the base plan price of ${currencyFormatter(preview.baseCreditInr, "INR")} per credit. ${
+                      preview.creditInr < preview.baseCreditInr
+                        ? `This plan's bonus credits give its buyers ${((1 - preview.creditInr / preview.baseCreditInr) * 100).toFixed(1)}% off, which lowers the realized markup.`
+                        : "Buyers of this plan pay the full configured markup."
+                    }`
+                  : "Add an active paid plan to calculate the credit conversion."}
+            </p>
+            {modelBreakdowns.length > 0 ? (
               <div className="mt-3 space-y-3">
-                {providerBreakdowns.map((model) => (
+                {modelBreakdowns.map((model) => (
                   <div
                     className="rounded-md border border-muted-foreground/30 bg-background/80 p-3 text-xs sm:text-sm"
                     key={model.id}
@@ -184,20 +217,31 @@ export function PlanPricingFields({
                       )}
                     </div>
                     <p className="mt-1 text-muted-foreground">
-                      Provider cost / 1M tokens:
+                      Provider cost / 1M tokens (in / out):
                       <span className="ml-1 font-semibold text-foreground">
                         {currencyFormatter(
-                          model.providerCostPerMillionInr,
+                          model.economics.providerInputPerMillionInr,
+                          "INR"
+                        )}{" "}
+                        /{" "}
+                        {currencyFormatter(
+                          model.economics.providerOutputPerMillionInr,
                           "INR"
                         )}
                       </span>
-                      <span className="ml-1">
-                        (
+                    </p>
+                    <p className="mt-1 text-muted-foreground">
+                      Customer pays / 1M tokens (in / out):
+                      <span className="ml-1 font-semibold text-foreground">
                         {currencyFormatter(
-                          model.providerCostPerMillionUsd,
-                          "USD"
+                          model.economics.customerInputPerMillionInr,
+                          "INR"
+                        )}{" "}
+                        /{" "}
+                        {currencyFormatter(
+                          model.economics.customerOutputPerMillionInr,
+                          "INR"
                         )}
-                        )
                       </span>
                     </p>
                     <p className="mt-1">
@@ -205,18 +249,16 @@ export function PlanPricingFields({
                       <span
                         className={cn(
                           "ml-1 font-semibold",
-                          model.profitInr >= 0
+                          model.economics.marginPercent >= 0
                             ? "text-emerald-600"
                             : "text-destructive"
                         )}
                       >
-                        {currencyFormatter(model.profitInr, "INR")}
+                        {model.economics.marginPercent.toFixed(2)}%
                       </span>
-                      <span className="ml-1 text-muted-foreground">
-                        ({currencyFormatter(model.profitUsd, "USD")})
-                      </span>
-                      <span className="ml-2 font-medium text-muted-foreground text-xs">
-                        {model.marginPercent.toFixed(2)}%
+                      <span className="ml-2 text-muted-foreground text-xs">
+                        ({model.economics.realizedMarkup.toFixed(2)}x realized
+                        of {model.markupMultiplier.toFixed(2)}x markup)
                       </span>
                     </p>
                   </div>
@@ -231,7 +273,7 @@ export function PlanPricingFields({
           </>
         ) : (
           <p className="text-muted-foreground">
-            Enter a price and token allowance to preview the effective price and
+            Enter a price and credit units to preview the price per credit and
             margin for this plan.
           </p>
         )}

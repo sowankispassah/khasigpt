@@ -94,7 +94,7 @@ export function CostPlusPreviewCard({
             <dt className="text-muted-foreground text-xs">
               {translate("admin.pricing.preview.customer_charge", "Customer charge")}
             </dt>
-            <dd className="font-medium text-sm">₹{formatNumber(preview.customerChargeInr, 4)}</dd>
+            <dd className="font-medium text-sm">₹{formatNumber(preview.billedChargeInr, 4)}</dd>
           </div>
           <div>
             <dt className="text-muted-foreground text-xs">

@@ -3,6 +3,7 @@ import {
   calculateBillableInputTokens,
   calculateCostPlusPreview,
   calculateImageTokenProviderCostUsd,
+  calculatePlanModelEconomics,
   calculateTokenProviderCostUsd,
   calculateUnitProviderCostUsd,
   calculateWalletUnitsPerInr,
@@ -159,11 +160,22 @@ test("uses the exact billed credit rounding in the live profit preview", () => {
     (preview?.providerCostInr ?? 0) * 2.5,
     8
   );
-  expect(preview?.profitInr).toBeCloseTo(
-    (preview?.providerCostInr ?? 0) * 1.5,
+  const billedUnits = Math.ceil(
+    (preview?.customerChargeInr ?? 0) * WALLET_UNITS_PER_INR
+  );
+  expect(preview?.billedChargeInr).toBeCloseTo(
+    billedUnits / WALLET_UNITS_PER_INR,
     8
   );
-  expect(preview?.marginPercent).toBeCloseTo(60, 8);
+  expect(preview?.profitInr).toBeCloseTo(
+    (preview?.billedChargeInr ?? 0) - (preview?.providerCostInr ?? 0),
+    8
+  );
+  expect(preview?.marginPercent).toBeCloseTo(
+    ((preview?.profitInr ?? 0) / (preview?.billedChargeInr ?? 1)) * 100,
+    8
+  );
+  expect(preview?.marginPercent).toBeGreaterThanOrEqual(60);
   expect(preview?.credits).toBe(
     Math.ceil((preview?.customerChargeInr ?? 0) * WALLET_UNITS_PER_INR) /
       TOKENS_PER_CREDIT
@@ -184,4 +196,49 @@ test("rounds once after combining independently marked-up line items", () => {
   expect(
     charge.lineItems.reduce((total, lineItem) => total + lineItem.creditUnits, 0)
   ).toBe(5803);
+});
+
+test("scales the configured markup by a plan's bonus credits", () => {
+  const basePlan = { priceInPaise: 50_000, tokenAllowance: 250_000 };
+  const bulkPlan = { priceInPaise: 100_000, tokenAllowance: 600_000 };
+
+  const base = calculatePlanModelEconomics({
+    basePlan,
+    inputCostPerMillionUsd: 1,
+    markupMultiplier: 4,
+    outputCostPerMillionUsd: 4,
+    plan: basePlan,
+    usdToInr: USD_TO_INR,
+  });
+  expect(base?.realizedMarkup).toBeCloseTo(4, 10);
+  expect(base?.marginPercent).toBeCloseTo(75, 10);
+  expect(base?.customerOutputPerMillionInr).toBeCloseTo(4 * USD_TO_INR * 4, 8);
+
+  // 20% more units per rupee: the buyer pays 1/1.2 of the base price.
+  const bulk = calculatePlanModelEconomics({
+    basePlan,
+    inputCostPerMillionUsd: 1,
+    markupMultiplier: 4,
+    outputCostPerMillionUsd: 4,
+    plan: bulkPlan,
+    usdToInr: USD_TO_INR,
+  });
+  expect(bulk?.creditValueRatio).toBeCloseTo(500 / 600, 10);
+  expect(bulk?.realizedMarkup).toBeCloseTo(4 / 1.2, 10);
+  expect(bulk?.marginPercent).toBeCloseTo((1 - 1.2 / 4) * 100, 10);
+  expect(bulk?.customerInputPerMillionInr).toBeCloseTo(
+    (USD_TO_INR * 4) / 1.2,
+    8
+  );
+
+  expect(
+    calculatePlanModelEconomics({
+      basePlan: null,
+      inputCostPerMillionUsd: 1,
+      markupMultiplier: 4,
+      outputCostPerMillionUsd: 4,
+      plan: bulkPlan,
+      usdToInr: USD_TO_INR,
+    })
+  ).toBeNull();
 });

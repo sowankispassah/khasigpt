@@ -35,10 +35,10 @@ const DEFAULT_VISIBLE_ROWS = 10;
 type PricingPlanRow = {
   billingCycleDays: number;
   credits: number;
+  customerInputPerMillionInr: number | null;
+  customerOutputPerMillionInr: number | null;
   deletedAt: string | null;
   description: string | null;
-  effectivePerMillionInr: number | null;
-  effectivePerMillionUsd: number | null;
   id: string;
   isActive: boolean;
   isRecommended: boolean;
@@ -47,6 +47,7 @@ type PricingPlanRow = {
   priceInPaise: number;
   providerInputCostUsd: number | null;
   providerOutputCostUsd: number | null;
+  realizedMarkup: number | null;
   tokenAllowance: number;
   userCreditCostInr: number | null;
   updatedAt: string | null;
@@ -143,7 +144,7 @@ export function PricingManagementTable({
                   {detailsLoading
                     ? "Loading provider costs and editing details..."
                     : referenceModelName
-                      ? `Margin preview uses the default model: ${referenceModelName}.`
+                      ? `Margin preview uses the default model: ${referenceModelName}. Credits are charged at the base plan rate, so bonus credits lower the realized markup.`
                       : "Margin preview is unavailable until an enabled model cost is configured."}
                 </p>
               </div>
@@ -167,7 +168,7 @@ export function PricingManagementTable({
               <th className="px-4 py-3 text-right font-medium">Base credits</th>
               <th className="px-4 py-3 text-right font-medium">Provider input / 1M</th>
               <th className="px-4 py-3 text-right font-medium">Provider output / 1M</th>
-              <th className="px-4 py-3 text-right font-medium">Effective / 1M</th>
+              <th className="px-4 py-3 text-right font-medium">Customer price / 1M (in / out)</th>
               <th className="px-4 py-3 text-right font-medium">User credit cost</th>
               <th className="px-4 py-3 text-right font-medium">Margin</th>
               <th className="px-4 py-3 font-medium">Status</th>
@@ -193,7 +194,7 @@ export function PricingManagementTable({
                 <td className="px-4 py-3 text-right">{plan.credits.toLocaleString()}<span className="block text-muted-foreground text-xs">{plan.tokenAllowance.toLocaleString()} tokens</span></td>
                 <td className="px-4 py-3 text-right text-muted-foreground text-xs">{formatCurrency(plan.providerInputCostUsd, "USD")}</td>
                 <td className="px-4 py-3 text-right text-muted-foreground text-xs">{formatCurrency(plan.providerOutputCostUsd, "USD")}</td>
-                <td className="px-4 py-3 text-right"><span className="font-medium">{formatCurrency(plan.effectivePerMillionInr, "INR")}</span><span className="block text-muted-foreground text-xs">{formatCurrency(plan.effectivePerMillionUsd, "USD")}</span></td>
+                <td className="px-4 py-3 text-right"><span className="font-medium">{formatCurrency(plan.customerInputPerMillionInr, "INR")} / {formatCurrency(plan.customerOutputPerMillionInr, "INR")}</span><span className="block text-muted-foreground text-xs">{plan.realizedMarkup === null ? "—" : `${plan.realizedMarkup.toFixed(2)}x realized markup`}</span></td>
                 <td className="px-4 py-3 text-right font-medium">{formatCurrency(plan.userCreditCostInr, "INR")}</td>
                 <td className={cn("px-4 py-3 text-right font-medium", plan.marginPercent === null ? "text-muted-foreground" : plan.marginPercent >= 0 ? "text-emerald-600" : "text-destructive")}>{plan.marginPercent === null ? "—" : `${plan.marginPercent.toFixed(2)}%`}</td>
                 <td className="px-4 py-3"><div className="flex flex-wrap gap-1"><span className={cn("rounded-full px-2 py-0.5 text-xs", plan.isActive ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>{plan.isActive ? "Active" : "Inactive"}</span>{plan.isRecommended ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary text-xs">Recommended</span> : null}</div></td>

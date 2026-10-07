@@ -12,10 +12,12 @@ import {
   adminQueryResult,
   getAdminQueryTimeoutMs,
 } from "@/lib/admin/safe-query";
+import { normalizeMarkupMultiplier } from "@/lib/billing/cost-plus";
 import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import {
   type ChatFinancialSummary,
   getAdminApiCostBreakdown,
+  getPartnerPayoutTotals,
   listChatFinancialSummaries,
   listModelConfigs,
   listPaidRechargeTotals,
@@ -47,11 +49,13 @@ type SearchParams = {
 type CostCurrency = "USD" | "INR";
 type ChatSummariesResult = Awaited<ReturnType<typeof listChatFinancialSummaries>>;
 type RechargeSummariesResult = Awaited<ReturnType<typeof listPaidRechargeTotals>>;
+type PartnerPayoutsResult = Awaited<ReturnType<typeof getPartnerPayoutTotals>>;
 type RechargeRecordsResult = Awaited<ReturnType<typeof listRechargeRecords>>;
 type CostBreakdownResult = Awaited<ReturnType<typeof getAdminApiCostBreakdown>>;
 type RateQueryResult = AdminQueryResult<number>;
 type ChatSummariesQueryResult = AdminQueryResult<ChatSummariesResult>;
 type RechargeSummariesQueryResult = AdminQueryResult<RechargeSummariesResult>;
+type PartnerPayoutsQueryResult = AdminQueryResult<PartnerPayoutsResult>;
 type RechargeRecordsQueryResult = AdminQueryResult<RechargeRecordsResult>;
 type CostBreakdownQueryResult = AdminQueryResult<CostBreakdownResult>;
 type ModelConfigsQueryResult = AdminQueryResult<ModelConfig[]>;
@@ -66,10 +70,16 @@ const EMPTY_CHAT_SUMMARIES: ChatSummariesResult = {
   totals: {
     totalInputTokens: 0,
     totalOutputTokens: 0,
+    creditUnits: 0,
     userChargeInr: 0,
     providerCostUsd: 0,
   },
   records: [],
+};
+
+const EMPTY_PARTNER_PAYOUTS: PartnerPayoutsResult = {
+  couponRewardsInr: 0,
+  referralCommissionsInr: 0,
 };
 
 const EMPTY_RECHARGE_RECORDS: RechargeRecordsResult = {
@@ -124,14 +134,13 @@ type ModelPricingRow = {
   id: string;
   name: string;
   provider: string;
+  markupMultiplier: number;
   userInputUsd: number;
   userOutputUsd: number;
   providerInputUsd: number;
   providerOutputUsd: number;
-  totalUserUsd: number;
-  totalProviderUsd: number;
-  profitUsd: number;
-  profitInr: number;
+  profitInputUsd: number;
+  profitOutputUsd: number;
   marginPercent: number;
   enabled: boolean;
 };
@@ -166,47 +175,16 @@ function formatNumber(value: number, fractionDigits = 0) {
   });
 }
 
-function buildSummaryCards(params: {
-  totalRechargeUsd: number;
-  totalRechargeInr: number;
-  totalProviderCostUsd: number;
-  usdToInr: number;
-  chatCount: number;
-}): MetricCard[] {
-  const totalProviderCostInr = params.totalProviderCostUsd * params.usdToInr;
-  const netProfitInr = params.totalRechargeInr - totalProviderCostInr;
-  const avgProfitInr = params.chatCount > 0 ? netProfitInr / params.chatCount : 0;
-
-  return [
-    {
-      title: "Total recharged",
-      value: `${formatCurrency(params.totalRechargeUsd, "USD")} / ${formatCurrency(params.totalRechargeInr, "INR")}`,
-      description: "All-time amount users have successfully paid.",
-    },
-    {
-      title: "Provider cost",
-      value: `${formatCurrency(params.totalProviderCostUsd, "USD")} / ${formatCurrency(totalProviderCostInr, "INR")}`,
-      description: "Estimated spend to the underlying model providers.",
-    },
-    {
-      title: "Net profit",
-      value: formatCurrency(netProfitInr, "INR"),
-      description: `Average per chat: ${formatCurrency(avgProfitInr, "INR")}`,
-    },
-  ];
-}
-
 function mapChatRows(records: ChatFinancialSummary[], usdToInr: number): ChatProfitRow[] {
   return records.map((record) => {
     const createdAt = record.chatCreatedAt ?? record.usageStartedAt ?? null;
-    const totalTokens = record.totalInputTokens + record.totalOutputTokens;
     return {
       chatId: record.chatId ?? "(unknown)",
       userEmail: record.email ?? "Unknown user",
       createdAt,
       inputTokens: record.totalInputTokens,
       outputTokens: record.totalOutputTokens,
-      credits: totalTokens / TOKENS_PER_CREDIT,
+      credits: record.creditUnits / TOKENS_PER_CREDIT,
       chargeUsd: usdToInr > 0 ? record.userChargeInr / usdToInr : 0,
       chargeInr: record.userChargeInr,
       isFreeUsage: !record.userChargeInr || record.userChargeInr <= 0,
@@ -254,24 +232,27 @@ function mapRechargeRows(records: RechargeRecord[], usdToInr: number): RechargeT
   });
 }
 
-function mapModelPricingRows(configs: ModelConfig[], usdToInr: number): ModelPricingRow[] {
+// Customer price at the base recharge rate: provider cost x markup. Bonus
+// credits on larger recharge plans lower the realized price per user.
+function mapModelPricingRows(configs: ModelConfig[]): ModelPricingRow[] {
   return configs.map((config) => {
-    const providerInputUsd = Number(config.inputProviderCostPerMillion ?? 0);
-    const providerOutputUsd = Number(config.outputProviderCostPerMillion ?? 0);
-    const totalProviderUsd = providerInputUsd + providerOutputUsd;
+    const providerInputUsd = Math.max(0, Number(config.inputProviderCostPerMillion ?? 0));
+    const providerOutputUsd = Math.max(0, Number(config.outputProviderCostPerMillion ?? 0));
+    const markupMultiplier = normalizeMarkupMultiplier(config.markupMultiplier);
+    const userInputUsd = providerInputUsd * markupMultiplier;
+    const userOutputUsd = providerOutputUsd * markupMultiplier;
     return {
       id: config.id,
       name: config.displayName,
       provider: config.provider,
-      userInputUsd: 0,
-      userOutputUsd: 0,
+      markupMultiplier,
+      userInputUsd,
+      userOutputUsd,
       providerInputUsd,
       providerOutputUsd,
-      totalUserUsd: 0,
-      totalProviderUsd,
-      profitUsd: -totalProviderUsd,
-      profitInr: -totalProviderUsd * usdToInr,
-      marginPercent: 0,
+      profitInputUsd: userInputUsd - providerInputUsd,
+      profitOutputUsd: userOutputUsd - providerOutputUsd,
+      marginPercent: ((markupMultiplier - 1) / markupMultiplier) * 100,
       enabled: config.isEnabled,
     };
   });
@@ -361,41 +342,32 @@ function SubsectionPanel({ title, children }: { title: string; children: ReactNo
   );
 }
 
-function MobileCard({
-  title,
-  children,
-  eyebrow,
-}: {
-  title: string;
-  children: ReactNode;
-  eyebrow?: string;
+function describeCostUsage(row: {
+  featureKey: string;
+  usageCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  indexedEntries: number;
+  indexedChars: number;
 }) {
-  return (
-    <article className="rounded-lg border bg-background p-4">
-      {eyebrow ? (
-        <div className="text-muted-foreground text-xs uppercase tracking-wide">
-          {eyebrow}
-        </div>
-      ) : null}
-      <div className="mt-1 font-medium text-sm">{title}</div>
-      <div className="mt-3 space-y-2 text-sm">{children}</div>
-    </article>
-  );
-}
-
-function MobileMetaRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: ReactNode;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <span className="text-muted-foreground text-xs">{label}</span>
-      <span className="text-right text-sm">{value}</span>
-    </div>
-  );
+  switch (row.featureKey) {
+    case "chat_completions":
+    case "live_voice":
+      return `${formatNumber(row.usageCount)} usage rows, ${formatNumber(
+        row.inputTokens
+      )} in / ${formatNumber(row.outputTokens)} out`;
+    case "embeddings":
+      return `${formatNumber(row.indexedEntries)} indexed entries, ${formatNumber(
+        row.indexedChars
+      )} chars`;
+    case "image_generation":
+    case "web_search":
+      return `${formatNumber(row.usageCount)} billed requests`;
+    default:
+      return `${formatNumber(row.usageCount)} events, ${formatNumber(
+        row.inputTokens
+      )} tokens`;
+  }
 }
 
 function renderCostFeatureRow(
@@ -403,18 +375,7 @@ function renderCostFeatureRow(
   currency: CostCurrency,
   usdToInr: number
 ) {
-  const usageLabel =
-    row.featureKey === "chat_completions"
-      ? `${formatNumber(row.usageCount)} usage rows, ${formatNumber(
-          row.inputTokens
-        )} in / ${formatNumber(row.outputTokens)} out`
-      : row.featureKey === "embeddings"
-        ? `${formatNumber(row.indexedEntries)} indexed entries, ${formatNumber(
-            row.indexedChars
-          )} chars`
-        : `${formatNumber(row.usageCount)} events, ${formatNumber(
-            row.inputTokens
-          )} tokens`;
+  const usageLabel = describeCostUsage(row);
 
   return (
     <tr className="border-t text-sm" key={row.featureKey}>
@@ -432,54 +393,12 @@ function renderCostFeatureRow(
   );
 }
 
-function _renderCostFeatureCard(
-  row: Awaited<ReturnType<typeof getAdminApiCostBreakdown>>["featureSummaries"][number],
-  currency: CostCurrency,
-  usdToInr: number
-) {
-  const usageLabel =
-    row.featureKey === "chat_completions"
-      ? `${formatNumber(row.usageCount)} rows, ${formatNumber(
-          row.inputTokens
-        )} in / ${formatNumber(row.outputTokens)} out`
-      : row.featureKey === "embeddings"
-        ? `${formatNumber(row.indexedEntries)} entries, ${formatNumber(
-            row.indexedChars
-          )} chars`
-        : `${formatNumber(row.usageCount)} events, ${formatNumber(
-            row.inputTokens
-          )} tokens`;
-
-  return (
-    <MobileCard key={row.featureKey} title={row.featureLabel} eyebrow={row.method}>
-      <MobileMetaRow label="Usage" value={usageLabel} />
-      <MobileMetaRow label="Models" value={formatNumber(row.modelCount)} />
-      <MobileMetaRow
-        label="Cost"
-        value={
-          row.totalCostUsd === null
-            ? "-"
-            : formatCostInCurrency(row.totalCostUsd, currency, usdToInr)
-        }
-      />
-      <div className="text-muted-foreground text-xs">{row.note ?? "-"}</div>
-    </MobileCard>
-  );
-}
-
 function renderCostModelRow(
   row: Awaited<ReturnType<typeof getAdminApiCostBreakdown>>["modelSummaries"][number],
   currency: CostCurrency,
   usdToInr: number
 ) {
-  const usageLabel =
-    row.featureKey === "chat_completions"
-      ? `${formatNumber(row.usageCount)} usage rows, ${formatNumber(
-          row.inputTokens
-        )} in / ${formatNumber(row.outputTokens)} out`
-      : `${formatNumber(row.indexedEntries)} indexed entries, ${formatNumber(
-          row.indexedChars
-        )} chars`;
+  const usageLabel = describeCostUsage(row);
 
   return (
     <tr className="border-t text-sm" key={row.modelKey}>
@@ -499,37 +418,6 @@ function renderCostModelRow(
   );
 }
 
-function _renderCostModelCard(
-  row: Awaited<ReturnType<typeof getAdminApiCostBreakdown>>["modelSummaries"][number],
-  currency: CostCurrency,
-  usdToInr: number
-) {
-  const usageLabel =
-    row.featureKey === "chat_completions"
-      ? `${formatNumber(row.usageCount)} rows, ${formatNumber(
-          row.inputTokens
-        )} in / ${formatNumber(row.outputTokens)} out`
-      : `${formatNumber(row.indexedEntries)} entries, ${formatNumber(
-          row.indexedChars
-        )} chars`;
-
-  return (
-    <MobileCard key={row.modelKey} title={row.modelLabel} eyebrow={row.featureLabel}>
-      <MobileMetaRow label="Provider" value={row.providerLabel ?? "-"} />
-      <MobileMetaRow label="Method" value={row.method.replaceAll("_", " ")} />
-      <MobileMetaRow label="Usage" value={usageLabel} />
-      <MobileMetaRow
-        label="Cost"
-        value={
-          row.totalCostUsd === null
-            ? "-"
-            : formatCostInCurrency(row.totalCostUsd, currency, usdToInr)
-        }
-      />
-    </MobileCard>
-  );
-}
-
 function renderDailyCostRow(
   row: Awaited<ReturnType<typeof getAdminApiCostBreakdown>>["dailySummaries"][number],
   currency: CostCurrency,
@@ -542,6 +430,15 @@ function renderDailyCostRow(
         {formatCostInCurrency(row.chatCostUsd, currency, usdToInr)}
       </td>
       <td className="py-2 text-right">
+        {formatCostInCurrency(row.liveVoiceCostUsd, currency, usdToInr)}
+      </td>
+      <td className="py-2 text-right">
+        {formatCostInCurrency(row.imageCostUsd, currency, usdToInr)}
+      </td>
+      <td className="py-2 text-right">
+        {formatCostInCurrency(row.webSearchCostUsd, currency, usdToInr)}
+      </td>
+      <td className="py-2 text-right">
         {formatCostInCurrency(row.embeddingCostUsd, currency, usdToInr)}
       </td>
       <td className="py-2 text-right font-medium">
@@ -549,33 +446,6 @@ function renderDailyCostRow(
       </td>
       <td className="py-2 text-right">{formatNumber(row.otherUsageCount)}</td>
     </tr>
-  );
-}
-
-function _renderDailyCostCard(
-  row: Awaited<ReturnType<typeof getAdminApiCostBreakdown>>["dailySummaries"][number],
-  currency: CostCurrency,
-  usdToInr: number
-) {
-  return (
-    <MobileCard key={row.date} title={row.date}>
-      <MobileMetaRow
-        label="Chat"
-        value={formatCostInCurrency(row.chatCostUsd, currency, usdToInr)}
-      />
-      <MobileMetaRow
-        label="Embeddings"
-        value={formatCostInCurrency(row.embeddingCostUsd, currency, usdToInr)}
-      />
-      <MobileMetaRow
-        label="Total"
-        value={formatCostInCurrency(row.totalCostUsd, currency, usdToInr)}
-      />
-      <MobileMetaRow
-        label="Other usage"
-        value={formatNumber(row.otherUsageCount)}
-      />
-    </MobileCard>
   );
 }
 
@@ -589,18 +459,6 @@ function renderOtherUsageRow(
       <td className="py-2 text-right">{formatNumber(row.totalTokens)}</td>
       <td className="py-2 text-muted-foreground text-xs">{row.note}</td>
     </tr>
-  );
-}
-
-function _renderOtherUsageCard(
-  row: Awaited<ReturnType<typeof getAdminApiCostBreakdown>>["otherUsageSummaries"][number]
-) {
-  return (
-    <MobileCard key={row.featureKey} title={row.featureLabel}>
-      <MobileMetaRow label="Events" value={formatNumber(row.usageCount)} />
-      <MobileMetaRow label="Tokens" value={formatNumber(row.totalTokens)} />
-      <div className="text-muted-foreground text-xs">{row.note}</div>
-    </MobileCard>
   );
 }
 
@@ -653,31 +511,6 @@ function renderChatProfitRow(row: ChatProfitRow) {
   );
 }
 
-function _renderChatProfitCard(row: ChatProfitRow) {
-  const dateLabel = row.createdAt ? format(row.createdAt, "PPpp") : "-";
-  return (
-    <MobileCard key={`${row.chatId}-${dateLabel}`} title={row.userEmail} eyebrow={dateLabel}>
-      <MobileMetaRow label="Chat" value={<span className="font-mono text-xs">{row.chatId.slice(0, 12)}</span>} />
-      <MobileMetaRow label="Credits" value={formatNumber(row.credits, 2)} />
-      <MobileMetaRow
-        label="Tokens"
-        value={`${formatNumber(row.inputTokens)} in / ${formatNumber(row.outputTokens)} out`}
-      />
-      <MobileMetaRow
-        label="Charge"
-        value={
-          row.isFreeUsage ? "Free credits" : formatCurrency(row.chargeInr, "INR")
-        }
-      />
-      <MobileMetaRow
-        label="Provider cost"
-        value={formatCurrency(row.providerCostInr, "INR")}
-      />
-      <MobileMetaRow label="Profit" value={formatCurrency(row.profitInr, "INR")} />
-    </MobileCard>
-  );
-}
-
 function renderRechargeRow(row: RechargeTableRow) {
   return (
     <tr className="border-t text-sm" key={`${row.orderId}-${row.createdAt.toISOString()}`}>
@@ -700,32 +533,12 @@ function renderRechargeRow(row: RechargeTableRow) {
   );
 }
 
-function _renderRechargeCard(row: RechargeTableRow) {
-  return (
-    <MobileCard
-      key={`${row.orderId}-${row.createdAt.toISOString()}`}
-      title={row.userEmail}
-      eyebrow={format(row.createdAt, "PPpp")}
-    >
-      <MobileMetaRow label="Order" value={<span className="font-mono text-xs">{row.orderId.slice(0, 16)}</span>} />
-      <MobileMetaRow label="Plan" value={row.planName} />
-      <MobileMetaRow label="Amount" value={formatCurrency(row.amountInr, "INR")} />
-      <MobileMetaRow label="Currency" value={row.currency} />
-      <MobileMetaRow
-        label="Expires"
-        value={row.expiresAt ? format(row.expiresAt, "PPpp") : "-"}
-      />
-    </MobileCard>
-  );
-}
-
 function renderModelPricingRow(row: ModelPricingRow, usdToInr: number) {
-  const userInputInr = row.userInputUsd * usdToInr;
-  const userOutputInr = row.userOutputUsd * usdToInr;
-  const providerInputInr = row.providerInputUsd * usdToInr;
-  const providerOutputInr = row.providerOutputUsd * usdToInr;
-  const totalUserInr = row.totalUserUsd * usdToInr;
-  const totalProviderInr = row.totalProviderUsd * usdToInr;
+  const renderPair = (label: string, valueUsd: number) => (
+    <div>
+      {label}: {formatCurrency(valueUsd, "USD")} ({formatCurrency(valueUsd * usdToInr, "INR")})
+    </div>
+  );
 
   return (
     <tr className="border-t text-sm" key={row.id}>
@@ -738,56 +551,23 @@ function renderModelPricingRow(row: ModelPricingRow, usdToInr: number) {
         </div>
       </td>
       <td className="py-2 capitalize">{row.provider}</td>
+      <td className="py-2 text-right">{formatNumber(row.markupMultiplier, 2)}x</td>
       <td className="py-2 text-muted-foreground text-xs">
-        <div>
-          Input: {formatCurrency(row.userInputUsd, "USD")} ({formatCurrency(userInputInr, "INR")})
-        </div>
-        <div>
-          Output: {formatCurrency(row.userOutputUsd, "USD")} ({formatCurrency(userOutputInr, "INR")})
-        </div>
-        <div>
-          Total: {formatCurrency(row.totalUserUsd, "USD")} ({formatCurrency(totalUserInr, "INR")})
-        </div>
+        {renderPair("Input", row.userInputUsd)}
+        {renderPair("Output", row.userOutputUsd)}
       </td>
       <td className="py-2 text-muted-foreground text-xs">
-        <div>
-          Input: {formatCurrency(row.providerInputUsd, "USD")} ({formatCurrency(providerInputInr, "INR")})
-        </div>
-        <div>
-          Output: {formatCurrency(row.providerOutputUsd, "USD")} ({formatCurrency(providerOutputInr, "INR")})
-        </div>
-        <div>
-          Total: {formatCurrency(row.totalProviderUsd, "USD")} ({formatCurrency(totalProviderInr, "INR")})
-        </div>
+        {renderPair("Input", row.providerInputUsd)}
+        {renderPair("Output", row.providerOutputUsd)}
       </td>
       <td className="py-2 text-muted-foreground text-xs">
-        <div>{formatCurrency(row.profitUsd, "USD")}</div>
-        <div>{formatCurrency(row.profitInr, "INR")}</div>
+        {renderPair("Input", row.profitInputUsd)}
+        {renderPair("Output", row.profitOutputUsd)}
       </td>
       <td className="py-2 text-right font-medium">
         {Number.isFinite(row.marginPercent) ? `${row.marginPercent.toFixed(2)}%` : "-"}
       </td>
     </tr>
-  );
-}
-
-function _renderModelPricingCard(row: ModelPricingRow, usdToInr: number) {
-  const totalProviderInr = row.totalProviderUsd * usdToInr;
-  return (
-    <MobileCard key={row.id} title={row.name} eyebrow={row.provider}>
-      <MobileMetaRow
-        label="Provider cost"
-        value={`${formatCurrency(row.totalProviderUsd, "USD")} / ${formatCurrency(totalProviderInr, "INR")}`}
-      />
-      <MobileMetaRow label="Profit" value={formatCurrency(row.profitInr, "INR")} />
-      <MobileMetaRow
-        label="Margin"
-        value={Number.isFinite(row.marginPercent) ? `${row.marginPercent.toFixed(2)}%` : "-"}
-      />
-      {!row.enabled ? (
-        <div className="text-muted-foreground text-xs">Disabled</div>
-      ) : null}
-    </MobileCard>
   );
 }
 
@@ -828,22 +608,38 @@ export default async function AdminAccountPage({
     }),
     timeoutMs: ADMIN_ACCOUNT_QUERY_TIMEOUT_MS,
   });
-  const chatSummariesPromise = adminQueryResult({
-    fallback: EMPTY_CHAT_SUMMARIES,
-    label: "account.chat-financial-summaries",
-    promise: listChatFinancialSummaries({
-      range: { start: from, end: to },
-      limit: pageSize,
-      offset: (page - 1) * pageSize,
-    }),
-    timeoutMs: ADMIN_ACCOUNT_QUERY_TIMEOUT_MS,
-  });
+  // Revenue converts USD recharges to INR inside the query, so it waits for
+  // the (short-timeout, fallback-backed) exchange rate.
+  const chatSummariesPromise = usdToInrPromise.then((rate) =>
+    adminQueryResult({
+      fallback: EMPTY_CHAT_SUMMARIES,
+      label: "account.chat-financial-summaries",
+      promise: listChatFinancialSummaries({
+        range: { start: from, end: to },
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+        usdToInr: rate.data,
+      }),
+      timeoutMs: ADMIN_ACCOUNT_QUERY_TIMEOUT_MS,
+    })
+  );
   const rechargeSummariesPromise = adminQueryResult({
     fallback: [] as RechargeSummariesResult,
     label: "account.recharge-totals",
-    promise: listPaidRechargeTotals(),
+    promise: listPaidRechargeTotals({ start: from, end: to }),
     timeoutMs: ADMIN_ACCOUNT_QUERY_TIMEOUT_MS,
   });
+  const partnerPayoutsPromise = usdToInrPromise.then((rate) =>
+    adminQueryResult({
+      fallback: EMPTY_PARTNER_PAYOUTS,
+      label: "account.partner-payouts",
+      promise: getPartnerPayoutTotals({
+        range: { start: from, end: to },
+        usdToInr: rate.data,
+      }),
+      timeoutMs: ADMIN_ACCOUNT_QUERY_TIMEOUT_MS,
+    })
+  );
   const rechargeRecordsPromise = adminQueryResult({
     fallback: EMPTY_RECHARGE_RECORDS,
     label: "account.recharge-records",
@@ -875,6 +671,8 @@ export default async function AdminAccountPage({
       <Suspense fallback={<AccountOverviewFallback />}>
         <AccountOverviewSection
           chatSummariesPromise={chatSummariesPromise}
+          hasRange={Boolean(from || to)}
+          partnerPayoutsPromise={partnerPayoutsPromise}
           rechargeSummariesPromise={rechargeSummariesPromise}
           usdToInrPromise={usdToInrPromise}
         />
@@ -923,526 +721,90 @@ export default async function AdminAccountPage({
   );
 }
 
-async function _LegacyAdminAccountPage({
-  searchParams,
-}: {
-  searchParams?: Promise<SearchParams>;
-}) {
-  const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const from = parseDate(resolvedSearchParams?.from);
-  const to = parseDate(resolvedSearchParams?.to);
-  const costFrom = parseDate(resolvedSearchParams?.costFrom);
-  const costTo = parseDate(resolvedSearchParams?.costTo);
-  const costCurrency = parseCostCurrency(resolvedSearchParams?.costCurrency);
-  const page = Math.max(1, Number.parseInt(resolvedSearchParams?.page ?? "1", 10));
-  const pageSize = Math.min(
-    Math.max(1, Number.parseInt(resolvedSearchParams?.pageSize ?? String(DEFAULT_PAGE_SIZE), 10)),
-    MAX_PAGE_SIZE
-  );
-
-  const [
-    { rate: usdToInr },
-    costBreakdown,
-    chatSummaries,
-    rechargeSummaries,
-    rechargeRecords,
-    modelConfigs,
-  ] = await Promise.all([
-    getUsdToInrRate(),
-    getAdminApiCostBreakdown({
-      range: costFrom || costTo ? { start: costFrom, end: costTo } : undefined,
-    }),
-    listChatFinancialSummaries({
-      range: { start: from, end: to },
-      limit: pageSize,
-      offset: (page - 1) * pageSize,
-    }),
-    listPaidRechargeTotals(),
-    listRechargeRecords({
-      range: { start: from, end: to },
-      limit: pageSize,
-      offset: (page - 1) * pageSize,
-    }),
-    listModelConfigs({ includeDeleted: false, includeDisabled: true }),
-  ]);
-
-  const chatRows = mapChatRows(chatSummaries.records, usdToInr);
-  const rechargeRows = mapRechargeRows(rechargeRecords.records, usdToInr);
-  const modelRows = mapModelPricingRows(modelConfigs, usdToInr);
-  const { totalUsd: totalRechargeUsd, totalInr: totalRechargeInr } =
-    aggregateRechargeTotals(rechargeSummaries, usdToInr);
-  const summaryCards = buildSummaryCards({
-    totalRechargeUsd,
-    totalRechargeInr,
-    totalProviderCostUsd: chatSummaries.totals.providerCostUsd,
-    usdToInr,
-    chatCount: chatSummaries.total,
-  });
-
-  const { preview: costFeatureRowsPreview, overflow: costFeatureRowsOverflow } =
-    splitPreviewRows(costBreakdown.featureSummaries);
-  const { preview: costModelRowsPreview, overflow: costModelRowsOverflow } =
-    splitPreviewRows(costBreakdown.modelSummaries);
-  const { preview: costDailyRowsPreview, overflow: costDailyRowsOverflow } =
-    splitPreviewRows(costBreakdown.dailySummaries);
-  const { preview: otherUsageRowsPreview, overflow: otherUsageRowsOverflow } =
-    splitPreviewRows(costBreakdown.otherUsageSummaries);
-  const { preview: chatRowsPreview, overflow: chatRowsOverflow } =
-    splitPreviewRows(chatRows);
-  const { preview: rechargeRowsPreview, overflow: rechargeRowsOverflow } =
-    splitPreviewRows(rechargeRows);
-  const { preview: modelRowsPreview, overflow: modelRowsOverflow } =
-    splitPreviewRows(modelRows);
-
-  const totalPages = Math.max(1, Math.ceil(chatSummaries.total / pageSize));
-  const rechargeTotalPages = Math.max(
-    1,
-    Math.ceil(rechargeRecords.total / pageSize)
-  );
-
-  const chatExportRows = chatRows.map((row) => ({
-    chatId: row.chatId,
-    userEmail: row.userEmail,
-    createdAt: row.createdAt ? format(row.createdAt, "yyyy-MM-dd HH:mm:ss") : "",
-    inputTokens: row.inputTokens,
-    outputTokens: row.outputTokens,
-    credits: row.credits,
-    chargeUsd: row.chargeUsd,
-    chargeInr: row.chargeInr,
-    providerCostUsd: row.providerCostUsd,
-    providerCostInr: row.providerCostInr,
-    profitInr: row.profitInr,
-  }));
-  const rechargeExportRows = rechargeRows.map((row) => ({
-    orderId: row.orderId,
-    userEmail: row.userEmail,
-    planName: row.planName,
-    createdAt: format(row.createdAt, "yyyy-MM-dd HH:mm:ss"),
-    updatedAt: format(row.updatedAt, "yyyy-MM-dd HH:mm:ss"),
-    amountUsd: row.amountUsd,
-    amountInr: row.amountInr,
-    currency: row.currency,
-    expiresAt: row.expiresAt ? format(row.expiresAt, "yyyy-MM-dd HH:mm:ss") : "",
-  }));
-
-  return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="font-semibold text-2xl">Per-chat profit</h1>
-        <p className="text-muted-foreground text-sm">
-          Track revenue, provider cost, and margin for each chat session.
-        </p>
-      </header>
-
-      <AccountSection title="Cost">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="max-w-3xl text-muted-foreground text-sm">
-            API cost dashboard by feature, model, and day. Chat completion costs are exact. Embedding costs are estimated from indexed content size. Other tracked usage is shown separately when historical provider cost is unavailable.
-          </p>
-          <Link
-            className="text-sm text-muted-foreground underline-offset-4 hover:underline"
-            href={buildSearchHref(resolvedSearchParams, {
-              costFrom: null,
-              costTo: null,
-              costCurrency,
-            })}
-          >
-            View all-time
-          </Link>
-        </div>
-
-        <form className="mt-4 flex flex-wrap items-end gap-3" method="get">
-          <PreservedSearchParamsInputs
-            exclude={["costFrom", "costTo", "costCurrency"]}
-            searchParams={resolvedSearchParams}
-          />
-          <div className="flex flex-col">
-            <label className="font-medium text-muted-foreground text-xs" htmlFor="costFrom">Start date</label>
-            <input className="rounded-md border bg-background px-3 py-2 text-sm" defaultValue={costFrom ? format(costFrom, "yyyy-MM-dd") : ""} id="costFrom" name="costFrom" type="date" />
-          </div>
-          <div className="flex flex-col">
-            <label className="font-medium text-muted-foreground text-xs" htmlFor="costTo">End date</label>
-            <input className="rounded-md border bg-background px-3 py-2 text-sm" defaultValue={costTo ? format(costTo, "yyyy-MM-dd") : ""} id="costTo" name="costTo" type="date" />
-          </div>
-          <div className="flex flex-col">
-            <label className="font-medium text-muted-foreground text-xs" htmlFor="costCurrency">Currency</label>
-            <select className="rounded-md border bg-background px-3 py-2 text-sm" defaultValue={costCurrency} id="costCurrency" name="costCurrency">
-              <option value="INR">INR</option>
-              <option value="USD">USD</option>
-            </select>
-          </div>
-          <Button type="submit" variant="secondary">Apply</Button>
-        </form>
-
-        <div className="mt-6 flex flex-col gap-4">
-          <article className="rounded-lg border bg-background p-4"><div className="font-medium text-muted-foreground text-sm">Total cost</div><div className="mt-2 font-semibold text-lg">{formatCostInCurrency(costBreakdown.totalCostUsd, costCurrency, usdToInr)}</div><div className="mt-1 text-muted-foreground text-xs">Selected range</div></article>
-          <article className="rounded-lg border bg-background p-4"><div className="font-medium text-muted-foreground text-sm">Exact tracked cost</div><div className="mt-2 font-semibold text-lg">{formatCostInCurrency(costBreakdown.exactCostUsd, costCurrency, usdToInr)}</div><div className="mt-1 text-muted-foreground text-xs">Chat completion token usage</div></article>
-          <article className="rounded-lg border bg-background p-4"><div className="font-medium text-muted-foreground text-sm">Estimated embedding cost</div><div className="mt-2 font-semibold text-lg">{formatCostInCurrency(costBreakdown.estimatedCostUsd, costCurrency, usdToInr)}</div><div className="mt-1 text-muted-foreground text-xs">Knowledge embedding and index updates</div></article>
-          <article className="rounded-lg border bg-background p-4"><div className="font-medium text-muted-foreground text-sm">Other tracked usage</div><div className="mt-2 font-semibold text-lg">{formatNumber(costBreakdown.otherUsageSummaries.reduce((total, row) => total + row.usageCount, 0))}</div><div className="mt-1 text-muted-foreground text-xs">Tracked events without stored provider cost</div></article>
-        </div>
-
-        <div className="mt-6 flex flex-col gap-4">
-          <SubsectionPanel title="Cost by feature">
-            <div className="overflow-x-auto">
-              <table className="w-max min-w-[920px] text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
-                <thead className="text-muted-foreground text-xs uppercase"><tr><th className="py-3 text-left">Feature</th><th className="py-3 text-left">Method</th><th className="py-3 text-left">Usage</th><th className="py-3 text-right">Models</th><th className="py-3 text-right">Cost</th><th className="py-3 text-left">Notes</th></tr></thead>
-                <tbody>{costBreakdown.featureSummaries.length === 0 ? <tr><td className="py-6 text-center text-muted-foreground" colSpan={6}>No API cost data found for the selected range.</td></tr> : <InlineExpandableRows colSpan={6} overflowRows={costFeatureRowsOverflow.map((row) => renderCostFeatureRow(row, costCurrency, usdToInr))} previewRows={costFeatureRowsPreview.map((row) => renderCostFeatureRow(row, costCurrency, usdToInr))} />}</tbody>
-              </table>
-            </div>
-          </SubsectionPanel>
-
-          <SubsectionPanel title="Cost by model">
-            <div className="overflow-x-auto">
-              <table className="w-max min-w-[920px] text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
-                <thead className="text-muted-foreground text-xs uppercase"><tr><th className="py-3 text-left">Feature</th><th className="py-3 text-left">Model</th><th className="py-3 text-left">Provider</th><th className="py-3 text-left">Method</th><th className="py-3 text-left">Usage</th><th className="py-3 text-right">Cost</th></tr></thead>
-                <tbody>{costBreakdown.modelSummaries.length === 0 ? <tr><td className="py-6 text-center text-muted-foreground" colSpan={6}>No per-model cost data found for the selected range.</td></tr> : <InlineExpandableRows colSpan={6} overflowRows={costModelRowsOverflow.map((row) => renderCostModelRow(row, costCurrency, usdToInr))} previewRows={costModelRowsPreview.map((row) => renderCostModelRow(row, costCurrency, usdToInr))} />}</tbody>
-              </table>
-            </div>
-          </SubsectionPanel>
-
-          <SubsectionPanel title="Daily cost trend">
-            <div className="overflow-x-auto">
-              <table className="w-max min-w-[760px] text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
-                <thead className="text-muted-foreground text-xs uppercase"><tr><th className="py-3 text-left">Date</th><th className="py-3 text-right">Chat</th><th className="py-3 text-right">Embeddings</th><th className="py-3 text-right">Total</th><th className="py-3 text-right">Other usage</th></tr></thead>
-                <tbody>{costBreakdown.dailySummaries.length === 0 ? <tr><td className="py-6 text-center text-muted-foreground" colSpan={5}>No daily cost data found for the selected range.</td></tr> : <InlineExpandableRows colSpan={5} overflowRows={costDailyRowsOverflow.map((row) => renderDailyCostRow(row, costCurrency, usdToInr))} previewRows={costDailyRowsPreview.map((row) => renderDailyCostRow(row, costCurrency, usdToInr))} />}</tbody>
-              </table>
-            </div>
-          </SubsectionPanel>
-
-          <SubsectionPanel title="Tracked other API usage">
-            <div className="overflow-x-auto">
-              <table className="w-max min-w-[720px] text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
-                <thead className="text-muted-foreground text-xs uppercase"><tr><th className="py-3 text-left">Tracked usage</th><th className="py-3 text-right">Events</th><th className="py-3 text-right">Tokens</th><th className="py-3 text-left">Notes</th></tr></thead>
-                <tbody>{costBreakdown.otherUsageSummaries.length === 0 ? <tr><td className="py-6 text-center text-muted-foreground" colSpan={4}>No other tracked API usage found for the selected range.</td></tr> : <InlineExpandableRows colSpan={4} overflowRows={otherUsageRowsOverflow.map((row) => renderOtherUsageRow(row))} previewRows={otherUsageRowsPreview.map((row) => renderOtherUsageRow(row))} />}</tbody>
-              </table>
-            </div>
-          </SubsectionPanel>
-        </div>
-      </AccountSection>
-
-      <AccountSection title="Overview">
-          <div className="grid gap-4 md:grid-cols-3">
-            {summaryCards.map((card) => (
-              <article
-                className="rounded-lg border bg-background p-4 shadow-sm"
-                key={card.title}
-              >
-                <div className="font-medium text-muted-foreground text-sm">
-                  {card.title}
-                </div>
-                <div className="mt-2 font-semibold text-lg">{card.value}</div>
-                {card.description ? (
-                  <p className="mt-1 text-muted-foreground text-xs leading-relaxed">
-                    {card.description}
-                  </p>
-                ) : null}
-              </article>
-            ))}
-          </div>
-        </AccountSection>
-
-      <AccountSection title="Chat profit log">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-muted-foreground text-sm">
-              Revenue and provider cost for each chat transcript.
-            </p>
-            <ExportButton rows={chatExportRows} />
-          </div>
-
-          <form className="mt-4 flex flex-wrap items-end gap-3" method="get">
-            <PreservedSearchParamsInputs
-              exclude={["from", "to", "page", "pageSize"]}
-              searchParams={resolvedSearchParams}
-            />
-            <div className="flex flex-col">
-              <label
-                className="font-medium text-muted-foreground text-xs"
-                htmlFor="from"
-              >
-                From
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                defaultValue={from ? format(from, "yyyy-MM-dd") : ""}
-                id="from"
-                name="from"
-                type="date"
-              />
-            </div>
-            <div className="flex flex-col">
-              <label
-                className="font-medium text-muted-foreground text-xs"
-                htmlFor="to"
-              >
-                To
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                defaultValue={to ? format(to, "yyyy-MM-dd") : ""}
-                id="to"
-                name="to"
-                type="date"
-              />
-            </div>
-            <div className="flex flex-col">
-              <label
-                className="font-medium text-muted-foreground text-xs"
-                htmlFor="pageSize"
-              >
-                Rows per page
-              </label>
-              <input
-                className="w-28 rounded-md border bg-background px-3 py-2 text-sm"
-                defaultValue={pageSize}
-                id="pageSize"
-                max={MAX_PAGE_SIZE}
-                min={1}
-                name="pageSize"
-                type="number"
-              />
-            </div>
-            <input name="page" type="hidden" value="1" />
-            <Button type="submit" variant="secondary">
-              Apply filters
-            </Button>
-          </form>
-
-          <div className="mt-4 text-muted-foreground text-sm">
-            Showing {chatRows.length} of {chatSummaries.total} chats
-          </div>
-
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-max min-w-[980px] text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
-              <thead className="text-muted-foreground text-xs uppercase">
-                <tr>
-                  <th className="py-3 text-left">Date</th>
-                  <th className="py-3 text-left">Chat ID</th>
-                  <th className="py-3 text-left">User</th>
-                  <th className="py-3 text-right">Credits (in/out tokens)</th>
-                  <th className="py-3 text-right">User charge</th>
-                  <th className="py-3 text-right">Provider cost</th>
-                  <th className="py-3 text-right">Profit (INR)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {chatRows.length === 0 ? (
-                  <tr>
-                    <td
-                      className="py-6 text-center text-muted-foreground"
-                      colSpan={7}
-                    >
-                      No chat usage found for the selected range.
-                    </td>
-                  </tr>
-                ) : (
-                  <InlineExpandableRows
-                    colSpan={7}
-                    overflowRows={chatRowsOverflow.map((row) =>
-                      renderChatProfitRow(row)
-                    )}
-                    previewRows={chatRowsPreview.map((row) =>
-                      renderChatProfitRow(row)
-                    )}
-                  />
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
-            <span className="text-muted-foreground">
-              Page {page} of {totalPages}
-            </span>
-            <div className="flex items-center gap-2">
-              <PaginationLink
-                direction="prev"
-                disabled={page <= 1}
-                label="Previous"
-                page={page - 1}
-                searchParams={resolvedSearchParams}
-              />
-              <PaginationLink
-                direction="next"
-                disabled={page >= totalPages}
-                label="Next"
-                page={page + 1}
-                searchParams={resolvedSearchParams}
-              />
-            </div>
-          </div>
-        </AccountSection>
-
-      <AccountSection title="Recharge log">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-muted-foreground text-sm">
-              Breakdown of every successful top-up and the current subscription
-              expiry.
-            </p>
-            <RechargeExportButton rows={rechargeExportRows} />
-          </div>
-
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-max min-w-[920px] text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
-              <thead className="text-muted-foreground text-xs uppercase">
-                <tr>
-                  <th className="py-3 text-left">Date</th>
-                  <th className="py-3 text-left">Order ID</th>
-                  <th className="py-3 text-left">User</th>
-                  <th className="py-3 text-left">Plan</th>
-                  <th className="py-3 text-right">Amount</th>
-                  <th className="py-3 text-right">Currency</th>
-                  <th className="py-3 text-left">Subscription expires</th>
-              <th className="px-3 py-3 text-center"><EditableTranslation translationKey="billing.receipt.title" defaultText="Receipt" /></th>
-                </tr>
-              </thead>
-              <tbody>
-                {rechargeRows.length === 0 ? (
-                  <tr>
-                    <td
-                      className="py-6 text-center text-muted-foreground"
-                      colSpan={8}
-                    >
-                      No paid recharges found for the selected range.
-                    </td>
-                  </tr>
-                ) : (
-                  <InlineExpandableRows
-                    colSpan={8}
-                    overflowRows={rechargeRowsOverflow.map((row) =>
-                      renderRechargeRow(row)
-                    )}
-                    previewRows={rechargeRowsPreview.map((row) =>
-                      renderRechargeRow(row)
-                    )}
-                  />
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
-            <span className="text-muted-foreground">
-              Page {page} of {rechargeTotalPages}
-            </span>
-            <div className="flex items-center gap-2">
-              <PaginationLink
-                direction="prev"
-                disabled={page <= 1}
-                label="Previous"
-                page={page - 1}
-                searchParams={resolvedSearchParams}
-              />
-              <PaginationLink
-                direction="next"
-                disabled={page >= rechargeTotalPages}
-                label="Next"
-                page={page + 1}
-                searchParams={resolvedSearchParams}
-              />
-            </div>
-          </div>
-        </AccountSection>
-
-      <AccountSection title="Model pricing summary">
-          <p className="text-muted-foreground text-sm">
-            User pricing versus provider cost per one million tokens.
-          </p>
-
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-max min-w-[980px] text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
-              <thead className="text-muted-foreground text-xs uppercase">
-                <tr>
-                  <th className="py-3 text-left">Model</th>
-                  <th className="py-3 text-left">Provider</th>
-                  <th className="py-3 text-left">User charge</th>
-                  <th className="py-3 text-left">Provider cost</th>
-                  <th className="py-3 text-left">Profit per 1M</th>
-                  <th className="py-3 text-right">Margin</th>
-                </tr>
-              </thead>
-              <tbody>
-                {modelRows.length === 0 ? (
-                  <tr>
-                    <td
-                      className="py-6 text-center text-muted-foreground"
-                      colSpan={6}
-                    >
-                      No model pricing information available.
-                    </td>
-                  </tr>
-                ) : (
-                  <InlineExpandableRows
-                    colSpan={6}
-                    overflowRows={modelRowsOverflow.map((row) =>
-                      renderModelPricingRow(row, usdToInr)
-                    )}
-                    previewRows={modelRowsPreview.map((row) =>
-                      renderModelPricingRow(row, usdToInr)
-                    )}
-                  />
-                )}
-              </tbody>
-            </table>
-          </div>
-      </AccountSection>
-    </div>
-  );
-}
-
 async function AccountOverviewSection({
   chatSummariesPromise,
+  hasRange,
+  partnerPayoutsPromise,
   rechargeSummariesPromise,
   usdToInrPromise,
 }: {
   chatSummariesPromise: Promise<ChatSummariesQueryResult>;
+  hasRange: boolean;
+  partnerPayoutsPromise: Promise<PartnerPayoutsQueryResult>;
   rechargeSummariesPromise: Promise<RechargeSummariesQueryResult>;
   usdToInrPromise: Promise<RateQueryResult>;
 }) {
-  const [chatSummariesResult, rechargeSummariesResult, usdToInrResult] = await Promise.all([
+  const [
+    chatSummariesResult,
+    partnerPayoutsResult,
+    rechargeSummariesResult,
+    usdToInrResult,
+  ] = await Promise.all([
     chatSummariesPromise,
+    partnerPayoutsPromise,
     rechargeSummariesPromise,
     usdToInrPromise,
   ]);
   const chatSummaries = chatSummariesResult.data;
-  const rechargeSummaries = rechargeSummariesResult.data;
+  const partnerPayouts = partnerPayoutsResult.data;
   const usdToInr = usdToInrResult.data;
   const rechargeTotals = rechargeSummariesResult.ok
-    ? aggregateRechargeTotals(rechargeSummaries, usdToInr)
+    ? aggregateRechargeTotals(rechargeSummariesResult.data, usdToInr)
     : { totalInr: 0, totalUsd: 0 };
+  const rangeLabel = hasRange ? "in the selected range" : "all time";
+  const earnedRevenueInr = chatSummaries.totals.userChargeInr;
   const totalProviderCostInr = chatSummaries.totals.providerCostUsd * usdToInr;
-  const netProfitInr = rechargeTotals.totalInr - totalProviderCostInr;
+  const partnerPayoutsInr =
+    partnerPayouts.couponRewardsInr + partnerPayouts.referralCommissionsInr;
+  // Profit is matched to usage: revenue is recognised when paid credits are
+  // spent, not when a recharge is collected, so unspent balances are excluded.
+  const netProfitInr = earnedRevenueInr - totalProviderCostInr - partnerPayoutsInr;
   const avgProfitInr = chatSummaries.total > 0 ? netProfitInr / chatSummaries.total : 0;
+  const profitConfirmed = chatSummariesResult.ok && partnerPayoutsResult.ok;
   const summaryCards: MetricCard[] = [
     {
       title: "Total recharged",
       value: rechargeSummariesResult.ok
         ? `${formatCurrency(rechargeTotals.totalUsd, "USD")} / ${formatCurrency(rechargeTotals.totalInr, "INR")}`
         : "Unavailable",
-      description: "All-time amount users have successfully paid.",
+      description: `Cash users paid ${rangeLabel}, after coupon discounts. Unspent balances are not counted as revenue until used.`,
+    },
+    {
+      title: "Earned revenue",
+      value: chatSummariesResult.ok
+        ? formatCurrency(earnedRevenueInr, "INR")
+        : "Unavailable",
+      description: `Paid credits spent ${rangeLabel}, valued at what each user paid per credit. Free and admin-granted credits earn nothing.`,
     },
     {
       title: "Provider cost",
       value: chatSummariesResult.ok
         ? `${formatCurrency(chatSummaries.totals.providerCostUsd, "USD")} / ${formatCurrency(totalProviderCostInr, "INR")}`
         : "Unavailable",
-      description: "Estimated spend to the underlying model providers.",
+      description:
+        "Chat, live voice, image and web-search provider spend, including free usage and system-prompt tokens.",
+    },
+    {
+      title: "Creator payouts",
+      value: partnerPayoutsResult.ok
+        ? formatCurrency(partnerPayoutsInr, "INR")
+        : "Unavailable",
+      description: partnerPayoutsResult.ok
+        ? `Coupon rewards ${formatCurrency(partnerPayouts.couponRewardsInr, "INR")}, referral commissions ${formatCurrency(partnerPayouts.referralCommissionsInr, "INR")} accrued ${rangeLabel}.`
+        : "Coupon rewards and referral commissions could not be confirmed.",
     },
     {
       title: "Net profit",
-      value:
-        chatSummariesResult.ok && rechargeSummariesResult.ok
-          ? formatCurrency(netProfitInr, "INR")
-          : "Unavailable",
-      description:
-        chatSummariesResult.ok && rechargeSummariesResult.ok
-          ? `Average per chat: ${formatCurrency(avgProfitInr, "INR")}`
-          : "Needs confirmed recharge and usage data.",
+      value: profitConfirmed ? formatCurrency(netProfitInr, "INR") : "Unavailable",
+      description: profitConfirmed
+        ? `Earned revenue minus provider cost and creator payouts. Average per chat: ${formatCurrency(avgProfitInr, "INR")}. Payment gateway and app store fees are not included.`
+        : "Needs confirmed usage and creator payout data.",
     },
   ];
 
   return (
     <AccountSection defaultOpen title="Overview">
-      {!chatSummariesResult.ok || !rechargeSummariesResult.ok || !usdToInrResult.ok ? (
+      {!chatSummariesResult.ok || !rechargeSummariesResult.ok || !partnerPayoutsResult.ok || !usdToInrResult.ok ? (
         <div className="mb-4">
           <AccountQueryWarning>
             Some account totals could not be confirmed. Confirmed sections still show real data; unavailable totals are not replaced with zero.
@@ -1450,7 +812,7 @@ async function AccountOverviewSection({
           </AccountQueryWarning>
         </div>
       ) : null}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-5">
         {summaryCards.map((card) => (
           <article
             className="rounded-lg border bg-background p-4 shadow-sm"
@@ -1506,7 +868,7 @@ async function AccountCostSection({
     <AccountSection title="Cost">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-3xl text-muted-foreground text-sm">
-          API cost dashboard by feature, model, and day. Chat completion costs are exact. Embedding costs are estimated from indexed content size. Other tracked usage is shown separately when historical provider cost is unavailable.
+          API cost dashboard by feature, model, and day. Chat, live voice, image and web-search costs use the provider prices captured when each request was billed (unbilled usage uses current model prices). Embedding costs are estimated from indexed content size. Usage with no recoverable provider cost is listed separately.
         </p>
         <Link
           className="text-sm text-muted-foreground underline-offset-4 hover:underline"
@@ -1554,7 +916,7 @@ async function AccountCostSection({
 
       <div className="mt-6 flex flex-col gap-4">
         <article className="rounded-lg border bg-background p-4"><div className="font-medium text-muted-foreground text-sm">Total cost</div><div className="mt-2 font-semibold text-lg">{costBreakdownResult.ok ? formatCostInCurrency(costBreakdown.totalCostUsd, costCurrency, usdToInr) : "Unavailable"}</div><div className="mt-1 text-muted-foreground text-xs">Selected range</div></article>
-        <article className="rounded-lg border bg-background p-4"><div className="font-medium text-muted-foreground text-sm">Exact tracked cost</div><div className="mt-2 font-semibold text-lg">{costBreakdownResult.ok ? formatCostInCurrency(costBreakdown.exactCostUsd, costCurrency, usdToInr) : "Unavailable"}</div><div className="mt-1 text-muted-foreground text-xs">Chat completion token usage</div></article>
+        <article className="rounded-lg border bg-background p-4"><div className="font-medium text-muted-foreground text-sm">Exact tracked cost</div><div className="mt-2 font-semibold text-lg">{costBreakdownResult.ok ? formatCostInCurrency(costBreakdown.exactCostUsd, costCurrency, usdToInr) : "Unavailable"}</div><div className="mt-1 text-muted-foreground text-xs">Chat, live voice, images and web search</div></article>
         <article className="rounded-lg border bg-background p-4"><div className="font-medium text-muted-foreground text-sm">Estimated embedding cost</div><div className="mt-2 font-semibold text-lg">{costBreakdownResult.ok ? formatCostInCurrency(costBreakdown.estimatedCostUsd, costCurrency, usdToInr) : "Unavailable"}</div><div className="mt-1 text-muted-foreground text-xs">Knowledge embedding and index updates</div></article>
         <article className="rounded-lg border bg-background p-4"><div className="font-medium text-muted-foreground text-sm">Other tracked usage</div><div className="mt-2 font-semibold text-lg">{costBreakdownResult.ok ? formatNumber(costBreakdown.otherUsageSummaries.reduce((total, row) => total + row.usageCount, 0)) : "Unavailable"}</div><div className="mt-1 text-muted-foreground text-xs">Tracked events without stored provider cost</div></article>
       </div>
@@ -1580,9 +942,9 @@ async function AccountCostSection({
 
         <SubsectionPanel title="Daily cost trend">
           <div className="overflow-x-auto">
-            <table className="w-max min-w-[760px] text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
-              <thead className="text-muted-foreground text-xs uppercase"><tr><th className="py-3 text-left">Date</th><th className="py-3 text-right">Chat</th><th className="py-3 text-right">Embeddings</th><th className="py-3 text-right">Total</th><th className="py-3 text-right">Other usage</th></tr></thead>
-              <tbody>{!costBreakdownResult.ok ? <tr><td className="py-6 text-center text-muted-foreground" colSpan={5}>Unable to load daily cost data.</td></tr> : costBreakdown.dailySummaries.length === 0 ? <tr><td className="py-6 text-center text-muted-foreground" colSpan={5}>No daily cost data found for the selected range.</td></tr> : <InlineExpandableRows colSpan={5} overflowRows={costDailyRowsOverflow.map((row) => renderDailyCostRow(row, costCurrency, usdToInr))} previewRows={costDailyRowsPreview.map((row) => renderDailyCostRow(row, costCurrency, usdToInr))} />}</tbody>
+            <table className="w-max min-w-[980px] text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+              <thead className="text-muted-foreground text-xs uppercase"><tr><th className="py-3 text-left">Date</th><th className="py-3 text-right">Chat</th><th className="py-3 text-right">Live voice</th><th className="py-3 text-right">Images</th><th className="py-3 text-right">Web search</th><th className="py-3 text-right">Embeddings</th><th className="py-3 text-right">Total</th><th className="py-3 text-right">Other usage</th></tr></thead>
+              <tbody>{!costBreakdownResult.ok ? <tr><td className="py-6 text-center text-muted-foreground" colSpan={8}>Unable to load daily cost data.</td></tr> : costBreakdown.dailySummaries.length === 0 ? <tr><td className="py-6 text-center text-muted-foreground" colSpan={8}>No daily cost data found for the selected range.</td></tr> : <InlineExpandableRows colSpan={8} overflowRows={costDailyRowsOverflow.map((row) => renderDailyCostRow(row, costCurrency, usdToInr))} previewRows={costDailyRowsPreview.map((row) => renderDailyCostRow(row, costCurrency, usdToInr))} />}</tbody>
             </table>
           </div>
         </SubsectionPanel>
@@ -1701,7 +1063,7 @@ async function AccountChatProfitSection({
               <th className="py-3 text-left">Date</th>
               <th className="py-3 text-left">Chat ID</th>
               <th className="py-3 text-left">User</th>
-              <th className="py-3 text-right">Credits (in/out tokens)</th>
+              <th className="py-3 text-right">Credits charged (in/out tokens)</th>
               <th className="py-3 text-right">User charge</th>
               <th className="py-3 text-right">Provider cost</th>
               <th className="py-3 text-right">Profit (INR)</th>
@@ -1861,14 +1223,17 @@ async function AccountModelPricingSection({
   ]);
   const modelConfigs = modelConfigsResult.data;
   const usdToInr = usdToInrResult.data;
-  const modelRows = mapModelPricingRows(modelConfigs, usdToInr);
+  const modelRows = mapModelPricingRows(modelConfigs);
   const { preview: modelRowsPreview, overflow: modelRowsOverflow } =
     splitPreviewRows(modelRows);
 
   return (
     <AccountSection title="Model pricing summary">
       <p className="text-muted-foreground text-sm">
-        User pricing versus provider cost per one million tokens.
+        Customer price versus provider cost per one million tokens at the base
+        recharge rate (provider cost x markup). Larger recharge plans with bonus
+        credits earn less per token; the chat profit log uses what each user
+        actually paid.
       </p>
 
       {!modelConfigsResult.ok || !usdToInrResult.ok ? (
@@ -1886,28 +1251,29 @@ async function AccountModelPricingSection({
             <tr>
               <th className="py-3 text-left">Model</th>
               <th className="py-3 text-left">Provider</th>
-              <th className="py-3 text-left">User charge</th>
-              <th className="py-3 text-left">Provider cost</th>
-              <th className="py-3 text-left">Profit per 1M</th>
+              <th className="py-3 text-right">Markup</th>
+              <th className="py-3 text-left">Customer price / 1M</th>
+              <th className="py-3 text-left">Provider cost / 1M</th>
+              <th className="py-3 text-left">Profit / 1M</th>
               <th className="py-3 text-right">Margin</th>
             </tr>
           </thead>
           <tbody>
             {!modelConfigsResult.ok ? (
               <tr>
-                <td className="py-6 text-center text-muted-foreground" colSpan={6}>
+                <td className="py-6 text-center text-muted-foreground" colSpan={7}>
                   Unable to load model pricing information.
                 </td>
               </tr>
             ) : modelRows.length === 0 ? (
               <tr>
-                <td className="py-6 text-center text-muted-foreground" colSpan={6}>
+                <td className="py-6 text-center text-muted-foreground" colSpan={7}>
                   No model pricing information available.
                 </td>
               </tr>
             ) : (
               <InlineExpandableRows
-                colSpan={6}
+                colSpan={7}
                 overflowRows={modelRowsOverflow.map((row) => renderModelPricingRow(row, usdToInr))}
                 previewRows={modelRowsPreview.map((row) => renderModelPricingRow(row, usdToInr))}
               />
@@ -1955,7 +1321,7 @@ function AccountSectionFallback({
 }
 
 function AccountOverviewFallback() {
-  return <AccountSectionFallback cards={3} rows={0} title="Overview" />;
+  return <AccountSectionFallback cards={5} rows={0} title="Overview" />;
 }
 
 function AccountCostFallback() {

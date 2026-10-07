@@ -5,16 +5,8 @@ import { useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
-import { PlanPricingFields } from "./plan-pricing-fields";
-
-type ModelCostPreview = {
-  id: string;
-  isDefault: boolean;
-  name: string;
-  providerCostPerMillionInr: number;
-  providerCostPerMillionUsd: number;
-  providerLabel: string;
-};
+import type { CreditPlanForConversion } from "@/lib/billing/cost-plus";
+import { type ModelCostPreview, PlanPricingFields } from "./plan-pricing-fields";
 
 type PricingPlanForEdit = {
   androidProductId: string | null;
@@ -28,10 +20,12 @@ type PricingPlanForEdit = {
 };
 
 export function PricingPlanEditForm({
+  basePlanCandidates,
   modelCosts,
   plan,
   usdToInr,
 }: {
+  basePlanCandidates: CreditPlanForConversion[];
   modelCosts: ModelCostPreview[];
   plan: PricingPlanForEdit;
   usdToInr: number;
@@ -141,6 +135,8 @@ export function PricingPlanEditForm({
       </div>
       <div className="space-y-3">
         <PlanPricingFields
+          basePlanCandidates={basePlanCandidates}
+          includeDraftInBase={plan.isActive}
           initialPriceInRupees={plan.priceInPaise / 100}
           initialTokenAllowance={plan.tokenAllowance}
           inputIdPrefix={`plan-update-${plan.id}`}
