@@ -1,4 +1,5 @@
 import "server-only";
+import { duplicateJobPdfBackfill, isSameJob, normalizeJobPdfUrl } from "@/lib/jobs/duplicate-match";
 import { DEFAULT_JOB_LOCATION } from "@/lib/jobs/location";
 import type { JobsPdfExtractedData } from "@/lib/jobs/pdf-extraction";
 import { syncJobPostingsToRag } from "@/lib/jobs/rag-sync";
@@ -287,9 +288,14 @@ export async function saveJobs(
   let skippedDuplicateCount = 0;
   const writtenJobIds = new Set<string>();
   const insertedJobIds = new Set<string>();
+  const backfilledJobIds = new Set<string>();
 
   for (const batch of chunkArray(normalizedRows, BATCH_SIZE)) {
     const sourceUrls = batch.map((job) => job.source_url);
+    const titles = Array.from(new Set(batch.map((job) => job.title)));
+    const pdfUrls = Array.from(new Set(batch.flatMap((job) => [
+      job.pdf_source_url, normalizeJobPdfUrl(job.pdf_source_url),
+    ]).filter((url): url is string => Boolean(url))));
     const contentHashes = Array.from(
       new Set(
         batch
@@ -337,6 +343,39 @@ export async function saveJobs(
         })
       : [];
 
+    const contextColumns = "id,source_url,title,company,location,description,pdf_source_url";
+    const existingContextRows = await withDbRetry("select-existing-job-context", async () => {
+      const [byTitle, byPdf] = await Promise.all([
+        supabase.from("jobs").select(contextColumns)
+          .in("title", titles).eq("status", "active").limit(1000),
+        pdfUrls.length ? supabase.from("jobs").select(contextColumns)
+          .in("pdf_source_url", pdfUrls).eq("status", "active").limit(1000)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (byTitle.error) throw new Error(byTitle.error.message);
+      if (byPdf.error) throw new Error(byPdf.error.message);
+      return [...(byTitle.data ?? []), ...(byPdf.data ?? [])];
+    });
+
+    const contextMatchBySource = new Map(batch.map((row) => [
+      row.source_url,
+      existingContextRows.find((candidate) => candidate.source_url === row.source_url) ??
+        existingContextRows.find((candidate) => isSameJob(row, candidate)),
+    ]));
+    const pdfTargetIds = Array.from(new Set(batch.flatMap((row) => {
+      const candidate = contextMatchBySource.get(row.source_url);
+      return row.pdf_source_url && typeof candidate?.id === "string" &&
+        (duplicateMode === "skip" || candidate.source_url !== row.source_url)
+        ? [candidate.id] : [];
+    })));
+    const pdfTargets = pdfTargetIds.length ? await withDbRetry("select-duplicate-job-pdfs", async () => {
+      const result = await supabase.from("jobs")
+        .select("id,pdf_source_url,pdf_cached_url,pdf_content,pdf_extracted_data").in("id", pdfTargetIds);
+      if (result.error) throw new Error(result.error.message);
+      return result.data ?? [];
+    }) : [];
+    const pdfTargetById = new Map(pdfTargets.map((target) => [target.id, target]));
+
     const existingUrlSet = new Set(
       existingRows
         .map((row) => (typeof row.source_url === "string" ? row.source_url.trim() : ""))
@@ -381,13 +420,32 @@ export async function saveJobs(
         existingHashSet.has(normalizedHash) &&
         !existingUrlSet.has(row.source_url);
       const duplicateBySourceUrl = existingUrlSet.has(row.source_url);
+      const matchingExistingJob = contextMatchBySource.get(row.source_url);
+      const pendingDuplicate = rowsToWrite.find((candidate) =>
+        candidate.source_url !== row.source_url && isSameJob(row, candidate)
+      );
+      const duplicateByContext = Boolean(pendingDuplicate) || Boolean(
+        matchingExistingJob && matchingExistingJob.source_url !== row.source_url
+      );
 
-      if (duplicateMode === "skip" && (duplicateBySourceUrl || duplicateByHash)) {
-        skippedDuplicateCount += 1;
-        continue;
-      }
-
-      if (duplicateMode === "update" && duplicateByHash) {
+      if ((duplicateMode === "skip" && duplicateBySourceUrl) ||
+          (!duplicateBySourceUrl && (duplicateByHash || duplicateByContext))) {
+        const target = pdfTargetById.get(matchingExistingJob?.id);
+        const pdfUpdate = target ? duplicateJobPdfBackfill(target, row) : null;
+        if (target && pdfUpdate) {
+          await withDbRetry("backfill-duplicate-job-pdf", async () => {
+            const result = await supabase.from("jobs").update(pdfUpdate).eq("id", target.id);
+            if (result.error) throw new Error(result.error.message);
+          });
+          Object.assign(target, pdfUpdate);
+          writtenJobIds.add(target.id);
+          backfilledJobIds.add(target.id);
+          updatedCount += 1;
+        }
+        if (pendingDuplicate) {
+          const pendingPdfUpdate = duplicateJobPdfBackfill(pendingDuplicate, row);
+          if (pendingPdfUpdate) Object.assign(pendingDuplicate, pendingPdfUpdate);
+        }
         skippedDuplicateCount += 1;
         continue;
       }
@@ -519,16 +577,17 @@ export async function saveJobs(
 
   const syncedJobIds = Array.from(writtenJobIds);
   const syncedInsertedJobIds = Array.from(insertedJobIds);
+  const ragJobIds = Array.from(new Set([...syncedInsertedJobIds, ...backfilledJobIds]));
   const shouldSyncRag = options.syncRag !== false;
-  if (shouldSyncRag && syncedInsertedJobIds.length > 0) {
+  if (shouldSyncRag && ragJobIds.length > 0) {
     try {
       await syncJobPostingsToRag({
-        jobIds: syncedInsertedJobIds,
+        jobIds: ragJobIds,
         createMissing: true,
       });
     } catch (error) {
       console.warn("[jobs-save] rag_sync_failed", {
-        count: syncedInsertedJobIds.length,
+        count: ragJobIds.length,
         error: error instanceof Error ? error.message : String(error),
       });
     }
