@@ -23,7 +23,9 @@ import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 const DESCRIPTION_SPLIT_REGEX = /\r?\n/;
-const BULLET_PREFIX_REGEX = /^[\s*-\u2022]+/;
+// The hyphen goes last so it is literal; "*-\u2022" would be a range that
+// covers every letter and wipes each description line.
+const BULLET_PREFIX_REGEX = /^[\s*\u2022-]+/;
 const FEATURE_SPLIT_REGEX = /\n/;
 const IMAGE_GENERATION_FEATURE_REGEX = /\bimage\s*(generation|gen)\b/i;
 
