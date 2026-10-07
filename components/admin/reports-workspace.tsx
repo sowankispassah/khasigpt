@@ -1,7 +1,12 @@
 "use client";
 
-import { ChevronDown, Loader2 } from "lucide-react";
+import { ChevronDown, Loader2, Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  AdminNotice,
+  AdminStatusPill,
+  type AdminStatusTone,
+} from "@/components/admin/admin-ui";
 import { ContactMessagesTable, type ContactTableMessage } from "@/components/admin/contact-messages-table";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
@@ -11,6 +16,14 @@ type ReportSource = "all" | "chat" | "forum" | "other";
 type ReportStatus = "all" | "new" | "in_progress" | "resolved" | "archived";
 type SpecificStatus = Exclude<ReportStatus, "all">;
 type StatusCounts = Record<SpecificStatus, number>;
+
+const sectionTones: Record<ReportStatus, AdminStatusTone> = {
+  all: "neutral",
+  new: "info",
+  in_progress: "warning",
+  resolved: "success",
+  archived: "neutral",
+};
 
 const statusSections = [
   { value: "new", text: "New", key: "admin.contacts.status.new" },
@@ -82,12 +95,14 @@ function ReportRows({
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const rangeStart = total ? (page - 1) * pageSize + 1 : 0;
   const rangeEnd = Math.min(page * pageSize, total);
-  return <div className="mt-3">
-    {busy ? <output className="mb-3 flex items-center gap-2 text-muted-foreground text-sm"><Loader2 aria-hidden="true" className="size-4 animate-spin" /><EditableTranslation defaultText="Loading reports" description="Admin report table loading label." translationKey="admin.reports.filter.loading" /></output> : null}
-    {error ? <div className="mb-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm"><EditableTranslation defaultText="Could not load filtered reports." description="Admin filtered reports load error." translationKey="admin.reports.filter.error" /> <button className="cursor-pointer underline" onClick={() => setRetry((value) => value + 1)} type="button"><EditableTranslation defaultText="Retry" description="Retry loading filtered reports." translationKey="admin.reports.filter.retry" /></button></div> : null}
+  return <div>
+    {busy || error ? <div className="space-y-2 border-b px-4 py-3">
+      {busy ? <output className="flex items-center gap-2 text-muted-foreground text-sm"><Loader2 aria-hidden="true" className="size-4 animate-spin" /><EditableTranslation defaultText="Loading reports" description="Admin report table loading label." translationKey="admin.reports.filter.loading" /></output> : null}
+      {error ? <AdminNotice tone="danger"><EditableTranslation defaultText="Could not load filtered reports." description="Admin filtered reports load error." translationKey="admin.reports.filter.error" /> <button className="cursor-pointer font-medium underline" onClick={() => setRetry((value) => value + 1)} type="button"><EditableTranslation defaultText="Retry" description="Retry loading filtered reports." translationKey="admin.reports.filter.retry" /></button></AdminNotice> : null}
+    </div> : null}
     {hasResponse ? <>
       <ContactMessagesTable kind="report" messages={rows} messagesConfirmed onStatusChanged={onStatusChanged} />
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
         <span className="text-muted-foreground">{translate("admin.reports.filter.showing", "Showing")} {rangeStart}-{rangeEnd} {translate("admin.reports.filter.of", "of")} {total.toLocaleString()} {translate("admin.reports.pagination_item", "reports")}</span>
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground text-xs">{translate("admin.reports.filter.page", "Page")} {page} {translate("admin.reports.filter.of", "of")} {totalPages}</span>
@@ -112,11 +127,13 @@ function ReportSection({
   initialTotal = 0,
   initialConfirmed = false,
   initialPage = 1,
+  defaultOpen = false,
 }: {
   status: ReportStatus;
   label: string;
   translationKey: string;
   count: number | null;
+  defaultOpen?: boolean;
   source: ReportSource;
   search: string;
   revision: number;
@@ -126,15 +143,15 @@ function ReportSection({
   initialConfirmed?: boolean;
   initialPage?: number;
 }) {
-  const [open, setOpen] = useState(false);
-  return <section className="rounded-lg border bg-card p-4">
+  const [open, setOpen] = useState(defaultOpen);
+  return <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
     <h2>
-      <button aria-controls={`report-section-${status}`} aria-expanded={open} className="flex w-full cursor-pointer items-center justify-between gap-3 text-left" onClick={() => setOpen((value) => !value)} type="button">
-        <span className="flex items-center gap-2 font-semibold"><EditableTranslation defaultText={label} description={`Report section for ${label.toLowerCase()} status.`} translationKey={translationKey} /><span className="rounded-full border bg-muted px-2 py-0.5 text-xs font-normal tabular-nums">{count ?? "—"}</span></span>
-        <ChevronDown aria-hidden="true" className={`size-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+      <button aria-controls={`report-section-${status}`} aria-expanded={open} className="flex w-full cursor-pointer items-center justify-between gap-3 px-5 py-4 text-left transition hover:bg-muted/40" onClick={() => setOpen((value) => !value)} type="button">
+        <span className="flex items-center gap-2 font-semibold text-base"><EditableTranslation defaultText={label} description={`Report section for ${label.toLowerCase()} status.`} translationKey={translationKey} /><AdminStatusPill className="tabular-nums" tone={count ? sectionTones[status] : "neutral"}>{count ?? "—"}</AdminStatusPill></span>
+        <ChevronDown aria-hidden="true" className={`size-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
     </h2>
-    {open ? <div id={`report-section-${status}`}><ReportRows key={`${status}:${source}:${search}:${initialConfirmed}`} status={status} source={source} search={search} revision={revision} onStatusChanged={onStatusChanged} initialRows={initialRows} initialTotal={initialTotal} initialConfirmed={initialConfirmed} initialPage={initialPage} /></div> : null}
+    {open ? <div className="border-t" id={`report-section-${status}`}><ReportRows key={`${status}:${source}:${search}:${initialConfirmed}`} status={status} source={source} search={search} revision={revision} onStatusChanged={onStatusChanged} initialRows={initialRows} initialTotal={initialTotal} initialConfirmed={initialConfirmed} initialPage={initialPage} /></div> : null}
   </section>;
 }
 
@@ -180,22 +197,25 @@ export function ReportsWorkspace({ initialRows, initialTotal, initialConfirmed, 
   }, [source, search, revision, countsRetry]);
 
   return <>
-    <div className="mb-4 flex flex-wrap items-end gap-3">
-      <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs font-medium">
+    <div className="mb-4 flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-xs sm:flex-row sm:items-end">
+      <label className="flex min-w-0 flex-1 flex-col gap-1 font-medium text-xs">
         <EditableTranslation defaultText="Search reports" description="Admin report live search label." translationKey="admin.reports.filter.search" />
-        <input className="h-9 rounded-md border bg-background px-3 text-sm" maxLength={120} onChange={(event) => { setSearch(event.target.value); setHasInteracted(true); setCounts(null); }} placeholder={translate("admin.reports.filter.search_placeholder", "Search sender, subject, or content")} type="search" value={search} />
+        <span className="relative">
+        <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+        <input className="h-9 w-full rounded-lg border bg-background pr-3 pl-9 font-normal text-sm" maxLength={120} onChange={(event) => { setSearch(event.target.value); setHasInteracted(true); setCounts(null); }} placeholder={translate("admin.reports.filter.search_placeholder", "Search sender, subject, or content")} type="search" value={search} />
+        </span>
       </label>
-      <label className="flex flex-col gap-1 text-xs font-medium">
+      <label className="flex flex-col gap-1 font-medium text-xs">
         <EditableTranslation defaultText="Report type" description="Admin report source filter label." translationKey="admin.reports.filter.type" />
-        <select className="h-9 cursor-pointer rounded-md border bg-background px-3 text-sm" onChange={(event) => { setSource(event.target.value as ReportSource); setHasInteracted(true); setCounts(null); }} value={source}>
+        <select className="h-9 cursor-pointer rounded-lg border bg-background px-3 font-normal text-sm" onChange={(event) => { setSource(event.target.value as ReportSource); setHasInteracted(true); setCounts(null); }} value={source}>
           <option value="all">{translate("admin.reports.filter.all_types", "All types")}</option><option value="chat">{translate("admin.reports.filter.chat", "Chat")}</option><option value="forum">{translate("admin.reports.filter.forum", "Forum")}</option><option value="other">{translate("admin.reports.filter.other", "Other")}</option>
         </select>
       </label>
     </div>
     <div className="space-y-3">
       {countsBusy ? <output className="flex items-center gap-2 text-muted-foreground text-xs"><Loader2 aria-hidden="true" className="size-3 animate-spin" /><EditableTranslation defaultText="Loading status counts" description="Loading report status section counts." translationKey="admin.reports.sections.counts_loading" /></output> : null}
-      {countsError ? <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm"><EditableTranslation defaultText="Could not load status counts." description="Report status count error." translationKey="admin.reports.sections.counts_error" /> <button className="cursor-pointer underline" onClick={() => setCountsRetry((value) => value + 1)} type="button"><EditableTranslation defaultText="Retry" description="Retry loading report status counts." translationKey="admin.reports.filter.retry" /></button></div> : null}
-      <ReportSection status="all" label="All reports" translationKey="admin.reports.sections.all" count={allCount} source={source} search={search} revision={revision} onStatusChanged={refresh} initialRows={useInitialAllRows ? initialRows : []} initialTotal={useInitialAllRows ? initialTotal : 0} initialConfirmed={useInitialAllRows} initialPage={useInitialAllRows ? initialPage : 1} />
+      {countsError ? <AdminNotice tone="danger"><EditableTranslation defaultText="Could not load status counts." description="Report status count error." translationKey="admin.reports.sections.counts_error" /> <button className="cursor-pointer font-medium underline" onClick={() => setCountsRetry((value) => value + 1)} type="button"><EditableTranslation defaultText="Retry" description="Retry loading report status counts." translationKey="admin.reports.filter.retry" /></button></AdminNotice> : null}
+      <ReportSection defaultOpen status="all" label="All reports" translationKey="admin.reports.sections.all" count={allCount} source={source} search={search} revision={revision} onStatusChanged={refresh} initialRows={useInitialAllRows ? initialRows : []} initialTotal={useInitialAllRows ? initialTotal : 0} initialConfirmed={useInitialAllRows} initialPage={useInitialAllRows ? initialPage : 1} />
       {statusSections.map((section) => <ReportSection key={section.value} status={section.value} label={section.text} translationKey={section.key} count={counts?.[section.value] ?? null} source={source} search={search} revision={revision} onStatusChanged={refresh} />)}
     </div>
   </>;

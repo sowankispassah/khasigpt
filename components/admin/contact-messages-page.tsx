@@ -1,6 +1,11 @@
+import type { ReactNode } from "react";
 import { z } from "zod";
 import { AdminPagination } from "@/components/admin/admin-pagination";
-import { AdminPageHeader } from "@/components/admin/admin-ui";
+import {
+  AdminNotice,
+  AdminPageHeader,
+  AdminStatusPill,
+} from "@/components/admin/admin-ui";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { toContactTableMessage } from "@/lib/admin/contact-table-message";
 import { adminQueryResult } from "@/lib/admin/safe-query";
@@ -12,7 +17,7 @@ import {
 } from "@/lib/db/queries";
 import type { ContactMessage } from "@/lib/db/schema";
 import { contactInboundConfigured } from "@/lib/email/contact-inbound";
-import { ContactMessagesTable } from "./contact-messages-table";
+import { ContactMessagesTable, type ContactTableMessage } from "./contact-messages-table";
 import { ReportsWorkspace } from "./reports-workspace";
 
 const CONTACTS_PAGE_SIZE = 25;
@@ -89,30 +94,19 @@ export async function ContactMessagesPage({
   const latestInboundByMessage = new Map(latestInboundState?.data.map((email) => [email.messageId, email.body]) ?? []);
 
   return (
-    <div className="flex flex-col gap-6">
-      <AdminPageHeader
-        description={kind === "report" ? <EditableTranslation defaultText="AI response and forum reports submitted by users." description="Admin reports page description." translationKey="admin.reports.description" /> : <EditableTranslation defaultText="Messages from people who want to get in touch." description="Admin contact requests page description." translationKey="admin.contacts.description" />}
-        navHref={kind === "report" ? "/admin/reports" : "/admin/contacts"}
-        title={kind === "report" ? <EditableTranslation defaultText="Reports" description="Admin reports page title." translationKey="admin.reports.title" /> : <EditableTranslation defaultText="Contact requests" description="Admin contact requests page title." translationKey="admin.contacts.title" />}
-      />
-
-      <section className="rounded-lg border bg-card p-4 shadow-sm">
-        {kind === "contact" && contactParam !== undefined && (!contactId?.success || !selectedContactState?.ok || !selectedContactState.data) ? <div className="mb-3 rounded-md border border-amber-200 p-3 text-sm" role="alert"><EditableTranslation defaultText="The selected support request could not be opened. It may no longer exist; refresh this section to retry." description="Selected support conversation unavailable." translationKey="admin.users.details.support_target_error" /></div> : null}
-        {kind === "contact" && (!messagesConfirmed || !totalMessagesState.ok) && (
-          <AdminContactsWarning
-            kind={kind}
-            countUnavailable={!totalMessagesState.ok}
-            rowsUnavailable={!messagesConfirmed}
-          />
-        )}
-        {kind === "report" ? (
-          <ReportsWorkspace initialRows={messages.map(toContactTableMessage)} initialTotal={totalMessages} initialConfirmed={messagesConfirmed && totalMessagesState.ok} initialPage={page} />
-        ) : <ContactMessagesTable initialContact={selectedContactState?.data ? toContactTableMessage(selectedContactState.data) : undefined} kind={kind} inboundConfigured={contactInboundConfigured()} messages={messages.map((message) => ({
-          ...toContactTableMessage(message),
-          latestInboundPreview: latestInboundByMessage.get(message.id) ?? null,
-        }))} messagesConfirmed={messagesConfirmed} />}
-
-        {kind === "contact" ? <div className="mt-4">
+    <ContactMessagesView
+      countConfirmed={totalMessagesState.ok}
+      inboundConfigured={contactInboundConfigured()}
+      initialContact={selectedContactState?.data ? toContactTableMessage(selectedContactState.data) : undefined}
+      kind={kind}
+      messages={messages.map((message) => ({
+        ...toContactTableMessage(message),
+        latestInboundPreview: kind === "contact" ? latestInboundByMessage.get(message.id) ?? null : undefined,
+      }))}
+      messagesConfirmed={messagesConfirmed}
+      page={page}
+      pagination={
+        kind === "contact" ? (
           <AdminPagination
             itemLabel={<EditableTranslation defaultText="contact requests" description="Contact list pagination item name." translationKey="admin.contacts.pagination_item" />}
             page={page}
@@ -121,26 +115,106 @@ export async function ContactMessagesPage({
             searchParams={resolvedSearchParams}
             totalItems={totalMessagesState.ok ? totalMessages : messages.length}
           />
-        </div> : null}
-      </section>
+        ) : null
+      }
+      selectedContactUnavailable={
+        kind === "contact" &&
+        contactParam !== undefined &&
+        (!contactId?.success || !selectedContactState?.ok || !selectedContactState.data)
+      }
+      totalMessages={totalMessages}
+    />
+  );
+}
+
+/**
+ * Presentational shell for the contact and report inboxes. Data loading stays
+ * in ContactMessagesPage so this can render from plain props.
+ */
+export function ContactMessagesView({
+  countConfirmed,
+  inboundConfigured,
+  initialContact,
+  kind,
+  messages,
+  messagesConfirmed,
+  page,
+  pagination,
+  selectedContactUnavailable,
+  totalMessages,
+}: {
+  countConfirmed: boolean;
+  inboundConfigured: boolean;
+  initialContact?: ContactTableMessage;
+  kind: ContactMessage["kind"];
+  messages: ContactTableMessage[];
+  messagesConfirmed: boolean;
+  page: number;
+  pagination: ReactNode;
+  selectedContactUnavailable: boolean;
+  totalMessages: number;
+}) {
+  const isReport = kind === "report";
+  return (
+    <div className="flex flex-col gap-6">
+      <AdminPageHeader
+        description={isReport ? <EditableTranslation defaultText="AI response and forum reports submitted by users." description="Admin reports page description." translationKey="admin.reports.description" /> : <EditableTranslation defaultText="Messages from people who want to get in touch." description="Admin contact requests page description." translationKey="admin.contacts.description" />}
+        meta={!isReport && countConfirmed ? (
+          <AdminStatusPill>
+            <EditableTranslation
+              defaultText="{count} total"
+              description="Total contact requests shown beside the contact requests page title."
+              translationKey="admin.contacts.total_count"
+              values={{ count: totalMessages.toLocaleString("en-IN") }}
+            />
+          </AdminStatusPill>
+        ) : null}
+        navHref={isReport ? "/admin/reports" : "/admin/contacts"}
+        title={isReport ? <EditableTranslation defaultText="Reports" description="Admin reports page title." translationKey="admin.reports.title" /> : <EditableTranslation defaultText="Contact requests" description="Admin contact requests page title." translationKey="admin.contacts.title" />}
+      />
+
+      {isReport ? (
+        <ReportsWorkspace initialConfirmed={messagesConfirmed && countConfirmed} initialPage={page} initialRows={messages} initialTotal={totalMessages} />
+      ) : (
+        <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
+          {selectedContactUnavailable || !messagesConfirmed || !countConfirmed ? (
+            <div className="space-y-2 border-b px-4 py-3">
+              {selectedContactUnavailable ? (
+                <AdminNotice tone="danger">
+                  <EditableTranslation defaultText="The selected support request could not be opened. It may no longer exist; refresh this section to retry." description="Selected support conversation unavailable." translationKey="admin.users.details.support_target_error" />
+                </AdminNotice>
+              ) : null}
+              {!messagesConfirmed || !countConfirmed ? (
+                <AdminContactsWarning countUnavailable={!countConfirmed} rowsUnavailable={!messagesConfirmed} />
+              ) : null}
+            </div>
+          ) : null}
+          <ContactMessagesTable
+            inboundConfigured={inboundConfigured}
+            initialContact={initialContact}
+            kind={kind}
+            messages={messages}
+            messagesConfirmed={messagesConfirmed}
+          />
+          {pagination ? <div className="border-t px-4 py-3">{pagination}</div> : null}
+        </section>
+      )}
     </div>
   );
 }
 
 function AdminContactsWarning({
-  kind,
   rowsUnavailable,
   countUnavailable,
 }: {
-  kind: ContactMessage["kind"];
   rowsUnavailable: boolean;
   countUnavailable: boolean;
 }) {
   return (
-    <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
-      {rowsUnavailable ? <>{kind === "report" ? <EditableTranslation defaultText="Report rows could not be confirmed." description="Report list rows unavailable warning." translationKey="admin.reports.rows_unavailable" /> : <EditableTranslation defaultText="Contact request rows could not be confirmed." description="Contact list rows unavailable warning." translationKey="admin.contacts.rows_unavailable" />}{" "}</> : null}
-      {countUnavailable ? <>{kind === "report" ? <EditableTranslation defaultText="Report total could not be confirmed." description="Report list count unavailable warning." translationKey="admin.reports.count_unavailable" /> : <EditableTranslation defaultText="Contact request total could not be confirmed." description="Contact list count unavailable warning." translationKey="admin.contacts.count_unavailable" />}{" "}</> : null}
+    <AdminNotice>
+      {rowsUnavailable ? <><EditableTranslation defaultText="Contact request rows could not be confirmed." description="Contact list rows unavailable warning." translationKey="admin.contacts.rows_unavailable" />{" "}</> : null}
+      {countUnavailable ? <><EditableTranslation defaultText="Contact request total could not be confirmed." description="Contact list count unavailable warning." translationKey="admin.contacts.count_unavailable" />{" "}</> : null}
       <EditableTranslation defaultText="Refresh this admin section to retry." description="Contact list recovery instruction." translationKey="admin.contacts.retry_instruction" />
-    </div>
+    </AdminNotice>
   );
 }
