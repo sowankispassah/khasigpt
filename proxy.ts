@@ -6,6 +6,10 @@ import {
   PRELAUNCH_INVITE_COOKIE_NAME,
 } from "@/lib/constants";
 import { verifyAdminEntryPassToken } from "@/lib/security/admin-entry-pass";
+import {
+  buildContentSecurityPolicy,
+  createCspNonce,
+} from "@/lib/security/csp";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import {
@@ -73,6 +77,7 @@ const SITE_INVITE_PATH_PREFIX = "/invite/";
 const SITE_STATUS_GATE_PUBLIC_PATHS = [
   "/privacy-policy",
   "/terms-of-service",
+  "/refund-policy",
   "/help/delete-account",
 ] as const;
 const AUTH_SITE_STATUS_GATE_PUBLIC_PATHS = [
@@ -99,8 +104,12 @@ const SITE_STATUS_CACHE_WINDOW_MS =
     : process.env.NODE_ENV === "development"
       ? 10 * 1000
       : 60 * 1000;
+// Last-known status is only consulted after the cache window has expired, so
+// the grace must be much longer than that window to have any effect. Admin
+// launch/maintenance changes still apply within one cache window whenever the
+// settings read succeeds; the grace only covers failed or slow reads.
 const SITE_STATUS_STALE_GRACE_MS =
-  process.env.NODE_ENV === "development" ? 60 * 1000 : 60 * 1000;
+  process.env.NODE_ENV === "development" ? 60 * 1000 : 6 * 60 * 60 * 1000;
 const DEFAULT_INTERNAL_STATUS_FETCH_TIMEOUT_MS =
   process.env.NODE_ENV === "production" ? 800 : 1500;
 const INTERNAL_STATUS_FETCH_TIMEOUT_MS_RAW = Number.parseInt(
@@ -113,6 +122,19 @@ const INTERNAL_STATUS_FETCH_TIMEOUT_MS =
   INTERNAL_STATUS_FETCH_TIMEOUT_MS_RAW > 0
     ? INTERNAL_STATUS_FETCH_TIMEOUT_MS_RAW
     : DEFAULT_INTERNAL_STATUS_FETCH_TIMEOUT_MS;
+// A fresh instance has no last-known status to fall back on, and its first
+// database read includes connection setup. Give that read more time rather
+// than sending launched-site visitors to the coming-soon page.
+const COLD_SITE_STATUS_FETCH_TIMEOUT_MS = Math.max(
+  INTERNAL_STATUS_FETCH_TIMEOUT_MS,
+  2500
+);
+export const SITE_STATUS_TIMINGS = {
+  cacheWindowMs: SITE_STATUS_CACHE_WINDOW_MS,
+  coldReadTimeoutMs: COLD_SITE_STATUS_FETCH_TIMEOUT_MS,
+  staleGraceMs: SITE_STATUS_STALE_GRACE_MS,
+  warmReadTimeoutMs: INTERNAL_STATUS_FETCH_TIMEOUT_MS,
+} as const;
 let siteStatusCache: {
   fetchedAt: number;
   webLaunched: boolean;
@@ -296,7 +318,9 @@ async function fetchSiteStatus(): Promise<{
     // second function cold start and an HTTP round trip through our own proxy.
     const body = await withTimeout(
       readSiteAvailability(),
-      INTERNAL_STATUS_FETCH_TIMEOUT_MS
+      siteStatusCache
+        ? INTERNAL_STATUS_FETCH_TIMEOUT_MS
+        : COLD_SITE_STATUS_FETCH_TIMEOUT_MS
     );
     const { webLaunched, underMaintenance, inviteOnlyPrelaunch,
       adminAccessEnabled, adminEntryPath } = body;
@@ -536,6 +560,28 @@ async function hasAuthenticatedSession(request: NextRequest) {
 }
 
 export async function proxy(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    return handleRequest(request, null);
+  }
+
+  // Next.js reads the nonce from the request's CSP header and adds it to the
+  // scripts it renders, so a fresh value is needed for every page request.
+  const contentSecurityPolicy = buildContentSecurityPolicy(createCspNonce());
+  const forwardHeaders = new Headers(request.headers);
+  forwardHeaders.set("content-security-policy", contentSecurityPolicy);
+  const response = await handleRequest(request, forwardHeaders);
+  response.headers.set("Content-Security-Policy", contentSecurityPolicy);
+  return response;
+}
+
+async function handleRequest(
+  request: NextRequest,
+  forwardHeaders: Headers | null
+): Promise<Response> {
+  const continueRequest = () =>
+    forwardHeaders
+      ? NextResponse.next({ request: { headers: forwardHeaders } })
+      : NextResponse.next();
   const hostname = request.headers.get("host")?.toLowerCase();
   if (
     SHOULD_ENFORCE_CANONICAL &&
@@ -645,7 +691,10 @@ export async function proxy(request: NextRequest) {
     ) {
       const rewriteUrl = request.nextUrl.clone();
       rewriteUrl.pathname = SITE_ADMIN_ENTRY_PATH;
-      return NextResponse.rewrite(rewriteUrl);
+      return NextResponse.rewrite(
+        rewriteUrl,
+        forwardHeaders ? { request: { headers: forwardHeaders } } : undefined
+      );
     }
 
     if (shouldSkipLaunchGateForAuthenticatedUnknownStatus) {
@@ -662,7 +711,7 @@ export async function proxy(request: NextRequest) {
 
       if (isAdmin !== true) {
         if (isAdmin === null && pathname.startsWith("/admin")) {
-          return NextResponse.next();
+          return continueRequest();
         }
 
         const isAuthRoute = isAuthRoutePath(pathname);
@@ -699,19 +748,19 @@ export async function proxy(request: NextRequest) {
             }
 
             if (pathname.startsWith(SITE_INVITE_PATH_PREFIX)) {
-              return NextResponse.next();
+              return continueRequest();
             }
 
             let hasInviteAccess: boolean | null = null;
 
             if (isAuthRoute) {
               if (hasPendingPrelaunchInviteToken(request)) {
-                return NextResponse.next();
+                return continueRequest();
               }
 
               hasInviteAccess = await resolveHasInviteAccess(request);
               if (hasInviteAccess) {
-                return NextResponse.next();
+                return continueRequest();
               }
             }
 
@@ -784,7 +833,7 @@ export async function proxy(request: NextRequest) {
   }
 
 
-  return NextResponse.next();
+  return continueRequest();
 }
 
 export const config = {

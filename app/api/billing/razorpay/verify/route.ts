@@ -91,6 +91,16 @@ export async function POST(request: Request) {
   });
 
   if (!locked) {
+    // The Razorpay webhook may have credited this order a moment earlier.
+    const latest = await getPaymentTransactionByOrderId({ orderId });
+    if (latest?.status === "paid") {
+      const balance = await getUserBalanceSummary(session.user.id);
+      return NextResponse.json({
+        ok: true,
+        alreadyProcessed: true,
+        balance,
+      });
+    }
     return new ChatSDKError(
       "bad_request:api",
       "Payment is being processed. Please try again in a few moments."

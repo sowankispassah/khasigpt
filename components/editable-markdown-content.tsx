@@ -23,7 +23,11 @@ const HEADING_TRIM_REGEX = /^#{1,6}\s*/;
 const LIST_ITEM_PREFIX_REGEX = /^-+\s*/;
 const MULTILINE_REGEX = /\n+/;
 
-type ResourceName = "about" | "privacyPolicy" | "termsOfService";
+type ResourceName =
+  | "about"
+  | "privacyPolicy"
+  | "refundPolicy"
+  | "termsOfService";
 
 type EditableMarkdownContentProps = {
   className?: string;

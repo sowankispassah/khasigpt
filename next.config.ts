@@ -1,13 +1,7 @@
-import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import path from "node:path";
 import type { NextConfig } from "next";
-import { contactImageOrigin } from "./lib/security/contact-image-origin";
-import {
-  PRELOAD_PROGRESS_SCRIPT,
-  THEME_COLOR_SCRIPT,
-} from "./lib/security/inline-scripts";
-import { buildStructuredData, getSiteUrl } from "./lib/seo/site";
+import { buildContentSecurityPolicy } from "./lib/security/csp";
 
 const isDevelopment = process.env.NODE_ENV !== "production";
 const distDir = process.env.NEXT_DIST_DIR?.trim();
@@ -24,94 +18,8 @@ const runtimePackageRoot = (name: string) =>
 const pdfRuntimeRoot = runtimePackageRoot("pdf-parse");
 const pdfJsRuntimeRoot = runtimePackageRoot("pdfjs-dist");
 
-const inlineScriptHashes = [
-  PRELOAD_PROGRESS_SCRIPT,
-  THEME_COLOR_SCRIPT,
-  JSON.stringify(buildStructuredData(getSiteUrl())),
-].map(
-  (content) =>
-    `'sha256-${createHash("sha256").update(content).digest("base64")}'`,
-);
-
-const scriptSrc = isDevelopment
-  ? [
-      "script-src",
-      "'self'",
-      "'unsafe-eval'",
-      "'unsafe-inline'",
-      "blob:",
-      "data:",
-      "https://cdn.jsdelivr.net",
-      "https://checkout.razorpay.com",
-      "https://va.vercel-scripts.com",
-    ].join(" ")
-  : [
-      "script-src",
-      "'self'",
-      "'strict-dynamic'",
-      "'nonce-__NEXT_SCRIPT_NONCE__'",
-      ...inlineScriptHashes,
-      "https://cdn.jsdelivr.net",
-      "https://checkout.razorpay.com",
-      "https://va.vercel-scripts.com",
-    ].join(" ");
-
-const connectSrc = [
-  "connect-src",
-  "'self'",
-  "https://*.supabase.co",
-  "https://*.supabase.net",
-  "https://*.vercel.com",
-  "https://*.vercel.app",
-  "https://api.openai.com",
-  "https://api.anthropic.com",
-  "https://generativelanguage.googleapis.com",
-  "wss://generativelanguage.googleapis.com",
-  "https://cdn.jsdelivr.net",
-  "https://checkout.razorpay.com",
-  "https://api.razorpay.com",
-  "https://vitals.vercel-insights.com",
-  "https://va.vercel-scripts.com",
-  ...(isDevelopment
-    ? [
-        "ws://localhost:*",
-        "ws://127.0.0.1:*",
-        "http://localhost:*",
-        "http://127.0.0.1:*",
-      ]
-    : []),
-].join(" ");
-
-const frameSrc = [
-  "frame-src",
-  "'self'",
-  "https://checkout.razorpay.com",
-  "https://api.razorpay.com",
-  "https://www.youtube-nocookie.com",
-].join(" ");
-
-const frameAncestors = isDevelopment
-  ? "frame-ancestors 'self' http://localhost:8081 http://127.0.0.1:8081"
-  : "frame-ancestors 'none'";
-
+// Page CSP (with a per-request script nonce) is set by proxy.ts.
 const securityHeaders = [
-  {
-    key: "Content-Security-Policy",
-    value: [
-      "default-src 'self'",
-      scriptSrc,
-      "style-src 'self' 'unsafe-inline'",
-      `img-src 'self' data: blob: https://*.vercel-storage.com https://*.blob.vercel-storage.com https://*.public.blob.vercel-storage.com https://avatar.vercel.sh https://i.ytimg.com https://*.googleusercontent.com https://*.gstatic.com https://*.bing.net https://commons.wikimedia.org https://upload.wikimedia.org ${contactImageOrigin(process.env.SUPABASE_URL)}`.trim(),
-      "font-src 'self'",
-      "worker-src 'self' blob:",
-      connectSrc,
-      frameSrc,
-      frameAncestors,
-      "base-uri 'self'",
-      "form-action 'self'",
-      "upgrade-insecure-requests",
-    ].join("; "),
-  },
   {
     key: "Strict-Transport-Security",
     value: "max-age=63072000; includeSubDomains; preload",
@@ -201,6 +109,15 @@ const nextConfig: NextConfig = {
       {
         source: "/(.*)",
         headers: securityHeaders,
+      },
+      {
+        source: "/api/:path*",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: buildContentSecurityPolicy(),
+          },
+        ],
       },
     ];
   },

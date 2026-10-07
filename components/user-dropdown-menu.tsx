@@ -460,6 +460,12 @@ export function UserDropdownMenu({
       path: "/terms-of-service",
       testId: "user-nav-item-terms",
     },
+    {
+      labelKey: "user_menu.resources.refund",
+      defaultLabel: "Refund Policy",
+      path: "/refund-policy",
+      testId: "user-nav-item-refund",
+    },
   ];
 
   const renderInfoLinks = (className?: string) =>

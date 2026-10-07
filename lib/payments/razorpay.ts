@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import Razorpay from "razorpay";
 
 import { ChatSDKError } from "@/lib/errors";
@@ -98,7 +98,34 @@ export function verifyPaymentSignature({
   const hmac = createHmac("sha256", getRazorpayKeySecret());
   hmac.update(`${orderId}|${paymentId}`);
 
-  const digest = hmac.digest("hex");
+  return hexDigestMatches(hmac.digest("hex"), signature);
+}
 
-  return digest === signature;
+/**
+ * Razorpay signs webhook deliveries with the webhook secret configured in the
+ * Razorpay dashboard (not the API key secret): HMAC-SHA256 of the raw body.
+ */
+export function verifyWebhookSignature({
+  body,
+  secret,
+  signature,
+}: {
+  body: string;
+  secret: string;
+  signature: string | null;
+}) {
+  if (!signature) {
+    return false;
+  }
+  const digest = createHmac("sha256", secret).update(body).digest("hex");
+  return hexDigestMatches(digest, signature);
+}
+
+function hexDigestMatches(expected: string, received: string) {
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  const receivedBuffer = Buffer.from(received.trim().toLowerCase(), "utf8");
+  return (
+    expectedBuffer.length === receivedBuffer.length &&
+    timingSafeEqual(expectedBuffer, receivedBuffer)
+  );
 }

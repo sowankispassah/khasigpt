@@ -13,7 +13,7 @@ export const runtime = "nodejs";
 
 const AUDIT_TIMEOUT_MS = 2500;
 
-type ResourceKey = "about" | "privacyPolicy" | "termsOfService";
+type ResourceKey = "about" | "privacyPolicy" | "refundPolicy" | "termsOfService";
 
 type InlineResourceBody = {
   content?: unknown;
@@ -40,6 +40,11 @@ const RESOURCE_CONFIG: Record<
     baseSettingKey: "privacyPolicy",
     localizedSettingKey: "privacyPolicyByLanguage",
   },
+  refundPolicy: {
+    auditAction: "legal.refund.inline.update",
+    baseSettingKey: "refundPolicy",
+    localizedSettingKey: "refundPolicyByLanguage",
+  },
   termsOfService: {
     auditAction: "legal.terms.inline.update",
     baseSettingKey: "termsOfService",
@@ -56,7 +61,12 @@ function normalizeString(value: unknown) {
 }
 
 function normalizeResource(value: unknown): ResourceKey | null {
-  if (value === "about" || value === "privacyPolicy" || value === "termsOfService") {
+  if (
+    value === "about" ||
+    value === "privacyPolicy" ||
+    value === "refundPolicy" ||
+    value === "termsOfService"
+  ) {
     return value;
   }
   return null;

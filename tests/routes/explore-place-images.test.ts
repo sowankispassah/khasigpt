@@ -10,7 +10,7 @@ import {
 	selectPlaceImage,
 } from "@/lib/explore/image-matching";
 import type { ExploreResult } from "@/lib/explore/types";
-import nextConfig from "../../next.config";
+import { buildContentSecurityPolicy } from "@/lib/security/csp";
 
 const place: ExploreResult = {
 	id: "osm-nartiang",
@@ -211,10 +211,8 @@ test("displays only supported photo hosts and the actual web CSP allows their th
 			],
 		}),
 	).toBeNull();
-	const headers = await nextConfig.headers?.();
-	const csp = headers?.[0].headers.find(
-		(header) => header.key === "Content-Security-Policy",
-	)?.value;
+	// Pages receive this policy (with a per-request nonce) from proxy.ts.
+	const csp = buildContentSecurityPolicy("test-nonce");
 	expect(csp).toContain("https://*.gstatic.com");
 	expect(csp).toContain("https://*.bing.net");
 	expect(csp).not.toContain("img-src *");

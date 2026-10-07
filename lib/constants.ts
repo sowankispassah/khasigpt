@@ -180,6 +180,30 @@ We may update these Terms from time to time. Material changes will be announced 
 For questions about these Terms, email support@khasigpt.com.
 `.trim();
 
+export const DEFAULT_REFUND_POLICY = `
+This Refund and Cancellation Policy explains how payments for Khasigpt plans work and when you can request a refund.
+
+## What You Are Buying
+Khasigpt plans are one-time purchases of usage credits. Credits are added to your account immediately after a successful payment and remain valid for the period shown on the plan at checkout. Plans do not renew automatically, and you are never charged again unless you make a new purchase.
+
+## Cancellation
+Because plans do not renew, there is no recurring charge to cancel. You may stop using Khasigpt at any time. Unused credits are not converted to cash when a plan expires.
+
+## Refunds
+Credits are delivered digitally and can be used as soon as they are added, so purchases are generally non-refundable. We will refund you in full if:
+- You were charged but credits were not added to your account
+- You were charged more than once for the same order
+- A technical fault on our side prevented you from using the credits you paid for
+
+Requests must be made within 7 days of the payment. Approved refunds are returned to the original payment method within 5–7 business days, depending on your bank or payment provider.
+
+## Purchases Through Google Play
+Purchases made in the Android app are processed by Google Play and are subject to the Google Play refund policy. You can request those refunds from Google Play directly, or contact us for help.
+
+## How to Request a Refund
+Email support@khasigpt.com with the email address on your account, the payment date, and the order or payment ID from your receipt. We respond within 2 business days.
+`.trim();
+
 export const DEFAULT_ABOUT_US = `
 KhasiGPT is crafted by the Khasi Digital Collective to bring reliable AI assistance to Khasi speakers. Use this space to highlight your story, partnerships, or mission. Update the content from the Admin Settings panel whenever your team has news to share.
 `.trim();

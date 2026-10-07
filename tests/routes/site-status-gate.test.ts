@@ -62,6 +62,7 @@ test.describe("site status gate public routes", () => {
   test("keeps compliance pages outside coming-soon and maintenance redirects", () => {
     expect(shouldBypassSiteStatusGate("/privacy-policy")).toBe(true);
     expect(shouldBypassSiteStatusGate("/terms-of-service")).toBe(true);
+    expect(shouldBypassSiteStatusGate("/refund-policy")).toBe(true);
     expect(shouldBypassSiteStatusGate("/help/delete-account")).toBe(true);
     expect(shouldBypassSiteStatusGate("/help/delete-account/verify")).toBe(true);
   });

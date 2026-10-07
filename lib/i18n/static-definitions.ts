@@ -1630,6 +1630,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Link to terms of service page.",
   },
   {
+    key: "user_menu.resources.refund",
+    defaultText: "Refund Policy",
+    description: "Link to refund and cancellation policy page.",
+  },
+  {
     key: "navigation.back_to_home",
     defaultText: "Back to home",
     description: "Text for links that return to the home page.",
@@ -1769,6 +1774,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "legal.terms.title",
     defaultText: "Terms of Service",
     description: "Heading for the terms of service page.",
+  },
+  {
+    key: "legal.refund.title",
+    defaultText: "Refund and Cancellation Policy",
+    description: "Heading for the refund and cancellation policy page.",
   },
   {
     key: "delete_account.title",
