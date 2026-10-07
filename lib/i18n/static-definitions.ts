@@ -1001,6 +1001,231 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Admin user table actions column heading.",
   },
   {
+    key: "admin.pricing.recharge_plans_title",
+    defaultText: "Recharge plans",
+    description: "Heading for the recharge plans section on Admin Pricing.",
+  },
+  {
+    key: "admin.pricing.recharge_plans_description",
+    defaultText: "The packs users buy credits with. Margins compare each pack with the default chat model's provider cost.",
+    description: "Description of the recharge plans section on Admin Pricing.",
+  },
+  {
+    key: "admin.contacts.total_count",
+    defaultText: "{count} total",
+    description: "Total contact requests shown beside the contact requests page title.",
+  },
+  {
+    key: "admin.contacts.open",
+    defaultText: "Open",
+    description: "Button that opens a contact request or report from the admin list.",
+  },
+  {
+    key: "admin.reports.table.report",
+    defaultText: "Report",
+    description: "Admin report list column with the category, user details and reported excerpt.",
+  },
+  {
+    key: "admin.contacts.attachments.count",
+    defaultText: "Attachments",
+    description: "Tooltip for the attachment count on a contact request row.",
+  },
+  {
+    key: "admin.storage.stat.failed",
+    defaultText: "Failed deletions",
+    description: "Admin storage stat card counting file deletions that failed and need review.",
+  },
+  {
+    key: "admin.storage.maintenance_title",
+    defaultText: "Maintenance",
+    description: "Admin storage panel heading for cleanup runs and inventory checks.",
+  },
+  {
+    key: "admin.storage.accounts_title",
+    defaultText: "Storage by account",
+    description: "Admin storage panel heading for the per-account usage table.",
+  },
+  {
+    key: "admin.jobs.overview.listings",
+    defaultText: "Job listings",
+    description: "Admin jobs overview card for the number of saved listings.",
+  },
+  {
+    key: "admin.jobs.overview.listings_hint",
+    defaultText: "Active and inactive listings",
+    description: "Hint under the admin jobs listing count card.",
+  },
+  {
+    key: "admin.jobs.overview.last_success",
+    defaultText: "Last successful import",
+    description: "Admin jobs overview card for the last successful import time.",
+  },
+  {
+    key: "admin.jobs.overview.last_success_hint",
+    defaultText: "Most recent completed import",
+    description: "Hint under the admin jobs last successful import card.",
+  },
+  {
+    key: "admin.jobs.overview.never",
+    defaultText: "Never",
+    description: "Shown when no jobs import has succeeded yet.",
+  },
+  {
+    key: "admin.jobs.overview.next_run",
+    defaultText: "Next scheduled run",
+    description: "Admin jobs overview card for the next scheduled import.",
+  },
+  {
+    key: "admin.jobs.overview.next_run_interval",
+    defaultText: "Every {hours} h",
+    description: "Hint on the admin jobs next run card showing the schedule interval.",
+  },
+  {
+    key: "admin.jobs.overview.next_run_off",
+    defaultText: "Automatic scraping is off",
+    description: "Hint on the admin jobs next run card when scheduled scraping is disabled.",
+  },
+  {
+    key: "admin.jobs.overview.next_run_chatgpt",
+    defaultText: "Runs from the ChatGPT app schedule",
+    description: "Hint on the admin jobs next run card in ChatGPT runner mode.",
+  },
+  {
+    key: "admin.jobs.overview.runner",
+    defaultText: "Runner",
+    description: "Admin jobs overview card showing which schedule runs imports.",
+  },
+  {
+    key: "admin.jobs.overview.runner_hint",
+    defaultText: "Starts automatic imports",
+    description: "Hint under the admin jobs runner card.",
+  },
+  {
+    key: "admin.rag.rebuild.hint",
+    defaultText: "Run this after bulk edits or when an entry shows a failed index status.",
+    description: "Hint in the admin knowledge index rebuild panel.",
+  },
+  {
+    key: "admin.rag.settings.status_on",
+    defaultText: "Currently on",
+    description: "Saved state pill when custom knowledge is enabled for chats.",
+  },
+  {
+    key: "admin.rag.settings.status_off",
+    defaultText: "Currently off",
+    description: "Saved state pill when custom knowledge is disabled for chats.",
+  },
+  {
+    key: "admin.rag.filters.all_types",
+    defaultText: "All types",
+    description: "Type filter option that shows custom knowledge entries of every type.",
+  },
+  {
+    key: "admin.rag.selection.clear",
+    defaultText: "Clear",
+    description: "Clears the selected custom knowledge entries.",
+  },
+  {
+    key: "admin.rag.table.showing",
+    defaultText: "Showing {shown} of {total} entries",
+    description: "Count of visible custom knowledge entries under the admin list.",
+  },
+  {
+    key: "admin.rag.index.failed",
+    defaultText: "Index failed",
+    description: "Custom knowledge entry whose search index could not be built.",
+  },
+  {
+    key: "admin.rag.index.pending",
+    defaultText: "Indexing",
+    description: "Custom knowledge entry whose search index is still being built.",
+  },
+  {
+    key: "admin.settings.site_access.section_title",
+    defaultText: "Launch and access",
+    description: "Heading above the web/mobile launch and maintenance switches.",
+  },
+  {
+    key: "admin.settings.site_access.section_description",
+    defaultText: "Each switch saves immediately and applies to non-admin visitors.",
+    description: "Explains that site access switches save immediately.",
+  },
+  {
+    key: "admin.settings.coming_soon.section_title",
+    defaultText: "Coming soon page",
+    description: "Heading above the coming-soon text and timer forms.",
+  },
+  {
+    key: "admin.settings.features.legend",
+    defaultText: "Each feature has three modes: Off hides it from everyone, Admin only limits it to admin accounts, and Everyone makes it available to all users. Changes save immediately.",
+    description: "Legend explaining the three feature access modes.",
+  },
+  {
+    key: "admin.settings.features.referrals_link",
+    defaultText: "Manage creator referrals",
+    description: "Link from feature access to the coupons/referrals page.",
+  },
+  {
+    key: "admin.settings.features.group.chat",
+    defaultText: "Chat tools",
+    description: "Group label for chat tool switches.",
+  },
+  {
+    key: "admin.settings.features.group.images",
+    defaultText: "Images",
+    description: "Group label for image feature switches.",
+  },
+  {
+    key: "admin.settings.features.group.voice",
+    defaultText: "Voice and live translation",
+    description: "Group label for voice and live translation switches.",
+  },
+  {
+    key: "admin.settings.free_messages.summary_global",
+    defaultText: "{count} per day for all models",
+    description: "Free message summary when one global allowance is active.",
+  },
+  {
+    key: "admin.settings.free_messages.summary_per_model",
+    defaultText: "Per-model allowances",
+    description: "Free message summary when each model has its own allowance.",
+  },
+  {
+    key: "admin.settings.image_models.count",
+    defaultText: "{count} models",
+    description: "Number of configured image models.",
+  },
+  {
+    key: "admin.settings.image_model.section_title",
+    defaultText: "Active image model",
+    description: "Heading above the image model list.",
+  },
+  {
+    key: "admin.settings.image_downloads.section_title",
+    defaultText: "Download defaults",
+    description: "Heading above the download filename form.",
+  },
+  {
+    key: "admin.settings.languages.count",
+    defaultText: "{count} languages",
+    description: "Number of configured languages.",
+  },
+  {
+    key: "admin.settings.languages.add_title",
+    defaultText: "Add a language",
+    description: "Heading of the add-language form.",
+  },
+  {
+    key: "admin.settings.translation_languages.add_title",
+    defaultText: "Add a translation language",
+    description: "Heading of the add-translation-language form.",
+  },
+  {
+    key: "admin.settings.site_access.prelaunch_invites.not_loaded",
+    defaultText: "Invites load on demand. Select Load invites to see existing links.",
+    description: "Shown before the invite list has been loaded.",
+  },
+  {
     key: "admin.users.table.user",
     defaultText: "User",
     description: "Admin user table column with each user email and role.",

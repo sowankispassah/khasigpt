@@ -208,6 +208,33 @@ export function AdminStatusPill({
   );
 }
 
+const NOTICE_TONES = {
+  danger: "border-rose-500/30 bg-rose-500/10 text-rose-800 dark:text-rose-300",
+  info: "border-sky-500/30 bg-sky-500/10 text-sky-800 dark:text-sky-300",
+  warning:
+    "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300",
+} as const;
+
+/** Inline banner for warnings and errors; tinted so it reads in both themes. */
+export function AdminNotice({
+  children,
+  className,
+  tone = "warning",
+}: {
+  children: ReactNode;
+  className?: string;
+  tone?: keyof typeof NOTICE_TONES;
+}) {
+  return (
+    <div
+      className={cn("rounded-lg border px-3 py-2 text-sm", NOTICE_TONES[tone], className)}
+      role={tone === "danger" ? "alert" : undefined}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function AdminEmptyState({
   description,
   icon: Icon = Inbox,
