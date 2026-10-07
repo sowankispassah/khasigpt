@@ -2,7 +2,7 @@ import nextDynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { AdminPageLoading } from "@/components/admin/admin-page-loading";
-import { AdminPageHeader } from "@/components/admin/admin-ui";
+import { AdminNotice, AdminPageHeader } from "@/components/admin/admin-ui";
 import type { SerializedAdminRagEntry } from "@/components/admin-rag/admin-rag-manager";
 import type { SerializedUserKnowledgeEntry } from "@/components/admin-user-knowledge-table";
 import { getAdminQueryTimeoutMs } from "@/lib/admin/safe-query";
@@ -18,8 +18,7 @@ import {
 import { getAdminRequestSession } from "@/lib/security/admin-session";
 import { parseBooleanSetting } from "@/lib/settings/boolean-setting";
 import { withTimeout } from "@/lib/utils/async";
-import { CustomKnowledgeToggle } from "./custom-knowledge-toggle";
-import { RebuildRagIndexButton } from "./rebuild-rag-index-button";
+import { RagSettingsPanels } from "./rag-sections";
 
 export const dynamic = "force-dynamic";
 
@@ -132,35 +131,10 @@ export default async function AdminRagPage() {
         navHref="/admin/rag"
         title="Knowledge (RAG)"
       />
-      <section className="rounded-xl border bg-card p-6 shadow-xs">
-        <h2 className="font-semibold text-lg">Custom knowledge (RAG)</h2>
-        <p className="mt-1 text-muted-foreground text-sm">
-          Enable or disable custom knowledge for chats.
-        </p>
-        {customKnowledgeEnabledSetting.degraded ? (
-          <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
-            Custom knowledge status could not be confirmed. The saved value is
-            not being shown as authoritative; retry before changing it.
-          </p>
-        ) : null}
-        <CustomKnowledgeToggle
-          initialEnabled={customKnowledgeEnabled}
-          isDegraded={customKnowledgeEnabledSetting.degraded}
-        />
-      </section>
-
-      <section className="rounded-lg border bg-card p-4 shadow-sm">
-        <div className="flex flex-col gap-2">
-          <h3 className="font-semibold text-base">Rebuild knowledge index</h3>
-          <p className="text-muted-foreground text-sm">
-            Rebuild multilingual search chunks and embeddings for all custom
-            knowledge entries.
-          </p>
-          <div className="flex justify-start">
-            <RebuildRagIndexButton />
-          </div>
-        </div>
-      </section>
+      <RagSettingsPanels
+        customKnowledgeEnabled={customKnowledgeEnabled}
+        degraded={customKnowledgeEnabledSetting.degraded}
+      />
 
       <Suspense fallback={<AdminPageLoading rows={6} summaryCards={4} titleWidth="w-28" />}>
         <RagManagerSection
@@ -171,20 +145,11 @@ export default async function AdminRagPage() {
         />
       </Suspense>
 
-      <section className="rounded-lg border bg-card p-6 shadow-sm">
-        <div className="mb-4">
-          <h2 className="font-semibold text-lg">User Added Knowledge</h2>
-          <p className="text-muted-foreground text-sm">
-            Approve or reject knowledge submitted by users. Approved items
-            become retrievable.
-          </p>
-        </div>
-        <Suspense fallback={<AdminPageLoading rows={5} titleWidth="w-52" />}>
-          <UserKnowledgeSection
-            userAddedKnowledgePromise={userAddedKnowledgePromise}
-          />
-        </Suspense>
-      </section>
+      <Suspense fallback={<AdminPageLoading rows={5} titleWidth="w-52" />}>
+        <UserKnowledgeSection
+          userAddedKnowledgePromise={userAddedKnowledgePromise}
+        />
+      </Suspense>
     </div>
   );
 }
@@ -303,14 +268,16 @@ async function UserKnowledgeSection({
     }));
 
   return (
-    <>
-      {userAddedKnowledgeState.degraded ? (
-        <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
-          User-added knowledge could not be confirmed. Retry before treating
-          this list as complete.
-        </p>
-      ) : null}
-      <AdminUserKnowledgeTable entries={serializedUserKnowledge} />
-    </>
+    <AdminUserKnowledgeTable
+      entries={serializedUserKnowledge}
+      notice={
+        userAddedKnowledgeState.degraded ? (
+          <AdminNotice>
+            User-added knowledge could not be confirmed. Retry before treating
+            this list as complete.
+          </AdminNotice>
+        ) : null
+      }
+    />
   );
 }

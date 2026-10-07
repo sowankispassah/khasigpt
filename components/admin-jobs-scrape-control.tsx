@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AdminNotice } from "@/components/admin/admin-ui";
 import { LoaderIcon } from "@/components/icons";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
@@ -97,7 +98,8 @@ function formatTime(value: string | null) {
   if (Number.isNaN(date.getTime())) {
     return null;
   }
-  return date.toLocaleString("en-IN", { hour12: true });
+  // Fixed zone so the server render and the browser agree.
+  return date.toLocaleString("en-IN", { hour12: true, timeZone: "Asia/Kolkata" });
 }
 
 function formatElapsedMs(durationMs: number | null) {
@@ -390,8 +392,8 @@ export function AdminJobsScrapeControl({
   const hasPendingAction = pendingAction !== null;
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-col gap-2 md:flex-row md:items-center">
+    <div className="space-y-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <Button
           className="cursor-pointer"
           disabled={hasPendingAction || running || unavailable || runnerMode !== "project"}
@@ -414,59 +416,70 @@ export function AdminJobsScrapeControl({
           )}
         </Button>
         {running ? (
-          <>
-            <div className="min-w-0 flex-1">
-              <Progress className="h-2" value={running ? progressValue : progressValue || 0} />
-            </div>
-            <Button
-              className="cursor-pointer"
-              disabled={
-                hasPendingAction || !running || Boolean(progress?.cancelRequested)
-              }
-              onClick={() => {
-                void requestCancel();
-              }}
-              type="button"
-              variant="destructive"
-            >
-              {isCancelling ? (
-                <span className="flex items-center gap-2">
-                  <span className="h-4 w-4 animate-spin">
-                    <LoaderIcon size={16} />
-                  </span>
-                  <span>Requesting...</span>
+          <Button
+            className="cursor-pointer"
+            disabled={
+              hasPendingAction || !running || Boolean(progress?.cancelRequested)
+            }
+            onClick={() => {
+              void requestCancel();
+            }}
+            type="button"
+            variant="destructive"
+          >
+            {isCancelling ? (
+              <span className="flex items-center gap-2">
+                <span className="h-4 w-4 animate-spin">
+                  <LoaderIcon size={16} />
                 </span>
-              ) : progress?.cancelRequested ? (
-                "Cancel requested"
-              ) : (
-                "Cancel Scrape"
-              )}
-            </Button>
-          </>
+                <span>Requesting...</span>
+              </span>
+            ) : progress?.cancelRequested ? (
+              "Cancel requested"
+            ) : (
+              "Cancel Scrape"
+            )}
+          </Button>
         ) : null}
       </div>
 
+      {running ? (
+        <div className="space-y-1.5">
+          <Progress className="h-2" value={progressValue} />
+          <div className="flex justify-between gap-3 text-muted-foreground text-xs tabular-nums">
+            <span>
+              {progress?.processedSources ?? 0}/{progress?.totalSources ?? 0} sources
+            </span>
+            <span>{progressPercentLabel}</span>
+          </div>
+        </div>
+      ) : null}
+
       {runnerMode === "chatgpt" ? (
-        <p className="text-muted-foreground text-xs">
+        <AdminNotice tone="info">
           <EditableTranslation
             translationKey="admin.jobs.runner.manual_disabled"
             defaultText="Project scraping is disabled while the ChatGPT app schedule is selected."
             description="Notice beside the admin manual scraping button in ChatGPT mode."
           />
-        </p>
+        </AdminNotice>
       ) : null}
 
-      <p className="text-muted-foreground text-xs">{statusText}</p>
+      <p className="rounded-lg border bg-muted/20 px-3 py-2 text-muted-foreground text-xs">
+        {statusText}
+      </p>
       {progress?.failureDetails?.length ? (
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+        <AdminNotice className="space-y-1 text-xs">
           {progress.failureDetails.map((detail) => (
             <p key={`${detail.scope}:${detail.id}`} className="whitespace-normal">
               <strong>{detail.title}</strong>: {detail.reason}
             </p>
           ))}
-        </div>
+        </AdminNotice>
       ) : null}
-      {message ? <p className="text-xs">{message}</p> : null}
+      {message ? (
+        <output className="block text-xs">{message}</output>
+      ) : null}
     </div>
   );
 }

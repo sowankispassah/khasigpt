@@ -17,11 +17,13 @@ export function AdminJobsExpandableTable({
   const [showAll, setShowAll] = useState(false);
 
   return (
-    <div className="space-y-3">
-      <div className="overflow-x-auto rounded-md border">
-        <table className="min-w-max border-collapse whitespace-nowrap text-sm">
-          <thead className="bg-muted/40">{header}</thead>
-          <tbody>
+    <div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="border-b bg-muted/40 text-muted-foreground text-xs">
+            {header}
+          </thead>
+          <tbody className="divide-y divide-border/60">
             {initialRows}
             {showAll ? remainingRows : null}
           </tbody>
@@ -29,7 +31,7 @@ export function AdminJobsExpandableTable({
       </div>
 
       {remainingCount > 0 ? (
-        <div>
+        <div className="flex justify-center border-t px-4 py-3">
           <Button
             className="h-8 cursor-pointer px-3 text-xs"
             onClick={() => setShowAll((current) => !current)}
@@ -43,4 +45,3 @@ export function AdminJobsExpandableTable({
     </div>
   );
 }
-

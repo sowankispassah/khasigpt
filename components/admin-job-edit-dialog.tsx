@@ -275,7 +275,7 @@ export function AdminJobEditDialog({ job }: { job: EditableJob }) {
   return (
     <>
       <Button
-        className="h-7 cursor-pointer px-2 text-xs"
+        className="h-8 cursor-pointer px-3 text-xs"
         onClick={() => setOpen(true)}
         type="button"
         variant="outline"
@@ -329,7 +329,7 @@ export function AdminJobEditDialog({ job }: { job: EditableJob }) {
             <div className="grid gap-1">
               <Label htmlFor={`edit-job-status-${job.id}`}>Status</Label>
               <select
-                className="rounded-md border bg-background px-3 py-2 text-sm"
+                className="h-9 cursor-pointer rounded-md border bg-background px-3 text-sm"
                 id={`edit-job-status-${job.id}`}
                 onChange={(event) =>
                   setStatus(event.target.value === "inactive" ? "inactive" : "active")

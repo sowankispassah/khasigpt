@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -13,8 +14,13 @@ import {
   deleteUserKnowledgeEntryAction,
   updateUserKnowledgeApprovalAction,
 } from "@/app/(admin)/actions";
+import {
+  AdminEmptyState,
+  AdminPanel,
+  AdminStatusPill,
+  type AdminStatusTone,
+} from "@/components/admin/admin-ui";
 import { LoaderIcon, TrashIcon } from "@/components/icons";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { RagEntryApprovalStatus, RagEntryStatus } from "@/lib/db/schema";
 
@@ -38,29 +44,28 @@ export type SerializedUserKnowledgeEntry = {
 
 const statusTone: Record<
   RagEntryApprovalStatus,
-  { label: string; className: string; accent: string }
+  { label: string; tone: AdminStatusTone }
 > = {
-  approved: {
-    label: "Approved",
-    className: "bg-emerald-50 text-emerald-700",
-    accent: "bg-emerald-600",
-  },
-  pending: {
-    label: "Pending",
-    className: "bg-amber-50 text-amber-800",
-    accent: "bg-amber-600",
-  },
-  rejected: {
-    label: "Rejected",
-    className: "bg-rose-50 text-rose-700",
-    accent: "bg-rose-600",
-  },
+  approved: { label: "Approved", tone: "success" },
+  pending: { label: "Pending", tone: "warning" },
+  rejected: { label: "Rejected", tone: "danger" },
 };
+
+const ACTION_BUTTON_CLASS = "h-8 cursor-pointer px-3 text-xs";
+// A fixed locale and zone keep server-rendered and hydrated dates identical.
+const UPDATED_AT_FORMATTER = new Intl.DateTimeFormat("en-IN", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "Asia/Kolkata",
+});
 
 export function AdminUserKnowledgeTable({
   entries,
+  notice,
 }: {
   entries: SerializedUserKnowledgeEntry[];
+  /** Warning shown above the list, e.g. when the read was degraded. */
+  notice?: ReactNode;
 }) {
   const [rows, setRows] = useState(entries);
   const [isPending, startTransition] = useTransition();
@@ -167,8 +172,71 @@ export function AdminUserKnowledgeTable({
     });
   };
 
+  const pendingCount = sortedRows.filter(
+    (row) => row.entry.approvalStatus === "pending"
+  ).length;
+
+  const renderActions = (row: SerializedUserKnowledgeEntry) => (
+    <div className="flex flex-wrap items-center gap-2 md:flex-nowrap md:justify-end">
+      <Button
+        className={ACTION_BUTTON_CLASS}
+        disabled={isPending}
+        onClick={() => handleApproval(row.entry.id, "approved")}
+        size="sm"
+        type="button"
+      >
+        Approve
+      </Button>
+      <Button
+        className={ACTION_BUTTON_CLASS}
+        disabled={isPending}
+        onClick={() => handleApproval(row.entry.id, "rejected")}
+        size="sm"
+        type="button"
+        variant="outline"
+      >
+        Reject
+      </Button>
+      <Button
+        className={ACTION_BUTTON_CLASS}
+        disabled={isPending}
+        onClick={() => handleApproval(row.entry.id, "pending")}
+        size="sm"
+        type="button"
+        variant="secondary"
+      >
+        Keep pending
+      </Button>
+      <Button
+        className={`${ACTION_BUTTON_CLASS} text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300`}
+        disabled={isPending}
+        onClick={() => handleDelete(row.entry.id)}
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        {isPending ? (
+          <span className="h-4 w-4 animate-spin">
+            <LoaderIcon />
+          </span>
+        ) : (
+          <TrashIcon />
+        )}
+        <span>Delete</span>
+      </Button>
+    </div>
+  );
+
   return (
-    <section className="rounded-lg border bg-card p-6 shadow-sm">
+    <AdminPanel
+      action={
+        <AdminStatusPill tone={pendingCount > 0 ? "warning" : "neutral"}>
+          {pendingCount} pending
+        </AdminStatusPill>
+      }
+      description="Review, approve, or reject knowledge submitted by users. Approved items become retrievable by everyone."
+      title="User-added knowledge"
+    >
       {progressVisible ? (
         <div className="fixed inset-x-0 top-0 z-40 h-1 bg-border/60">
           <div
@@ -178,136 +246,68 @@ export function AdminUserKnowledgeTable({
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h2 className="font-semibold text-xl">User Added Knowledge</h2>
-          <p className="text-muted-foreground text-sm">
-            Review, approve, or reject knowledge submitted by users. Approved
-            items become retrievable by everyone.
-          </p>
-        </div>
-        <Badge variant="secondary">
-          {
-            sortedRows.filter((row) => row.entry.approvalStatus === "pending")
-              .length
-          }{" "}
-          pending
-        </Badge>
-      </div>
+      {notice ? <div className="border-b px-5 py-3">{notice}</div> : null}
 
-      <div className="mt-4 overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="text-muted-foreground text-xs uppercase">
-            <tr>
-              <th className="px-2 py-2 text-left">User</th>
-              <th className="px-2 py-2 text-left">Title</th>
-              <th className="px-2 py-2 text-left">Status</th>
-              <th className="px-2 py-2 text-left">Updated</th>
-              <th className="px-2 py-2 text-left">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {sortedRows.length === 0 ? (
+      {sortedRows.length === 0 ? (
+        <AdminEmptyState title="No user submissions yet." />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b bg-muted/40 text-muted-foreground text-xs">
               <tr>
-                <td
-                  className="px-2 py-6 text-center text-muted-foreground"
-                  colSpan={5}
-                >
-                  No user submissions yet.
-                </td>
+                <th className="px-4 py-2.5 text-left font-medium" scope="col">
+                  Submission
+                </th>
+                <th className="hidden px-4 py-2.5 text-left font-medium sm:table-cell" scope="col">
+                  Status
+                </th>
+                <th className="hidden px-4 py-2.5 text-left font-medium md:table-cell" scope="col">
+                  Updated
+                </th>
+                <th className="hidden px-4 py-2.5 text-right font-medium md:table-cell" scope="col">
+                  Actions
+                </th>
               </tr>
-            ) : (
-              sortedRows.map((row) => {
+            </thead>
+            <tbody className="divide-y divide-border/60">
+              {sortedRows.map((row) => {
                 const tone = statusTone[row.entry.approvalStatus];
+                const updatedAt = UPDATED_AT_FORMATTER.format(new Date(row.entry.updatedAt));
                 return (
-                  <tr className="align-top" key={row.entry.id}>
-                    <td className="px-2 py-3">
-                      <div className="font-semibold">
-                        {row.creator.name ?? "User"}
-                      </div>
-                      <p className="text-muted-foreground text-xs">
-                        {row.creator.email ?? "—"}
-                      </p>
-                    </td>
-                    <td className="px-2 py-3">
-                      <div className="font-semibold">{row.entry.title}</div>
-                      <p className="line-clamp-3 text-muted-foreground text-xs">
+                  <tr className="align-top transition hover:bg-muted/30" key={row.entry.id}>
+                    <td className="w-full max-w-0 px-4 py-3 md:w-auto md:max-w-[34rem]">
+                      <p className="font-medium">{row.entry.title}</p>
+                      <p className="mt-0.5 line-clamp-2 text-muted-foreground text-xs">
                         {row.entry.content}
                       </p>
-                    </td>
-                    <td className="px-2 py-3">
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2 py-1 font-medium text-xs ${tone.className}`}
-                      >
-                        <span
-                          aria-hidden
-                          className={`h-1.5 w-1.5 rounded-full ${tone.accent}`}
-                        />
-                        {tone.label}
-                      </span>
-                    </td>
-                    <td className="px-2 py-3 text-muted-foreground text-xs">
-                      {new Date(row.entry.updatedAt).toLocaleString()}
-                    </td>
-                    <td className="px-2 py-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                          disabled={isPending}
-                          onClick={() =>
-                            handleApproval(row.entry.id, "approved")
-                          }
-                          size="sm"
-                          type="button"
-                        >
-                          Approve
-                        </Button>
-                        <Button
-                          disabled={isPending}
-                          onClick={() =>
-                            handleApproval(row.entry.id, "rejected")
-                          }
-                          size="sm"
-                          type="button"
-                          variant="outline"
-                        >
-                          Reject
-                        </Button>
-                        <Button
-                          disabled={isPending}
-                          onClick={() =>
-                            handleApproval(row.entry.id, "pending")
-                          }
-                          size="sm"
-                          type="button"
-                          variant="secondary"
-                        >
-                          Keep pending
-                        </Button>
-                        <Button
-                          disabled={isPending}
-                          onClick={() => handleDelete(row.entry.id)}
-                          size="sm"
-                          type="button"
-                          variant="ghost"
-                        >
-                          {isPending ? (
-                            <span className="h-4 w-4 animate-spin">
-                              <LoaderIcon />
-                            </span>
-                          ) : (
-                            <TrashIcon />
-                          )}
-                          <span>Delete</span>
-                        </Button>
+                      <p className="mt-1.5 truncate text-muted-foreground text-xs">
+                        <span className="font-medium text-foreground">
+                          {row.creator.name ?? "User"}
+                        </span>
+                        {row.creator.email ? ` · ${row.creator.email}` : ""}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs md:hidden">
+                        <span className="sm:hidden">
+                          <AdminStatusPill tone={tone.tone}>{tone.label}</AdminStatusPill>
+                        </span>
+                        <span className="text-muted-foreground">{updatedAt}</span>
                       </div>
+                      <div className="mt-3 md:hidden">{renderActions(row)}</div>
                     </td>
+                    <td className="hidden px-4 py-3 sm:table-cell">
+                      <AdminStatusPill tone={tone.tone}>{tone.label}</AdminStatusPill>
+                    </td>
+                    <td className="hidden whitespace-nowrap px-4 py-3 text-muted-foreground text-xs md:table-cell">
+                      {updatedAt}
+                    </td>
+                    <td className="hidden px-4 py-3 md:table-cell">{renderActions(row)}</td>
                   </tr>
                 );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </AdminPanel>
   );
 }

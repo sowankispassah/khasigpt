@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AdminStatusPill } from "@/components/admin/admin-ui";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 
 const RAG_SETTINGS_ENDPOINT = "/api/admin/rag/settings";
@@ -111,19 +113,39 @@ export function CustomKnowledgeToggle({
   };
 
   return (
-    <div className="mt-4 grid gap-4">
-      <label className="flex cursor-pointer items-center gap-3 font-medium text-sm">
+    <div className="grid gap-4">
+      <label className="flex cursor-pointer items-center justify-between gap-4 rounded-lg border p-3 font-medium text-sm transition hover:bg-muted/40 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60">
+        Enable custom knowledge for chats
         <input
           checked={enabled}
-          className="h-4 w-4 cursor-pointer"
+          className="h-4 w-4 shrink-0 cursor-pointer disabled:cursor-not-allowed"
           disabled={isDisabled}
           onChange={(event) => setEnabled(event.target.checked)}
           type="checkbox"
         />
-        Enable custom knowledge for chats
       </label>
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {isDegraded ? (
+          <span />
+        ) : (
+          <AdminStatusPill tone={lastSavedEnabled ? "success" : "neutral"}>
+            {lastSavedEnabled ? (
+              <EditableTranslation
+                defaultText="Currently on"
+                description="Saved state pill when custom knowledge is enabled for chats."
+                translationKey="admin.rag.settings.status_on"
+              />
+            ) : (
+              <EditableTranslation
+                defaultText="Currently off"
+                description="Saved state pill when custom knowledge is disabled for chats."
+                translationKey="admin.rag.settings.status_off"
+              />
+            )}
+          </AdminStatusPill>
+        )}
         <Button
+          className="cursor-pointer"
           disabled={isDisabled || !isDirty}
           onClick={() => {
             void handleSave();

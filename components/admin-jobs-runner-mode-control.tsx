@@ -1,10 +1,13 @@
 "use client";
 
 import { ActionSubmitButton } from "@/components/action-submit-button";
+import { AdminNotice, AdminPanel } from "@/components/admin/admin-ui";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { JobsScrapeRunnerMode } from "@/lib/jobs/schedule";
+
+const OPTION_CLASS =
+  "flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition hover:bg-muted/40 has-[:checked]:border-primary/60 has-[:checked]:bg-primary/5 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60";
 
 export function AdminJobsRunnerModeControl({
   action,
@@ -18,36 +21,36 @@ export function AdminJobsRunnerModeControl({
   const { translate } = useTranslation();
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
+    <AdminPanel
+      bodyClassName="p-5"
+      description={
+        <EditableTranslation
+          translationKey="admin.jobs.runner.description"
+          defaultText="Choose which schedule starts job imports. The jobs list and source settings work with either choice."
+          description="Explanation of the admin jobs runner mode setting."
+        />
+      }
+      title={
+        <EditableTranslation
+          translationKey="admin.jobs.runner.title"
+          defaultText="Automatic Jobs Runner"
+          description="Heading for choosing the automatic jobs import runner."
+        />
+      }
+    >
+      {unavailable ? (
+        <AdminNotice className="mb-4">
           <EditableTranslation
-            translationKey="admin.jobs.runner.title"
-            defaultText="Automatic Jobs Runner"
-            description="Heading for choosing the automatic jobs import runner."
+            translationKey="admin.jobs.runner.unavailable"
+            defaultText="The current runner could not be confirmed. Refresh before changing it."
+            description="Error shown when the jobs runner mode setting is unavailable."
           />
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4 text-sm">
-        <p className="text-muted-foreground">
-          <EditableTranslation
-            translationKey="admin.jobs.runner.description"
-            defaultText="Choose which schedule starts job imports. The jobs list and source settings work with either choice."
-            description="Explanation of the admin jobs runner mode setting."
-          />
-        </p>
-        {unavailable ? (
-          <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-700">
-            <EditableTranslation
-              translationKey="admin.jobs.runner.unavailable"
-              defaultText="The current runner could not be confirmed. Refresh before changing it."
-              description="Error shown when the jobs runner mode setting is unavailable."
-            />
-          </p>
-        ) : null}
-        <form action={action} className="space-y-3">
-          <fieldset className="space-y-3" disabled={unavailable}>
-            <label className="flex cursor-pointer items-start gap-2 rounded-md border p-3">
+        </AdminNotice>
+      ) : null}
+      <form action={action}>
+        <fieldset className="space-y-3" disabled={unavailable}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className={OPTION_CLASS}>
               <input
                 className="mt-1 cursor-pointer"
                 defaultChecked={mode === "project"}
@@ -56,7 +59,7 @@ export function AdminJobsRunnerModeControl({
                 value="project"
               />
               <span className="space-y-1">
-                <span className="block font-medium">
+                <span className="block font-medium text-sm">
                   <EditableTranslation
                     translationKey="admin.jobs.runner.project"
                     defaultText="Project schedule"
@@ -72,7 +75,7 @@ export function AdminJobsRunnerModeControl({
                 </span>
               </span>
             </label>
-            <label className="flex cursor-pointer items-start gap-2 rounded-md border p-3">
+            <label className={OPTION_CLASS}>
               <input
                 className="mt-1 cursor-pointer"
                 defaultChecked={mode === "chatgpt"}
@@ -81,7 +84,7 @@ export function AdminJobsRunnerModeControl({
                 value="chatgpt"
               />
               <span className="space-y-1">
-                <span className="block font-medium">
+                <span className="block font-medium text-sm">
                   <EditableTranslation
                     translationKey="admin.jobs.runner.chatgpt"
                     defaultText="ChatGPT app schedule"
@@ -97,22 +100,22 @@ export function AdminJobsRunnerModeControl({
                 </span>
               </span>
             </label>
-            <ActionSubmitButton
-              className="cursor-pointer"
-              disabled={unavailable}
-              pendingLabel={translate("admin.jobs.runner.saving", "Saving runner...")}
-              refreshOnSuccess
-              successMessage={translate("admin.jobs.runner.saved", "Jobs runner saved.")}
-            >
-              <EditableTranslation
-                translationKey="admin.jobs.runner.save"
-                defaultText="Save Runner"
-                description="Button for saving the selected automatic jobs runner."
-              />
-            </ActionSubmitButton>
-          </fieldset>
-        </form>
-      </CardContent>
-    </Card>
+          </div>
+          <ActionSubmitButton
+            className="cursor-pointer"
+            disabled={unavailable}
+            pendingLabel={translate("admin.jobs.runner.saving", "Saving runner...")}
+            refreshOnSuccess
+            successMessage={translate("admin.jobs.runner.saved", "Jobs runner saved.")}
+          >
+            <EditableTranslation
+              translationKey="admin.jobs.runner.save"
+              defaultText="Save Runner"
+              description="Button for saving the selected automatic jobs runner."
+            />
+          </ActionSubmitButton>
+        </fieldset>
+      </form>
+    </AdminPanel>
   );
 }

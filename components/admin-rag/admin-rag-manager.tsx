@@ -1,5 +1,6 @@
 "use client";
 
+import { Search } from "lucide-react";
 import {
   useCallback,
   useDeferredValue,
@@ -18,11 +19,19 @@ import {
   updateRagEntryAction,
 } from "@/app/(admin)/actions";
 import {
+  AdminEmptyState,
+  AdminNotice,
+  AdminPanel,
+  AdminStatCard,
+  AdminStatusPill,
+} from "@/components/admin/admin-ui";
+import {
   LoaderIcon,
   PlusIcon,
   SparklesIcon,
   TrashIcon,
 } from "@/components/icons";
+import { useTranslation } from "@/components/language-provider";
 import {
   EditableTranslation,
   useEditableTranslation,
@@ -104,6 +113,14 @@ const RAG_TYPES = [
 ] as const;
 const STATUS_OPTIONS: RagEntryStatus[] = ["active", "inactive", "archived"];
 const INITIAL_VISIBLE_RAG_ENTRIES = 10;
+// A fixed locale and zone keep server-rendered and hydrated dates identical.
+const RAG_DATE_FORMATTER = new Intl.DateTimeFormat("en-IN", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "Asia/Kolkata",
+});
+const FILTER_SELECT_CLASS =
+  "h-9 w-full min-w-0 cursor-pointer rounded-lg border border-input bg-background px-2.5 text-sm sm:w-auto";
 const ADMIN_RAG_ACTION_TIMEOUT_MS = 25_000;
 
 type PendingAction =
@@ -235,6 +252,7 @@ export function AdminRagManager({
     "A short, specific title",
     "Placeholder for the custom knowledge title field.",
   );
+  const { translate } = useTranslation();
   const contentPlaceholder = useEditableTranslation(
     "admin.rag.form.content_placeholder",
     "Write the fact or guidance exactly as KhasiGPT should understand it.",
@@ -620,7 +638,7 @@ export function AdminRagManager({
     if (!value) {
       return "—";
     }
-    return new Date(value).toLocaleString();
+    return RAG_DATE_FORMATTER.format(new Date(value));
   };
 
   const toggleModel = (id: string) => {
@@ -647,6 +665,54 @@ export function AdminRagManager({
     }));
   };
 
+  const renderRowActions = (item: SerializedAdminRagEntry) => (
+    <div className="flex items-center gap-1.5 sm:justify-end">
+      <Button
+        className="h-8 cursor-pointer px-3 text-xs"
+        onClick={() => openEditor(item)}
+        size="sm"
+        type="button"
+        variant="outline"
+      >
+        Edit
+      </Button>
+      {item.entry.status === "archived" ? (
+        <Button
+          className="h-8 cursor-pointer px-3 text-xs"
+          disabled={isActionPending}
+          onClick={() => handleRestoreEntry(item.entry.id)}
+          size="sm"
+          type="button"
+          variant="secondary"
+        >
+          {pendingAction === "restore" ? (
+            <>
+              <LoaderIcon className="animate-spin" />
+              <span>Restoring...</span>
+            </>
+          ) : (
+            "Restore"
+          )}
+        </Button>
+      ) : null}
+      <button
+        aria-label="Mark for archive"
+        aria-pressed={selectedIds.includes(item.entry.id)}
+        className={cn(
+          "flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md border text-muted-foreground transition hover:border-destructive/50 hover:text-destructive",
+          selectedIds.includes(item.entry.id)
+            ? "border-destructive/50 text-destructive"
+            : ""
+        )}
+        onClick={() => toggleSelection(item.entry.id)}
+        title="Mark for archive"
+        type="button"
+      >
+        <TrashIcon />
+      </button>
+    </div>
+  );
+
   return (
     <div className="flex flex-col gap-6">
       {progressVisible ? (
@@ -658,36 +724,12 @@ export function AdminRagManager({
         </div>
       ) : null}
 
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-semibold text-2xl">RAG Knowledge Base</h1>
-          <p className="text-muted-foreground text-sm">
-            Curate general, study, and identity knowledge for retrieval-augmented conversations.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {QUICK_CREATE_SCOPES.map((item) => (
-            <Button
-              disabled={isActionPending}
-              key={item.scope}
-              onClick={() => openCreateSheet(item.scope)}
-              title={item.description}
-              type="button"
-              variant={item.scope === "default" ? "default" : "outline"}
-            >
-              <PlusIcon />
-              <span>{item.label}</span>
-            </Button>
-          ))}
-        </div>
-      </header>
-
       {degradedSections.length > 0 ? (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
+        <AdminNotice>
           RAG data is partially unavailable. Failed sections:{" "}
           {degradedSections.join(", ")}. Existing database values were not
           confirmed, so fallback counts and empty lists are not authoritative.
-        </div>
+        </AdminNotice>
       ) : null}
 
       <AnalyticsSummary
@@ -695,200 +737,271 @@ export function AdminRagManager({
         isDegraded={degradedSections.includes("RAG analytics")}
       />
 
-      <section className="rounded-2xl border bg-card/60 p-4 shadow-sm">
-        <div className="flex flex-wrap items-center gap-3">
-          <Input
-            className="max-w-xs"
-            onChange={(event) => {
-              setSearchTerm(event.target.value);
-              setShowAllEntries(false);
-            }}
-            placeholder="Search title or content"
-            value={searchTerm}
-          />
+      <AdminPanel
+        description="Curate general, study, and identity knowledge for retrieval-augmented conversations."
+        title="RAG Knowledge Base"
+      >
+        <div className="space-y-3 border-b p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            {QUICK_CREATE_SCOPES.map((item) => (
+              <Button
+                className="cursor-pointer"
+                disabled={isActionPending}
+                key={item.scope}
+                onClick={() => openCreateSheet(item.scope)}
+                size="sm"
+                title={item.description}
+                type="button"
+                variant={item.scope === "default" ? "default" : "outline"}
+              >
+                <PlusIcon />
+                <span>{item.label}</span>
+              </Button>
+            ))}
+          </div>
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+            <div className="relative min-w-0 flex-1">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+              />
+              <input
+                aria-label="Search title or content"
+                className="h-9 w-full rounded-lg border border-input bg-background pr-3 pl-9 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                onChange={(event) => {
+                  setSearchTerm(event.target.value);
+                  setShowAllEntries(false);
+                }}
+                placeholder="Search title or content"
+                type="search"
+                value={searchTerm}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+              <select
+                aria-label="Type"
+                className={FILTER_SELECT_CLASS}
+                onChange={(event) => {
+                  setTypeFilter(event.target.value as (typeof RAG_TYPES)[number] | "all");
+                  setShowAllEntries(false);
+                }}
+                value={typeFilter}
+              >
+                <option value="all">
+                  {translate("admin.rag.filters.all_types", "All types")}
+                </option>
+                {RAG_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Scope"
+                className={FILTER_SELECT_CLASS}
+                onChange={(event) => {
+                  setScopeFilter(event.target.value as RagScopeFilter);
+                  setShowAllEntries(false);
+                }}
+                value={scopeFilter}
+              >
+                <option value="all">All scopes</option>
+                {RAG_CHAT_SCOPE_OPTIONS.map((scope) => (
+                  <option key={scope} value={scope}>
+                    {CHAT_SCOPE_LABELS[scope]}
+                  </option>
+                ))}
+                <option value="legacy">Legacy / unscoped</option>
+              </select>
+              <select
+                aria-label="Tag"
+                className={FILTER_SELECT_CLASS}
+                onChange={(event) => {
+                  setTagFilter(event.target.value);
+                  setShowAllEntries(false);
+                }}
+                value={tagFilter}
+              >
+                <option value="all">All tags</option>
+                {availableTags.map((tag) => (
+                  <option key={tag} value={tag}>
+                    {tag}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Advanced model filter"
+                className={FILTER_SELECT_CLASS}
+                onChange={(event) => {
+                  setModelFilter(event.target.value);
+                  setShowAllEntries(false);
+                }}
+                title="Advanced model filter"
+                value={modelFilter}
+              >
+                <option value="all">All models</option>
+                {modelOptions.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
           <FilterGroup
             label="Status"
-            onChange={(value) =>
-              {
-                setStatusFilter(value as RagEntryStatus | "all");
-                setShowAllEntries(false);
-              }
-            }
+            onChange={(value) => {
+              setStatusFilter(value as RagEntryStatus | "all");
+              setShowAllEntries(false);
+            }}
             options={["all", ...STATUS_OPTIONS]}
             value={statusFilter}
           />
-          <FilterGroup
-            label="Type"
-            onChange={(value) =>
-              {
-                setTypeFilter(value as (typeof RAG_TYPES)[number] | "all");
-                setShowAllEntries(false);
-              }
-            }
-            options={["all", ...RAG_TYPES]}
-            value={typeFilter}
-          />
-          <select
-            className="rounded-full border px-3 py-1 text-sm"
-            onChange={(event) => {
-              setScopeFilter(event.target.value as RagScopeFilter);
-              setShowAllEntries(false);
-            }}
-            value={scopeFilter}
-          >
-            <option value="all">All scopes</option>
-            {RAG_CHAT_SCOPE_OPTIONS.map((scope) => (
-              <option key={scope} value={scope}>
-                {CHAT_SCOPE_LABELS[scope]}
-              </option>
-            ))}
-            <option value="legacy">Legacy / unscoped</option>
-          </select>
-          <select
-            className="rounded-full border px-3 py-1 text-sm"
-            onChange={(event) => {
-              setTagFilter(event.target.value);
-              setShowAllEntries(false);
-            }}
-            value={tagFilter}
-          >
-            <option value="all">All tags</option>
-            {availableTags.map((tag) => (
-              <option key={tag} value={tag}>
-                {tag}
-              </option>
-            ))}
-          </select>
         </div>
-        <details className="mt-3 text-sm">
-          <summary className="cursor-pointer text-muted-foreground">
-            Advanced model filter
-          </summary>
-          <div className="mt-2">
-            <select
-              className="rounded-full border px-3 py-1 text-sm"
-              onChange={(event) => {
-                setModelFilter(event.target.value);
-                setShowAllEntries(false);
-              }}
-              value={modelFilter}
-            >
-              <option value="all">All models</option>
-              {modelOptions.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.label}
-                </option>
-              ))}
-            </select>
+
+        {selectedIds.length > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-primary/5 px-4 py-2.5">
+            <p className="font-medium text-sm">{selectedIds.length} selected</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                className="cursor-pointer"
+                disabled={isActionPending}
+                onClick={() => handleBulkStatus("active")}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {pendingAction === "bulk-active" ? (
+                  <>
+                    <LoaderIcon className="animate-spin" />
+                    <span>Activating...</span>
+                  </>
+                ) : (
+                  "Activate"
+                )}
+              </Button>
+              <Button
+                className="cursor-pointer"
+                disabled={isActionPending}
+                onClick={() => handleBulkStatus("inactive")}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {pendingAction === "bulk-inactive" ? (
+                  <>
+                    <LoaderIcon className="animate-spin" />
+                    <span>Deactivating...</span>
+                  </>
+                ) : (
+                  "Deactivate"
+                )}
+              </Button>
+              <Button
+                className="cursor-pointer"
+                disabled={isActionPending}
+                onClick={handleArchiveSelected}
+                size="sm"
+                type="button"
+                variant="destructive"
+              >
+                {pendingAction === "archive" ? (
+                  <>
+                    <LoaderIcon className="animate-spin" />
+                    <span>Archiving...</span>
+                  </>
+                ) : (
+                  "Archive"
+                )}
+              </Button>
+              <Button
+                className="cursor-pointer"
+                disabled={isActionPending}
+                onClick={() => setSelectedIds([])}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                <EditableTranslation
+                  defaultText="Clear"
+                  description="Clears the selected custom knowledge entries."
+                  translationKey="admin.rag.selection.clear"
+                />
+              </Button>
+            </div>
           </div>
-        </details>
+        ) : null}
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Button
-            disabled={!selectedIds.length || isActionPending}
-            onClick={() => handleBulkStatus("active")}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            {pendingAction === "bulk-active" ? (
-              <>
-                <LoaderIcon className="animate-spin" />
-                <span>Activating...</span>
-              </>
-            ) : (
-              "Activate"
-            )}
-          </Button>
-          <Button
-            disabled={!selectedIds.length || isActionPending}
-            onClick={() => handleBulkStatus("inactive")}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            {pendingAction === "bulk-inactive" ? (
-              <>
-                <LoaderIcon className="animate-spin" />
-                <span>Deactivating...</span>
-              </>
-            ) : (
-              "Deactivate"
-            )}
-          </Button>
-          <Button
-            disabled={!selectedIds.length || isActionPending}
-            onClick={handleArchiveSelected}
-            size="sm"
-            type="button"
-            variant="destructive"
-          >
-            {pendingAction === "archive" ? (
-              <>
-                <LoaderIcon className="animate-spin" />
-                <span>Archiving...</span>
-              </>
-            ) : (
-              "Archive"
-            )}
-          </Button>
-          <p className="text-muted-foreground text-sm">
-            {selectedIds.length} selected
-          </p>
-        </div>
-
-        <div className="mt-4 overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-muted-foreground text-xs uppercase tracking-wide">
-                <th className="w-10 px-2 py-2">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b bg-muted/40 text-muted-foreground text-xs">
+              <tr>
+                <th className="w-10 py-2.5 pr-0 pl-4 sm:px-4" scope="col">
                   <input
                     aria-label="Select all"
                     checked={allSelected}
+                    className="cursor-pointer"
                     onChange={toggleSelectAll}
                     type="checkbox"
                   />
                 </th>
-                <th className="px-2 py-2">Title</th>
-                <th className="px-2 py-2">Scope</th>
-                <th className="px-2 py-2">Status</th>
-                <th className="px-2 py-2">Model restriction</th>
-                <th className="px-2 py-2">Tags</th>
-                <th className="px-2 py-2">Updated</th>
-                <th className="px-2 py-2">Actions</th>
+                <th className="px-4 py-2.5 text-left font-medium" scope="col">Title</th>
+                <th className="hidden px-4 py-2.5 text-left font-medium md:table-cell" scope="col">Scope</th>
+                <th className="hidden px-4 py-2.5 text-left font-medium sm:table-cell" scope="col">Status</th>
+                <th className="hidden whitespace-nowrap px-4 py-2.5 text-left font-medium xl:table-cell" scope="col">Model restriction</th>
+                <th className="hidden px-4 py-2.5 text-left font-medium lg:table-cell" scope="col">Tags</th>
+                <th className="hidden px-4 py-2.5 text-left font-medium lg:table-cell" scope="col">Updated</th>
+                <th className="hidden px-4 py-2.5 text-right font-medium sm:table-cell" scope="col">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y divide-border/60">
               {filteredEntries.length === 0 ? (
                 <tr>
-                  <td
-                    className="px-2 py-6 text-center text-muted-foreground"
-                      colSpan={8}
-                    >
-                      {degradedSections.includes("RAG entries")
-                        ? "RAG entries could not be confirmed. Retry before treating this table as empty."
-                        : "No entries match your filters."}
-                    </td>
+                  <td colSpan={8}>
+                    <AdminEmptyState
+                      title={
+                        degradedSections.includes("RAG entries")
+                          ? "RAG entries could not be confirmed. Retry before treating this table as empty."
+                          : "No entries match your filters."
+                      }
+                    />
+                  </td>
                 </tr>
               ) : (
                 visibleEntries.map((item) => (
-                  <tr className="align-top" key={item.entry.id}>
-                    <td className="px-2 py-3">
+                  <tr className="align-top transition hover:bg-muted/30" key={item.entry.id}>
+                    <td className="py-3 pr-0 pl-4 sm:px-4">
                       <input
+                        aria-label={`Select ${item.entry.title}`}
                         checked={selectedIds.includes(item.entry.id)}
+                        className="mt-0.5 cursor-pointer"
                         onChange={() => toggleSelection(item.entry.id)}
                         type="checkbox"
                       />
                     </td>
-                    <td className="px-2 py-3">
-                      <div className="font-semibold">{item.entry.title}</div>
-                      <p className="line-clamp-2 text-muted-foreground text-xs">
+                    <td className="w-full max-w-0 px-4 py-3 md:w-auto md:max-w-[28rem]">
+                      <p className="font-medium">{item.entry.title}</p>
+                      <p className="mt-0.5 line-clamp-2 text-muted-foreground text-xs">
                         {item.entry.content}
                       </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs md:hidden">
+                        <span className="sm:hidden">
+                          <StatusBadge status={item.entry.status} />
+                        </span>
+                        <EmbeddingBadge status={item.entry.embeddingStatus} />
+                        <span className="text-muted-foreground">
+                          {item.entry.chatScope
+                            ? CHAT_SCOPE_LABELS[item.entry.chatScope]
+                            : "Legacy / unscoped"}
+                        </span>
+                      </div>
+                      <div className="mt-3 sm:hidden">{renderRowActions(item)}</div>
                     </td>
-                    <td className="px-2 py-3">
+                    <td className="hidden px-4 py-3 md:table-cell">
                       {item.entry.chatScope ? (
-                        <Badge variant="outline">
+                        <Badge className="whitespace-nowrap" variant="outline">
                           {CHAT_SCOPE_LABELS[item.entry.chatScope]}
                         </Badge>
                       ) : (
@@ -897,10 +1010,15 @@ export function AdminRagManager({
                         </span>
                       )}
                     </td>
-                    <td className="px-2 py-3">
-                      <StatusBadge status={item.entry.status} />
+                    <td className="hidden px-4 py-3 sm:table-cell">
+                      <div className="flex flex-col items-start gap-1">
+                        <StatusBadge status={item.entry.status} />
+                        <span className="hidden md:inline">
+                          <EmbeddingBadge status={item.entry.embeddingStatus} />
+                        </span>
+                      </div>
                     </td>
-                    <td className="px-2 py-3">
+                    <td className="hidden px-4 py-3 xl:table-cell">
                       <div className="flex flex-wrap gap-1">
                         {item.entry.models.length === 0 ? (
                           <Badge variant="outline">All models</Badge>
@@ -918,55 +1036,24 @@ export function AdminRagManager({
                         )}
                       </div>
                     </td>
-                    <td className="px-2 py-3">
-                      <div className="flex flex-wrap gap-1">
-                        {item.entry.tags.map((tag) => (
-                          <Badge key={tag} variant="secondary">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
+                    <td className="hidden px-4 py-3 lg:table-cell">
+                      {item.entry.tags.length === 0 ? (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {item.entry.tags.map((tag) => (
+                            <Badge key={tag} variant="secondary">
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
                     </td>
-                    <td className="px-2 py-3 text-muted-foreground text-xs">
+                    <td className="hidden whitespace-nowrap px-4 py-3 text-muted-foreground text-xs lg:table-cell">
                       {formatDate(item.entry.updatedAt)}
                     </td>
-                    <td className="px-2 py-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                          onClick={() => openEditor(item)}
-                          size="sm"
-                          type="button"
-                          variant="outline"
-                        >
-                          Edit
-                        </Button>
-                        {item.entry.status === "archived" ? (
-                          <Button
-                            disabled={isActionPending}
-                            onClick={() => handleRestoreEntry(item.entry.id)}
-                            size="sm"
-                            type="button"
-                            variant="secondary"
-                          >
-                            {pendingAction === "restore" ? (
-                              <>
-                                <LoaderIcon className="animate-spin" />
-                                <span>Restoring...</span>
-                              </>
-                            ) : (
-                              "Restore"
-                            )}
-                          </Button>
-                        ) : null}
-                        <button
-                          aria-label="Mark for archive"
-                          className="rounded-full border p-1 text-muted-foreground transition hover:border-destructive hover:text-destructive"
-                          onClick={() => toggleSelection(item.entry.id)}
-                          type="button"
-                        >
-                          <TrashIcon />
-                        </button>
-                      </div>
+                    <td className="hidden px-4 py-3 sm:table-cell">
+                      {renderRowActions(item)}
                     </td>
                   </tr>
                 ))
@@ -974,22 +1061,37 @@ export function AdminRagManager({
             </tbody>
           </table>
         </div>
-        {hiddenEntryCount > 0 ? (
-          <div className="mt-4 flex justify-end">
-            <Button
-              className="cursor-pointer"
-              onClick={() => setShowAllEntries((current) => !current)}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              {showAllEntries
-                ? "Show less"
-                : `Show more (${hiddenEntryCount})`}
-            </Button>
+        {filteredEntries.length > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
+            <span className="text-muted-foreground">
+              <EditableTranslation
+                defaultText="Showing {shown} of {total} entries"
+                description="Count of visible custom knowledge entries under the admin list."
+                translationKey="admin.rag.table.showing"
+                values={{
+                  shown: visibleEntries.length,
+                  total: filteredEntries.length,
+                }}
+              />
+            </span>
+            {hiddenEntryCount > 0 ||
+            (showAllEntries &&
+              filteredEntries.length > INITIAL_VISIBLE_RAG_ENTRIES) ? (
+              <Button
+                className="cursor-pointer"
+                onClick={() => setShowAllEntries((current) => !current)}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {showAllEntries
+                  ? "Show less"
+                  : `Show more (${hiddenEntryCount})`}
+              </Button>
+            ) : null}
           </div>
         ) : null}
-      </section>
+      </AdminPanel>
 
       <Sheet
         onOpenChange={(open) => {
@@ -1091,7 +1193,7 @@ export function AdminRagManager({
                 <div>
                   <Label htmlFor="rag-chat-scope">Knowledge scope</Label>
                   <select
-                    className="mt-1 w-full cursor-pointer rounded-md border px-3 py-2 text-sm"
+                    className="mt-1 h-9 w-full cursor-pointer rounded-md border bg-background px-3 text-sm"
                     id="rag-chat-scope"
                     onChange={(event) =>
                       setFormState((prev) => ({
@@ -1130,7 +1232,7 @@ export function AdminRagManager({
                 <div>
                   <Label htmlFor="rag-status">Status</Label>
                   <select
-                    className="mt-1 w-full cursor-pointer rounded-md border px-3 py-2 text-sm"
+                    className="mt-1 h-9 w-full cursor-pointer rounded-md border bg-background px-3 text-sm"
                     id="rag-status"
                     onChange={(event) =>
                       setFormState((prev) => ({
@@ -1230,81 +1332,35 @@ function AnalyticsSummary({
   analytics: RagAnalyticsSummary;
   isDegraded?: boolean;
 }) {
-  if (isDegraded) {
-    const degradedCards = [
-      "Active entries",
-      "Inactive entries",
-      "Pending indexing",
-      "Top creator",
-    ];
-
-    return (
-      <section className="grid gap-3 md:grid-cols-4">
-        {degradedCards.map((label) => (
-          <div
-            className="rounded-2xl border bg-card/70 p-4 shadow-sm"
-            key={label}
-          >
-            <p className="text-muted-foreground text-xs uppercase tracking-wide">
-              {label}
-            </p>
-            <p className="font-semibold text-2xl">Unavailable</p>
-            <p className="text-muted-foreground text-xs">
-              Analytics read failed
-            </p>
-          </div>
-        ))}
-      </section>
-    );
-  }
-
-  const cards = [
-    {
-      label: "Active entries",
-      value: isDegraded ? "Unavailable" : analytics.activeEntries.toLocaleString(),
-      description: isDegraded
-        ? "Analytics read failed"
-        : `${analytics.totalEntries.toLocaleString()} total`,
-    },
-    {
-      label: "Inactive entries",
-      value: isDegraded
-        ? "Unavailable"
-        : analytics.inactiveEntries.toLocaleString(),
-      description: isDegraded
-        ? "Analytics read failed"
-        : `${analytics.archivedEntries.toLocaleString()} archived`,
-    },
-    {
-      label: "Pending indexing",
-      value: isDegraded
-        ? "Unavailable"
-        : analytics.pendingEmbeddings.toLocaleString(),
-      description: isDegraded ? "Analytics read failed" : "Needs syncing",
-    },
-    {
-      label: "Top creator",
-      value: analytics.creatorStats[0]?.name ?? "—",
-      description: analytics.creatorStats[0]
-        ? `${analytics.creatorStats[0].entryCount} entries`
-        : "Invite teammates",
-    },
-  ];
-
+  const topCreator = analytics.creatorStats[0];
   return (
-    <section className="grid gap-3 md:grid-cols-4">
-      {cards.map((card) => (
-        <div
-          className="rounded-2xl border bg-card/70 p-4 shadow-sm"
-          key={card.label}
-        >
-          <p className="text-muted-foreground text-xs uppercase tracking-wide">
-            {card.label}
-          </p>
-          <p className="font-semibold text-2xl">{card.value}</p>
-          <p className="text-muted-foreground text-xs">{card.description}</p>
-        </div>
-      ))}
+    <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <AdminStatCard
+        hint={`${analytics.totalEntries.toLocaleString()} total`}
+        label="Active entries"
+        value={isDegraded ? null : analytics.activeEntries.toLocaleString()}
+      />
+      <AdminStatCard
+        hint={`${analytics.archivedEntries.toLocaleString()} archived`}
+        label="Inactive entries"
+        value={isDegraded ? null : analytics.inactiveEntries.toLocaleString()}
+      />
+      <AdminStatCard
+        hint="Needs syncing"
+        label="Pending indexing"
+        value={isDegraded ? null : analytics.pendingEmbeddings.toLocaleString()}
+      />
+      <AdminStatCard
+        hint={topCreator ? `${topCreator.entryCount} entries` : "Invite teammates"}
+        label="Top creator"
+        value={
+          isDegraded ? null : (
+            <span className="block truncate text-lg sm:text-xl">
+              {topCreator?.name ?? "—"}
+            </span>
+          )
+        }
+      />
     </section>
   );
 }
@@ -1321,18 +1377,19 @@ function FilterGroup({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-1">
-      <span className="text-muted-foreground text-xs uppercase">{label}</span>
-      <div className="flex rounded-full border">
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-muted-foreground text-xs">{label}</span>
+      <div className="inline-flex flex-wrap rounded-lg border bg-muted/40 p-0.5">
         {options.map((option) => {
           const isActive = option === value;
           return (
             <button
+              aria-pressed={isActive}
               className={cn(
-                "px-3 py-1 font-medium text-xs transition",
+                "cursor-pointer rounded-md px-3 py-1 font-medium text-xs capitalize transition",
                 isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-primary"
+                  ? "bg-background text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
               )}
               key={option}
               onClick={() => onChange(option)}
@@ -1348,17 +1405,48 @@ function FilterGroup({
 }
 
 function StatusBadge({ status }: { status: RagEntryStatus }) {
-  const variants: Record<RagEntryStatus, string> = {
-    active: "bg-green-100 text-green-700",
-    inactive: "bg-amber-100 text-amber-700",
-    archived: "bg-muted text-muted-foreground",
-  };
+  const tones = {
+    active: "success",
+    archived: "neutral",
+    inactive: "warning",
+  } as const;
 
   return (
-    <span className={cn("rounded-full px-2 py-0.5 text-xs", variants[status])}>
+    <AdminStatusPill className="capitalize" tone={tones[status]}>
       {status}
-    </span>
+    </AdminStatusPill>
   );
+}
+
+/** Only shown when the entry is not searchable yet or indexing failed. */
+function EmbeddingBadge({
+  status,
+}: {
+  status: SanitizedRagEntry["embeddingStatus"];
+}) {
+  if (status === "failed") {
+    return (
+      <AdminStatusPill tone="danger">
+        <EditableTranslation
+          defaultText="Index failed"
+          description="Custom knowledge entry whose search index could not be built."
+          translationKey="admin.rag.index.failed"
+        />
+      </AdminStatusPill>
+    );
+  }
+  if (status === "pending" || status === "queued") {
+    return (
+      <AdminStatusPill tone="info">
+        <EditableTranslation
+          defaultText="Indexing"
+          description="Custom knowledge entry whose search index is still being built."
+          translationKey="admin.rag.index.pending"
+        />
+      </AdminStatusPill>
+    );
+  }
+  return null;
 }
 
 function TagInput({

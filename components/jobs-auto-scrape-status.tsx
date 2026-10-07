@@ -39,6 +39,7 @@ function formatSnapshot(snapshot: AutoTriggerResponseSnapshot) {
     }
     return parsed.toLocaleString("en-IN", {
       hour12: true,
+      timeZone: "Asia/Kolkata",
     });
   })();
 
