@@ -13939,6 +13939,19 @@ export type ChatFinancialSummary = {
   creditUnits: number;
   userChargeInr: number;
   providerCostUsd: number;
+  /** The account's current role; null when the account no longer exists. */
+  role: string | null;
+};
+
+/** Usage split by the current role of the account that generated it. */
+export type ChatFinancialRoleSummary = {
+  role: string;
+  accounts: number;
+  requests: number;
+  userChargeInr: number;
+  providerCostUsd: number;
+  /** Provider cost of usage that consumed no paid credits (free or granted). */
+  unpaidProviderCostUsd: number;
 };
 
 export type ChatFinancialSummariesResult = {
@@ -13950,6 +13963,7 @@ export type ChatFinancialSummariesResult = {
     userChargeInr: number;
     providerCostUsd: number;
   };
+  byRole: ChatFinancialRoleSummary[];
   records: ChatFinancialSummary[];
 };
 
@@ -14145,7 +14159,7 @@ export async function listChatFinancialSummaries({
     const safeLimit = Math.max(1, Math.min(500, Math.trunc(limit)));
     const safeOffset = Math.max(0, Math.trunc(offset));
 
-    const [totalsRows, usageRows] = await Promise.all([
+    const [totalsRows, usageRows, roleRows] = await Promise.all([
       db.execute<Record<string, unknown>>(sql`
         ${ctes}
         SELECT
@@ -14163,6 +14177,7 @@ export async function listChatFinancialSummaries({
           uc."chatId",
           uc."userId",
           usr."email",
+          usr."role"::text AS "role",
           ch."createdAt" AS "chatCreatedAt",
           MIN(uc."createdAt") AS "usageStartedAt",
           COALESCE(SUM(uc."inputTokens"), 0) AS "totalInputTokens",
@@ -14174,10 +14189,25 @@ export async function listChatFinancialSummaries({
         LEFT JOIN "Chat" ch ON ch."id" = uc."chatId"
         LEFT JOIN "User" usr ON usr."id" = uc."userId"
         WHERE uc."chatId" IS NOT NULL
-        GROUP BY uc."chatId", uc."userId", usr."email", ch."createdAt"
+        GROUP BY uc."chatId", uc."userId", usr."email", usr."role", ch."createdAt"
         ORDER BY MIN(uc."createdAt") DESC
         LIMIT ${safeLimit}
         OFFSET ${safeOffset}
+      `),
+      db.execute<Record<string, unknown>>(sql`
+        ${ctes}
+        SELECT
+          COALESCE(usr."role"::text, 'unknown') AS "role",
+          COUNT(DISTINCT uc."userId") AS "accounts",
+          COUNT(*) AS "requests",
+          COALESCE(SUM(uc."revenueInr"), 0) AS "userChargeInr",
+          COALESCE(SUM(uc."providerCostUsd"), 0) AS "providerCostUsd",
+          COALESCE(SUM(uc."providerCostUsd") FILTER (WHERE uc."paidTokens" = 0), 0)
+            AS "unpaidProviderCostUsd"
+        FROM usage_costs uc
+        LEFT JOIN "User" usr ON usr."id" = uc."userId"
+        GROUP BY 1
+        ORDER BY COALESCE(SUM(uc."providerCostUsd"), 0) DESC
       `),
     ]);
 
@@ -14197,9 +14227,20 @@ export async function listChatFinancialSummaries({
                 creditUnits: toFiniteNumber(row.creditUnits),
                 userChargeInr: toFiniteNumber(row.userChargeInr),
                 providerCostUsd: toFiniteNumber(row.providerCostUsd),
+                role: typeof row.role === "string" ? row.role : null,
               },
             ]
           : []
+    );
+    const byRole: ChatFinancialRoleSummary[] = Array.from(roleRows).map(
+      (row) => ({
+        role: typeof row.role === "string" ? row.role : "unknown",
+        accounts: toFiniteNumber(row.accounts),
+        requests: toFiniteNumber(row.requests),
+        userChargeInr: toFiniteNumber(row.userChargeInr),
+        providerCostUsd: toFiniteNumber(row.providerCostUsd),
+        unpaidProviderCostUsd: toFiniteNumber(row.unpaidProviderCostUsd),
+      })
     );
 
     return {
@@ -14211,6 +14252,7 @@ export async function listChatFinancialSummaries({
         userChargeInr: toFiniteNumber(totalsRow.userChargeInr),
         providerCostUsd: toFiniteNumber(totalsRow.providerCostUsd),
       },
+      byRole,
       records,
     };
   } catch (error) {
@@ -14224,6 +14266,7 @@ export async function listChatFinancialSummaries({
           userChargeInr: 0,
           providerCostUsd: 0,
         },
+        byRole: [],
         records: [],
       };
     }

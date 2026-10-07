@@ -47,6 +47,7 @@ import {
   formatPercent,
   type Money,
 } from "./account-format";
+import { InfoPopover } from "./info-popover";
 import { RechargeExportButton } from "./recharge-export-button";
 import { ExportButton } from "./transaction-export-button";
 
@@ -94,6 +95,7 @@ export const EMPTY_CHAT_SUMMARIES: ChatSummariesResult = {
     userChargeInr: 0,
     providerCostUsd: 0,
   },
+  byRole: [],
   records: [],
 };
 
@@ -443,6 +445,57 @@ function describeFeatureUsage(feature: CostBreakdownResult["featureSummaries"][n
   }
 }
 
+type RoleMeta = {
+  description: string;
+  label: string;
+  order: number;
+  tone: "neutral" | "info" | "warning";
+};
+
+const ROLE_META: Record<string, RoleMeta> = {
+  regular: {
+    description: "Regular user accounts",
+    label: "Customers",
+    order: 0,
+    tone: "neutral",
+  },
+  creator: {
+    description: "Creator accounts",
+    label: "Creators",
+    order: 1,
+    tone: "warning",
+  },
+  admin: {
+    description: "Admin accounts, including your own testing",
+    label: "Admins (internal)",
+    order: 2,
+    tone: "info",
+  },
+};
+
+function roleMeta(role: string | null): RoleMeta {
+  return (
+    (role ? ROLE_META[role] : undefined) ?? {
+      description: "Usage from accounts that no longer exist",
+      label: "Other accounts",
+      order: 3,
+      tone: "neutral",
+    }
+  );
+}
+
+/** Small pill marking non-customer accounts; regular customers get none. */
+function RolePill({ role }: { role: string | null }) {
+  if (role !== "admin" && role !== "creator") {
+    return null;
+  }
+  return (
+    <AdminStatusPill tone={role === "admin" ? "info" : "warning"}>
+      {role === "admin" ? "Admin" : "Creator"}
+    </AdminStatusPill>
+  );
+}
+
 export async function OverviewSection({
   chatSummariesPromise,
   costBreakdownPromise,
@@ -486,6 +539,30 @@ export async function OverviewSection({
   const netProfit = revenue - totalCost - payoutsValue;
   const profitConfirmed = chats.ok && breakdown.ok && payouts.ok;
   const creditsSpent = chats.data.totals.creditUnits / TOKENS_PER_CREDIT;
+  const roleRows = [...chats.data.byRole]
+    .map((row) => {
+      const rowRevenue = money.fromInr(row.userChargeInr);
+      const rowCost = money.fromUsd(row.providerCostUsd);
+      return {
+        ...row,
+        cost: rowCost,
+        meta: roleMeta(row.role),
+        net: rowRevenue - rowCost,
+        revenue: rowRevenue,
+        unpaidCost: money.fromUsd(row.unpaidProviderCostUsd),
+      };
+    })
+    .sort((a, b) => a.meta.order - b.meta.order);
+  const customerNet = roleRows
+    .filter((row) => row.role === "regular")
+    .reduce((total, row) => total + row.net, 0);
+  const internalNet = roleRows
+    .filter((row) => row.role === "admin")
+    .reduce((total, row) => total + row.net, 0);
+  const sharedCosts = embeddingCost + payoutsValue;
+  const hasInternalUsage = roleRows.some(
+    (row) => row.role === "admin" && row.requests > 0
+  );
 
   const shareItems: CostShareItem[] = breakdown.data.featureSummaries
     .filter((feature) => feature.totalCostUsd !== null && feature.totalCostUsd > 0)
@@ -533,14 +610,56 @@ export async function OverviewSection({
         />
         <KpiCard
           hint={
-            revenue <= 0
-              ? "No paid usage in this range"
-              : netProfit >= 0
-                ? `${formatPercent((netProfit / revenue) * 100)} margin on earned revenue`
-                : "Costs are higher than earned revenue"
+            chats.ok && hasInternalUsage
+              ? `Customers ${money.value(customerNet)} · internal (admins) ${money.value(internalNet)}`
+              : revenue <= 0
+                ? "No paid usage in this range"
+                : netProfit >= 0
+                  ? `${formatPercent((netProfit / revenue) * 100)} margin on earned revenue`
+                  : "Costs are higher than earned revenue"
           }
           icon={netProfit < 0 ? TrendingDown : TrendingUp}
-          label="Net profit"
+          label={
+            <span className="inline-flex items-center gap-1">
+              Net profit
+              {chats.ok ? (
+                <InfoPopover label="How net profit splits by account type">
+                  <p className="font-medium">Everything is included</p>
+                  <p className="mt-1 text-muted-foreground text-xs leading-relaxed">
+                    Every account's usage stays on record. This splits the
+                    result so internal testing is easy to tell apart.
+                  </p>
+                  <dl className="mt-3 space-y-1.5 text-xs">
+                    {roleRows.map((row) => (
+                      <div className="flex items-center justify-between gap-3" key={row.role}>
+                        <dt className="text-muted-foreground">{row.meta.label}</dt>
+                        <dd className="tabular-nums">
+                          <SignedMoney money={money} value={row.net} />
+                        </dd>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-muted-foreground">
+                        Shared costs (embeddings, creator payouts)
+                      </dt>
+                      <dd className="tabular-nums">
+                        <SignedMoney money={money} value={asDeduction(sharedCosts)} />
+                      </dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 border-t pt-1.5 font-medium">
+                      <dt>Net profit</dt>
+                      <dd className="tabular-nums">
+                        <SignedMoney money={money} value={netProfit} />
+                      </dd>
+                    </div>
+                  </dl>
+                  <p className="mt-3 text-muted-foreground text-xs">
+                    See Usage by account type below for requests and costs.
+                  </p>
+                </InfoPopover>
+              ) : null}
+            </span>
+          }
           value={
             profitConfirmed ? <SignedMoney money={money} value={netProfit} /> : null
           }
@@ -619,7 +738,155 @@ export async function OverviewSection({
           ) : null}
         </AdminPanel>
       </div>
+
+      <AccountTypePanel
+        money={money}
+        ok={chats.ok}
+        rows={roleRows}
+        sharedCosts={sharedCosts}
+      />
     </section>
+  );
+}
+
+type AccountTypeRow = {
+  accounts: number;
+  cost: number;
+  meta: RoleMeta;
+  net: number;
+  requests: number;
+  revenue: number;
+  role: string;
+  unpaidCost: number;
+};
+
+function AccountTypePanel({
+  money,
+  ok,
+  rows,
+  sharedCosts,
+}: {
+  money: Money;
+  ok: boolean;
+  rows: AccountTypeRow[];
+  sharedCosts: number;
+}) {
+  const total = rows.reduce(
+    (sum, row) => ({
+      accounts: sum.accounts + row.accounts,
+      cost: sum.cost + row.cost,
+      net: sum.net + row.net,
+      requests: sum.requests + row.requests,
+      revenue: sum.revenue + row.revenue,
+    }),
+    { accounts: 0, cost: 0, net: 0, requests: 0, revenue: 0 }
+  );
+
+  const label = (row: AccountTypeRow) => (
+    <div className="min-w-0">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium">{row.meta.label}</span>
+        {row.role === "admin" ? (
+          <AdminStatusPill tone="info">Internal</AdminStatusPill>
+        ) : null}
+      </div>
+      <div className="text-muted-foreground text-xs">{row.meta.description}</div>
+      {row.unpaidCost > 0 ? (
+        <div className="text-muted-foreground text-xs">
+          {money.value(row.unpaidCost)} of cost on free or granted credits
+        </div>
+      ) : null}
+    </div>
+  );
+
+  return (
+    <AdminPanel
+      description="Who generated the usage. Every account stays in the totals; this only labels it."
+      title="Usage by account type"
+    >
+      {!ok ? (
+        <AdminEmptyState title="Account breakdown could not be loaded" />
+      ) : rows.length === 0 ? (
+        <AdminEmptyState title="No usage in this range" />
+      ) : (
+        <>
+          <ul className="divide-y divide-border/60 md:hidden">
+            {rows.map((row) => (
+              <li className="flex items-start justify-between gap-3 px-4 py-3" key={row.role}>
+                {label(row)}
+                <div className="shrink-0 text-right text-xs tabular-nums">
+                  <SignedMoney money={money} value={row.net} />
+                  <div className="mt-0.5 text-muted-foreground">
+                    {formatCount(row.requests)} requests
+                  </div>
+                  <div className="text-muted-foreground">cost {money.value(row.cost)}</div>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead className="border-b bg-muted/40 text-muted-foreground text-xs">
+                <tr>
+                  <Th>Account type</Th>
+                  <Th align="right">Accounts</Th>
+                  <Th align="right">Requests</Th>
+                  <Th align="right">Revenue</Th>
+                  <Th align="right">Provider cost</Th>
+                  <Th align="right">Net</Th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {rows.map((row) => (
+                  <tr className="transition hover:bg-muted/30" key={row.role}>
+                    <td className="px-4 py-3">{label(row)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">
+                      {formatCount(row.accounts)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">
+                      {formatCount(row.requests)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">
+                      {money.value(row.revenue)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">
+                      {money.value(row.cost)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <SignedMoney money={money} value={row.net} />
+                    </td>
+                  </tr>
+                ))}
+                <tr className="bg-muted/30 font-medium">
+                  <td className="px-4 py-3">All accounts</td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {formatCount(total.accounts)}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {formatCount(total.requests)}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {money.value(total.revenue)}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {money.value(total.cost)}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <SignedMoney money={money} value={total.net} />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="border-t px-5 py-3 text-muted-foreground text-xs leading-relaxed">
+            Grouped by each account&apos;s current role. Shared costs
+            ({money.value(sharedCosts)} for embeddings and creator payouts) are not
+            split by account, so these rows add up to net profit before shared
+            costs.
+          </p>
+        </>
+      )}
+    </AdminPanel>
   );
 }
 
@@ -636,7 +903,7 @@ function KpiCard({
 }: {
   hint: string;
   icon: LucideIcon;
-  label: string;
+  label: ReactNode;
   value: ReactNode | null;
 }) {
   return <AdminStatCard hint={hint} icon={icon} label={label} value={value} />;
@@ -862,10 +1129,12 @@ export async function ChatProfitSection({
       providerCostInr,
       providerCostUsd: record.providerCostUsd,
       revenueInr: record.userChargeInr,
+      role: record.role,
       userEmail: record.email ?? "Unknown user",
     };
   });
   const exportRows = rows.map((row) => ({
+    accountType: roleMeta(row.role).label,
     chargeInr: row.revenueInr,
     chargeUsd: rate.data > 0 ? row.revenueInr / rate.data : 0,
     chatId: row.chatId,
@@ -885,7 +1154,10 @@ export async function ChatProfitSection({
     return (
       <tr className="transition hover:bg-muted/30" key={row.chatId}>
         <td className="max-w-[280px] px-4 py-3">
-          <div className="truncate font-medium">{row.userEmail}</div>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-medium">{row.userEmail}</span>
+            <RolePill role={row.role} />
+          </div>
           <div className="text-muted-foreground text-xs">
             {row.createdAt ? format(row.createdAt, "d MMM yyyy, HH:mm") : "Unknown date"}
             <span className="mx-1.5">·</span>
@@ -919,7 +1191,10 @@ export async function ChatProfitSection({
     return (
       <li className="flex items-start justify-between gap-3 px-4 py-3" key={row.chatId}>
         <div className="min-w-0">
-          <div className="truncate font-medium text-sm">{row.userEmail}</div>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-medium text-sm">{row.userEmail}</span>
+            <RolePill role={row.role} />
+          </div>
           <div className="text-muted-foreground text-xs">
             {row.createdAt ? format(row.createdAt, "d MMM, HH:mm") : "Unknown date"}
             <span className="mx-1">·</span>
