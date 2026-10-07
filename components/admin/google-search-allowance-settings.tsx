@@ -112,10 +112,10 @@ export function GoogleSearchAllowanceSettings({
 	};
 	return (
 		<section
-			className="space-y-4 rounded-xl border bg-card p-4"
+			className="space-y-4 rounded-lg border bg-background p-4"
 			aria-busy={loading || saving}
 		>
-			<h3 className="font-semibold">
+			<h3 className="font-semibold text-base">
 				<Copy name="title" />
 			</h3>
 			<p className="text-muted-foreground text-sm">
@@ -156,7 +156,7 @@ export function GoogleSearchAllowanceSettings({
 										<Copy name="model" />
 									</span>
 									<select
-										className="w-full cursor-pointer rounded-md border bg-background px-3 py-2"
+										className="h-10 w-full cursor-pointer rounded-lg border bg-background px-3"
 										value={policy.model}
 										disabled={saving}
 										onChange={(event) => {
@@ -195,7 +195,7 @@ export function GoogleSearchAllowanceSettings({
 										<Copy name="fallback" />
 									</span>
 									<select
-										className="w-full cursor-pointer rounded-md border bg-background px-3 py-2"
+										className="h-10 w-full cursor-pointer rounded-lg border bg-background px-3"
 										disabled={saving}
 										value={policy.fallbackProvider}
 										onChange={(event) => {
@@ -244,7 +244,7 @@ export function GoogleSearchAllowanceSettings({
 										</span>
 										<input
 											id={`google-allowance-${field}`}
-											className="w-full rounded-md border bg-background px-3 py-2"
+											className="h-10 w-full rounded-lg border bg-background px-3"
 											type="number"
 											min={field.endsWith("Million") ? 0.000001 : 0}
 											max={max}
@@ -264,7 +264,7 @@ export function GoogleSearchAllowanceSettings({
 									</label>
 								))}
 							</div>
-							<p className="rounded-lg border border-amber-400/40 p-3 text-muted-foreground text-xs">
+							<p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-amber-800 text-xs dark:text-amber-300">
 								<Copy name="warning" />
 							</p>
 							<p className="text-muted-foreground text-xs">

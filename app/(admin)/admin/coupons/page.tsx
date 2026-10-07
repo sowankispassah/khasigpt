@@ -135,12 +135,11 @@ export default async function AdminCouponsPage() {
   return (
     <div className="flex flex-col gap-6">
       <AdminPageHeader
-        description="Assign codes to creators, manage validity windows, and monitor performance."
+        description="Creator coupon codes and referral links: who redeemed them, the revenue they drove, and the rewards owed."
         navHref="/admin/coupons"
         title="Coupons & referrals"
       />
 
-      <AdminReferralsManager creators={creatorOptions} creatorsConfirmed={creatorsState.ok} />
       <AdminCouponsManager
         coupons={serializedCoupons}
         couponsConfirmed={couponsState.ok}
@@ -149,6 +148,7 @@ export default async function AdminCouponsPage() {
         payoutsConfirmed={payoutsState.ok}
         redemptionsConfirmed={redemptionsState.ok}
       />
+      <AdminReferralsManager creators={creatorOptions} creatorsConfirmed={creatorsState.ok} />
     </div>
   );
 }

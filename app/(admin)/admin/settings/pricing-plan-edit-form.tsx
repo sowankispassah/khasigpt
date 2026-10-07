@@ -93,7 +93,7 @@ export function PricingPlanEditForm({
           Plan name (English)
         </label>
         <input
-          className="rounded-md border bg-background px-3 py-2 text-sm"
+          className="h-10 rounded-lg border bg-background px-3 text-sm"
           defaultValue={plan.name}
           id={`plan-update-name-${plan.id}`}
           name="name"
@@ -108,7 +108,7 @@ export function PricingPlanEditForm({
           Description (English)
         </label>
         <textarea
-          className="rounded-md border bg-background px-3 py-2 text-sm"
+          className="min-h-20 rounded-lg border bg-background px-3 py-2 text-sm"
           defaultValue={plan.description ?? ""}
           id={`plan-update-description-${plan.id}`}
           name="description"
@@ -122,7 +122,7 @@ export function PricingPlanEditForm({
           Android product id
         </label>
         <input
-          className="rounded-md border bg-background px-3 py-2 text-sm"
+          className="h-10 rounded-lg border bg-background px-3 text-sm"
           defaultValue={plan.androidProductId ?? ""}
           id={`plan-update-android-product-id-${plan.id}`}
           name="androidProductId"
@@ -155,7 +155,7 @@ export function PricingPlanEditForm({
           Cycle (days)
         </label>
         <input
-          className="rounded-md border bg-background px-3 py-2 text-sm"
+          className="h-10 rounded-lg border bg-background px-3 text-sm"
           defaultValue={plan.billingCycleDays}
           id={`plan-cycle-${plan.id}`}
           min={0}
@@ -165,21 +165,21 @@ export function PricingPlanEditForm({
       </div>
       <div className="flex items-center gap-2">
         <input
-          className="h-4 w-4"
+          className="h-4 w-4 cursor-pointer"
           defaultChecked={plan.isActive}
           id={`plan-active-${plan.id}`}
           name="isActive"
           type="checkbox"
         />
         <label
-          className="font-medium text-sm"
+          className="cursor-pointer font-medium text-sm"
           htmlFor={`plan-active-${plan.id}`}
         >
           Plan is active
         </label>
       </div>
       <div className="flex justify-end gap-2">
-        <Button disabled={isSaving} type="submit">
+        <Button className="cursor-pointer" disabled={isSaving} type="submit">
           {isSaving ? (
             <span className="flex items-center gap-2">
               <span className="h-4 w-4 animate-spin">

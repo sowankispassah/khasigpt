@@ -3,7 +3,6 @@ import { type ReactNode, Suspense } from "react";
 import {
   createPricingPlanAction,
   hardDeletePricingPlanAction,
-  setImagePromptTranslationModelAction,
   setRecommendedPricingPlanAction,
   updatePlanTranslationAction,
 } from "@/app/(admin)/actions";
@@ -76,6 +75,11 @@ import {
 } from "./model-pricing-management-table";
 import { PricingNotice } from "./notice";
 import { PricingManagementTable } from "./pricing-management-table";
+import {
+  ImagePromptTranslationModelForm,
+  PricingDisclosure,
+  PricingSectionHeading,
+} from "./pricing-section";
 import { WebSearchPricingForm } from "./web-search-pricing-form";
 
 export const dynamic = "force-dynamic";
@@ -196,15 +200,15 @@ function CreatePricingPlanForm({
     <form action={createPricingPlanAction} className="grid gap-4 md:grid-cols-2">
       <div className="flex flex-col gap-2">
         <label className="font-medium text-sm" htmlFor="pricing-plan-create-name">Plan name</label>
-        <input className="rounded-md border bg-background px-3 py-2 text-sm" id="pricing-plan-create-name" name="name" placeholder="Starter" required />
+        <input className="h-10 rounded-lg border bg-background px-3 text-sm" id="pricing-plan-create-name" name="name" placeholder="Starter" required />
       </div>
       <div className="flex flex-col gap-2 md:col-span-2">
         <label className="font-medium text-sm" htmlFor="pricing-plan-create-description">Description</label>
-        <textarea className="rounded-md border bg-background px-3 py-2 text-sm" id="pricing-plan-create-description" name="description" placeholder="Great for individual builders." />
+        <textarea className="min-h-20 rounded-lg border bg-background px-3 py-2 text-sm" id="pricing-plan-create-description" name="description" placeholder="Great for individual builders." />
       </div>
       <div className="flex flex-col gap-2 md:col-span-2">
         <label className="font-medium text-sm" htmlFor="pricing-plan-create-android-id">Android product id</label>
-        <input className="rounded-md border bg-background px-3 py-2 text-sm" id="pricing-plan-create-android-id" name="androidProductId" placeholder="khasigpt_starter" />
+        <input className="h-10 rounded-lg border bg-background px-3 text-sm" id="pricing-plan-create-android-id" name="androidProductId" placeholder="khasigpt_starter" />
         <p className="text-muted-foreground text-xs">Must exactly match the in-app product id configured in Google Play Console.</p>
       </div>
       <div className="space-y-3 md:col-span-2">
@@ -219,10 +223,10 @@ function CreatePricingPlanForm({
       </div>
       <div className="flex flex-col gap-2">
         <label className="font-medium text-sm" htmlFor="pricing-plan-create-cycle">Billing cycle (days)</label>
-        <input className="rounded-md border bg-background px-3 py-2 text-sm" id="pricing-plan-create-cycle" min={0} name="billingCycleDays" placeholder="90" required type="number" />
+        <input className="h-10 rounded-lg border bg-background px-3 text-sm" id="pricing-plan-create-cycle" min={0} name="billingCycleDays" placeholder="90" required type="number" />
       </div>
-      <label className="flex items-center gap-2 font-medium text-sm">
-        <input className="h-4 w-4" defaultChecked name="isActive" type="checkbox" />
+      <label className="flex cursor-pointer items-center gap-2 font-medium text-sm">
+        <input className="h-4 w-4 cursor-pointer" defaultChecked name="isActive" type="checkbox" />
         Plan is active
       </label>
       <div className="flex justify-end md:col-span-2">
@@ -249,14 +253,14 @@ function PlanTranslationForms({
         <p className="mt-1 text-muted-foreground text-xs">Optional localized plan details. Blank values fall back to English.</p>
       </div>
       {nonDefaultLanguages.length === 0 ? (
-        <p className="rounded-lg border border-dashed bg-muted/20 p-3 text-muted-foreground text-sm">Add another language to provide localized plan details.</p>
+        <p className="rounded-lg bg-muted/40 p-3 text-muted-foreground text-sm">Add another language to provide localized plan details.</p>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {nonDefaultLanguages.map((language) => {
             const formId = `pricing-plan-translation-${plan.id}-${language.code}`;
             const translation = translations[language.code] ?? { description: "", name: "" };
             return (
-              <form action={updatePlanTranslationAction} className="flex flex-col gap-3 rounded-lg border bg-background p-3" key={formId}>
+              <form action={updatePlanTranslationAction} className="flex flex-col gap-3 rounded-lg bg-muted/40 p-3" key={formId}>
                 <input name="planId" type="hidden" value={plan.id} />
                 <input name="languageCode" type="hidden" value={language.code} />
                 <div className="flex items-center justify-between gap-2">
@@ -264,10 +268,10 @@ function PlanTranslationForms({
                   <span className="text-muted-foreground text-xs">{language.code.toUpperCase()}</span>
                 </div>
                 <label className="flex flex-col gap-2 font-medium text-xs" htmlFor={`${formId}-name`}>Plan name
-                  <input className="rounded-md border bg-background px-3 py-2 text-sm font-normal" defaultValue={translation.name} id={`${formId}-name`} name="name" placeholder="Enter localized name" />
+                  <input className="h-10 rounded-lg border bg-background px-3 text-sm font-normal" defaultValue={translation.name} id={`${formId}-name`} name="name" placeholder="Enter localized name" />
                 </label>
                 <label className="flex flex-col gap-2 font-medium text-xs" htmlFor={`${formId}-description`}>Description
-                  <textarea className="rounded-md border bg-background px-3 py-2 text-sm font-normal" defaultValue={translation.description} id={`${formId}-description`} name="description" placeholder="Enter localized description" />
+                  <textarea className="min-h-20 rounded-lg border bg-background px-3 py-2 text-sm font-normal" defaultValue={translation.description} id={`${formId}-description`} name="description" placeholder="Enter localized description" />
                 </label>
                 <div className="flex justify-end">
                   <ActionSubmitButton pendingLabel="Saving..." size="sm" type="submit" variant="outline">Save {language.name}</ActionSubmitButton>
@@ -545,51 +549,6 @@ function buildDeletedForms(deletedPlans: PricingPlans) {
   );
 }
 
-function ImagePromptTranslationModelForm({
-  models,
-  selectedModelId,
-}: {
-  models: AdminModelPricingSnapshotRow[];
-  selectedModelId: string | null;
-}) {
-  const enabledChatModels = models.filter(
-    (model) =>
-      model.type === "chat" &&
-      model.isEnabled &&
-      !model.deletedAt &&
-      Number(model.inputProviderCostPerMillion ?? 0) > 0 &&
-      Number(model.outputProviderCostPerMillion ?? 0) > 0
-  );
-  return (
-    <section className="rounded-xl border bg-card/80 p-4 shadow-sm">
-      <h3 className="font-semibold text-sm">
-        <EditableTranslation
-          defaultText="Image prompt translation model"
-          description="Heading for the image prompt translation model selector in Admin Pricing."
-          translationKey="admin.pricing.image_translation_model"
-        />
-      </h3>
-      <p className="mt-1 text-muted-foreground text-xs">
-        <EditableTranslation
-          defaultText="Choose which enabled text model translates Khasi prompts to English during image generation."
-          description="Description for the image prompt translation model selector in Admin Pricing."
-          translationKey="admin.pricing.image_translation_model_description"
-        />
-      </p>
-      <form action={setImagePromptTranslationModelAction} className="mt-4 flex flex-wrap items-end gap-3">
-        <label className="flex min-w-64 flex-1 flex-col gap-2 text-sm" htmlFor="pricing-image-translation-model">
-          <span className="font-medium">Translation model</span>
-          <select className="rounded-md border bg-background px-3 py-2 text-sm" defaultValue={selectedModelId ?? ""} id="pricing-image-translation-model" name="modelId">
-            <option value="">Use server default translation model</option>
-            {enabledChatModels.map((model) => <option key={model.id} value={model.id}>{model.displayName} ({model.provider})</option>)}
-          </select>
-        </label>
-        <ActionSubmitButton pendingLabel="Saving..." type="submit">Save translation model</ActionSubmitButton>
-      </form>
-    </section>
-  );
-}
-
 async function PricingManagementContent({
   activePlans,
   deletedPlans,
@@ -698,11 +657,14 @@ async function PricingManagementContent({
           )}
         />
         <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-5">
-          <span className="font-medium text-sm">
-            {recommendedPlanId === plan.id
-              ? "Recommended plan"
-              : "Not recommended"}
-          </span>
+          <div>
+            <span className="font-medium text-sm">
+              {recommendedPlanId === plan.id
+                ? "Recommended plan"
+                : "Not recommended"}
+            </span>
+            <p className="text-muted-foreground text-xs">The recommended plan is highlighted on the recharge page.</p>
+          </div>
           {recommendedPlanId === plan.id ? (
             <form action={setRecommendedPricingPlanAction}>
               <input name="planId" type="hidden" value="" />
@@ -935,32 +897,25 @@ function ModelPricingLoading({ activePlans }: { activePlans: PricingPlans }) {
 
 function WebSearchPricingSection({ children }: { children?: ReactNode }) {
   return (
-    <details className="group overflow-hidden rounded-xl border bg-card/80 shadow-sm">
-      <summary className="flex cursor-pointer items-center justify-between gap-3 px-6 py-4">
-        <div className="space-y-1">
-          <h2 className="font-semibold text-lg">
-            <EditableTranslation
-              defaultText="Web Search settings"
-              description="Title for the Web Search settings section in Admin Pricing."
-              translationKey="admin.web_search.section_title"
-            />
-          </h2>
-          <p className="text-muted-foreground text-sm">
-            <EditableTranslation
-              defaultText="Configure grounding, platform availability, limits, and independent pricing for each search provider."
-              description="Description for the Web Search settings section in Admin Pricing."
-              translationKey="admin.web_search.section_description"
-            />
-          </p>
-        </div>
-        <span className="font-semibold text-muted-foreground text-xs transition-transform duration-150 group-open:rotate-180">
-          ▼
-        </span>
-      </summary>
-      {children ? (
-        <div className="space-y-5 border-t px-6 py-5">{children}</div>
-      ) : null}
-    </details>
+    <PricingDisclosure
+      description={
+        <EditableTranslation
+          defaultText="Configure grounding, platform availability, limits, and independent pricing for each search provider."
+          description="Description for the Web Search settings section in Admin Pricing."
+          translationKey="admin.web_search.section_description"
+        />
+      }
+      headingLevel={2}
+      title={
+        <EditableTranslation
+          defaultText="Web Search settings"
+          description="Title for the Web Search settings section in Admin Pricing."
+          translationKey="admin.web_search.section_title"
+        />
+      }
+    >
+      {children}
+    </PricingDisclosure>
   );
 }
 
@@ -980,7 +935,7 @@ async function WebSearchPricingContent() {
 
   return (
     <WebSearchPricingSection>
-      <div className="rounded-lg border bg-background p-4">
+      <div className="rounded-lg bg-muted/40 p-4">
         <FeatureAccessModeControl
           currentMode={accessState.mode}
           description="Control whether time-sensitive public questions may use grounded web search."
@@ -1031,12 +986,29 @@ export default async function AdminPricingPage({
   });
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       <PricingNotice notice={resolvedSearchParams?.notice} />
       <AdminPageHeader
-        description="Review recharge tiers, compare effective user pricing with provider costs, and update plans."
+        description="Recharge plans, model costs and markups, and web search pricing in one place."
         navHref="/admin/pricing"
         title="Pricing"
+      />
+      <section className="flex flex-col gap-4">
+      <PricingSectionHeading
+        description={
+          <EditableTranslation
+            defaultText="The packs users buy credits with. Margins compare each pack with the default chat model's provider cost."
+            description="Description of the recharge plans section on Admin Pricing."
+            translationKey="admin.pricing.recharge_plans_description"
+          />
+        }
+        title={
+          <EditableTranslation
+            defaultText="Recharge plans"
+            description="Heading for the recharge plans section on Admin Pricing."
+            translationKey="admin.pricing.recharge_plans_title"
+          />
+        }
       />
       {plansState.ok ? (
         <Suspense
@@ -1070,38 +1042,41 @@ export default async function AdminPricingPage({
           plansConfirmed={false}
         />
       )}
-      <section className="mt-4 flex flex-col gap-5 border-t pt-8">
-        <div>
-          <h2 className="font-semibold text-xl">
-            <EditableTranslation
-              defaultText="Model pricing"
-              description="Heading for the model provider-cost and markup section on Admin Pricing."
-              translationKey="admin.pricing.model_pricing_title"
-            />
-          </h2>
-          <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
+      </section>
+      <section className="flex flex-col gap-4">
+        <PricingSectionHeading
+          description={
             <EditableTranslation
               defaultText="Add and manage chat, image, and live voice models, including provider costs and independent customer markups."
               description="Description of the Admin Pricing model-pricing section."
               translationKey="admin.pricing.model_pricing_description"
             />
-          </p>
-        </div>
-        <details className="rounded-lg border p-4">
-          <summary className="cursor-pointer font-medium text-sm" id="general-system-prompt-label">
+          }
+          title={
+            <EditableTranslation
+              defaultText="Model pricing"
+              description="Heading for the model provider-cost and markup section on Admin Pricing."
+              translationKey="admin.pricing.model_pricing_title"
+            />
+          }
+        />
+        <PricingDisclosure
+          summaryId="general-system-prompt-label"
+          title={
             <EditableTranslation
               defaultText="General system prompt (read-only)"
               translationKey="admin.models.general_prompt.title"
             />
-          </summary>
+          }
+        >
           <textarea
             aria-labelledby="general-system-prompt-label"
-            className="mt-3 min-h-64 w-full rounded-md border bg-muted p-3 text-sm"
+            className="min-h-64 w-full rounded-lg border bg-muted/40 p-3 font-mono text-xs leading-relaxed"
             id="general-system-prompt"
             readOnly
             value={KHASIGPT_GENERAL_SYSTEM_PROMPT}
           />
-        </details>
+        </PricingDisclosure>
         <Suspense fallback={<ModelPricingLoading activePlans={activePlans} />}>
           <ModelPricingContent
             activePlans={activePlans}
@@ -1109,7 +1084,7 @@ export default async function AdminPricingPage({
           />
         </Suspense>
       </section>
-      <section className="mt-4 flex flex-col gap-5 border-t pt-8">
+      <section className="flex flex-col gap-4">
         <Suspense fallback={<WebSearchPricingSection />}>
           <WebSearchPricingContent />
         </Suspense>

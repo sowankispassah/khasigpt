@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { PricingPreviewContext } from "@/app/(admin)/admin/pricing/cost-plus-pricing-fields";
+import { AdminNotice, AdminStatusPill } from "@/components/admin/admin-ui";
 import { GoogleSearchAllowanceSettings } from "@/components/admin/google-search-allowance-settings";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
@@ -305,15 +306,19 @@ export function WebSearchPricingForm({
     .replace("{readState}", config.readState)
     .replace("{accessMode}", config.accessMode);
 
+  const providerGrid =
+    "lg:grid lg:grid-cols-[minmax(0,1.4fr)_9.5rem_6.5rem_repeat(4,minmax(0,0.8fr))] lg:items-center lg:gap-4";
+  const statLabel = "block text-muted-foreground text-xs lg:hidden";
+
   return (
     <div className="space-y-6">
       {!pricingIsValid ? (
-        <p className="rounded-lg border border-amber-300/60 bg-amber-50/50 p-3 text-amber-900 text-sm dark:bg-amber-950/20 dark:text-amber-100">
+        <AdminNotice>
           {translate(
             "admin.web_search.pricing_incomplete",
             "Web search cannot run until a provider cost greater than zero is added for the selected provider."
           )}
-        </p>
+        </AdminNotice>
       ) : null}
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -322,7 +327,7 @@ export function WebSearchPricingForm({
             {label("admin.web_search.provider", "Primary provider")}
           </span>
           <select
-            className="cursor-pointer rounded-md border bg-background px-3 py-2"
+            className="h-10 cursor-pointer rounded-lg border bg-background px-3"
             disabled={isSaving}
             onChange={(event) =>
               setProvider(event.target.value as WebSearchProvider)
@@ -345,7 +350,7 @@ export function WebSearchPricingForm({
             {label("admin.web_search.fallback", "Fallback provider")}
           </span>
           <select
-            className="cursor-pointer rounded-md border bg-background px-3 py-2"
+            className="h-10 cursor-pointer rounded-lg border bg-background px-3"
             disabled={isSaving}
             onChange={(event) =>
               setFallbackProvider(event.target.value as WebSearchProvider)
@@ -365,7 +370,7 @@ export function WebSearchPricingForm({
         </label>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {[
           ["enabledWeb", enabledWeb, setEnabledWeb, "Enable on web"],
           [
@@ -388,7 +393,7 @@ export function WebSearchPricingForm({
           ],
         ].map(([key, value, setter, text]) => (
           <label
-            className="flex cursor-pointer items-center gap-3 text-sm"
+            className="flex cursor-pointer items-center gap-3 rounded-lg border bg-background px-3 py-2.5 text-sm transition hover:bg-muted/40"
             key={key as string}
           >
             <input
@@ -404,9 +409,8 @@ export function WebSearchPricingForm({
           </label>
         ))}
       </div>
-      <GoogleSearchAllowanceSettings refreshToken={allowanceRefresh} onSaved={(allowance) => { setGoogleAllowanceEnabled(allowance.enabled); if (allowance.enabled) { setProvider("gemini_grounding"); setFallbackProvider(allowance.fallbackProvider); } }} />
 
-      {!allowanceMode && <label className="flex max-w-xl flex-col gap-2 text-sm">
+      {!allowanceMode && <label className="flex max-w-sm flex-col gap-2 text-sm">
         <span className="font-medium">
           {maxCallsApplies
             ? label("admin.web_search.max_calls", "Max search calls")
@@ -427,7 +431,7 @@ export function WebSearchPricingForm({
                   "Max search calls not applicable for Serper"
                 )
           }
-          className="cursor-pointer rounded-md border bg-background px-3 py-2 disabled:cursor-not-allowed disabled:bg-muted"
+          className="h-10 cursor-pointer rounded-lg border bg-background px-3 disabled:cursor-not-allowed disabled:bg-muted"
           disabled={isSaving || !maxCallsApplies}
           max={10}
           min={1}
@@ -441,7 +445,7 @@ export function WebSearchPricingForm({
         />
       </label>}
       {provider === "serper" ? (
-        <div className="space-y-1 text-xs">
+        <div className="space-y-1 rounded-lg bg-muted/40 p-3 text-xs">
           <p className="font-medium text-red-600 dark:text-red-400">
             {translate(
               "admin.web_search.serper_billing_units_note",
@@ -459,35 +463,37 @@ export function WebSearchPricingForm({
           </p>
         </div>
       ) : null}
-      {provider === "serpent" && <p className="rounded-md border p-3 text-muted-foreground text-xs"><EditableTranslation translationKey="admin.web_search.serpent_note" defaultText="Serpent uses one Google Web SERP page per search, localized to India. Shopping cards appear when listings are returned; otherwise retailer browse links are shown. Its dedicated Shopping endpoint has not launched. Provider cost is per page: Default $0.0006, Growth $0.00006, Scale $0.00003. Enter your account rate below. News and videos also use this Web SERP request, with inline video cards when available. No paid AI add-ons are requested." description="Serpent search coverage and billing explanation." /></p>}
-      {!serpentConfigured && <p className="text-muted-foreground text-xs"><EditableTranslation translationKey="admin.web_search.serpent_not_configured" defaultText="Add SERPENT_API_KEY to the server environment before activating Serpent." description="Missing Serpent server credential." /></p>}
-      {serpentConfigured && (
-        <div className="space-y-2 rounded-md border p-3">
-          <label htmlFor="serpent-product-cost" className="text-sm font-medium">
-            <EditableTranslation translationKey="admin.web_search.serpent_product_cost" defaultText="Serpent product lookup cost (USD per call)" description="Admin price for the optional Amazon India product lookup." />
-          </label>
-          <input id="serpent-product-cost" className="block w-44 cursor-pointer rounded-md border bg-background px-3 py-2" type="number" min={0} max={100} step={0.000001} value={serpentProductCost} disabled={isSaving} onChange={event => setSerpentProductCost(event.target.value)} />
-          <p className="text-xs text-muted-foreground"><EditableTranslation translationKey="admin.web_search.serpent_product_note" defaultText="Set zero to disable. A positive price enables one Amazon India lookup when Serpent shopping results have no product photos. Default $0.00002, Growth $0.000018, Scale $0.000014 per call. Matching items keep their own photos, prices and links. Completed lookups add this cost to the web-search cost and use the Serpent markup; ordinary searches do not run it." description="Serpent product lookup coverage, pricing and disabled state." /></p>
-        </div>
-      )}
+      {provider === "serpent" && <p className="rounded-lg bg-muted/40 p-3 text-muted-foreground text-xs"><EditableTranslation translationKey="admin.web_search.serpent_note" defaultText="Serpent uses one Google Web SERP page per search, localized to India. Shopping cards appear when listings are returned; otherwise retailer browse links are shown. Its dedicated Shopping endpoint has not launched. Provider cost is per page: Default $0.0006, Growth $0.00006, Scale $0.00003. Enter your account rate below. News and videos also use this Web SERP request, with inline video cards when available. No paid AI add-ons are requested." description="Serpent search coverage and billing explanation." /></p>}
       {!serperConfigured ? (
-        <p className="rounded-md border border-amber-300/60 bg-amber-50/50 p-3 text-amber-900 text-xs dark:bg-amber-950/20 dark:text-amber-100">
+        <AdminNotice className="text-xs">
           {translate(
             "admin.web_search.serper_not_configured",
             "Add SERPER_API_KEY to the server environment before activating Serper."
           )}
-        </p>
+        </AdminNotice>
       ) : null}
+      {!serpentConfigured && <AdminNotice className="text-xs"><EditableTranslation translationKey="admin.web_search.serpent_not_configured" defaultText="Add SERPENT_API_KEY to the server environment before activating Serpent." description="Missing Serpent server credential." /></AdminNotice>}
+      {serpentConfigured && (
+        <div className="space-y-2 rounded-lg bg-muted/40 p-3">
+          <label htmlFor="serpent-product-cost" className="text-sm font-medium">
+            <EditableTranslation translationKey="admin.web_search.serpent_product_cost" defaultText="Serpent product lookup cost (USD per call)" description="Admin price for the optional Amazon India product lookup." />
+          </label>
+          <input id="serpent-product-cost" className="block h-10 w-44 cursor-pointer rounded-lg border bg-background px-3" type="number" min={0} max={100} step={0.000001} value={serpentProductCost} disabled={isSaving} onChange={event => setSerpentProductCost(event.target.value)} />
+          <p className="text-xs text-muted-foreground"><EditableTranslation translationKey="admin.web_search.serpent_product_note" defaultText="Set zero to disable. A positive price enables one Amazon India lookup when Serpent shopping results have no product photos. Default $0.00002, Growth $0.000018, Scale $0.000014 per call. Matching items keep their own photos, prices and links. Completed lookups add this cost to the web-search cost and use the Serpent markup; ordinary searches do not run it." description="Serpent product lookup coverage, pricing and disabled state." /></p>
+        </div>
+      )}
 
-      <section className="overflow-hidden rounded-xl border bg-card/80 shadow-sm">
-        <div className="border-b px-4 py-3">
-          <h3 className="font-semibold">
+      <GoogleSearchAllowanceSettings refreshToken={allowanceRefresh} onSaved={(allowance) => { setGoogleAllowanceEnabled(allowance.enabled); if (allowance.enabled) { setProvider("gemini_grounding"); setFallbackProvider(allowance.fallbackProvider); } }} />
+
+      <section className="space-y-3">
+        <div>
+          <h3 className="font-semibold text-base">
             {translate(
               "admin.web_search.provider_pricing_title",
               "Web Search provider pricing"
             )}
           </h3>
-          <p className="mt-1 text-muted-foreground text-xs">
+          <p className="mt-0.5 text-muted-foreground text-sm">
             {translate(
               "admin.web_search.provider_pricing_description",
               "Set provider cost and customer markup independently for every search provider. Changing the active provider does not change these saved prices."
@@ -495,83 +501,79 @@ export function WebSearchPricingForm({
           </p>
           {allowanceMode && <p className="mt-2 text-muted-foreground text-xs">{translate("admin.web_search.allowance.pricingNote", GOOGLE_ALLOWANCE_COPY.pricingNote)}</p>}
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1120px] text-sm">
-            <thead className="bg-muted/50 text-left text-muted-foreground text-xs uppercase tracking-wide">
-              <tr>
-                <th className="px-4 py-3 font-medium">
-                  {translate("admin.pricing.provider", "Provider")}
-                </th>
-                <th className="px-4 py-3 font-medium">
-                  {translate(
-                    "admin.web_search.provider_unit_cost",
-                    "Provider unit cost (USD)"
-                  )}
-                </th>
-                <th className="px-4 py-3 font-medium">
-                  {translate("admin.pricing.markup", "Markup")}
-                </th>
-                <th className="px-4 py-3 text-right font-medium">
-                  {translate(
-                    "admin.pricing.customer_charge",
-                    "Customer charge"
-                  )}
-                </th>
-                <th className="px-4 py-3 text-right font-medium">
-                  {translate("admin.pricing.preview.profit", "Profit")}
-                </th>
-                <th className="px-4 py-3 text-right font-medium">
-                  {translate("admin.pricing.preview.margin", "Profit margin")}
-                </th>
-                <th className="px-4 py-3 text-right font-medium">
-                  {translate("admin.pricing.credit_charge", "Credit charge")}
-                </th>
-                <th className="px-4 py-3 font-medium">
-                  {translate("admin.pricing.status", "Status")}
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/60">
-              {orderedProviderRows.map((providerRow) => {
-                const providerKey = providerRow.value;
-                const pricing = providerPricing[providerKey];
-                const isPrimary = provider === providerKey;
-                const isFallback = fallbackProvider === providerKey;
-                const usesTokenPricing = allowanceMode && providerKey === "gemini_grounding";
-                const preview = pricingContext && !usesTokenPricing
-                  ? calculateCostPlusPreview({
-                      markupMultiplier: Number(pricing.markupMultiplier),
-                      providerCostUsd: Number(pricing.providerCostPerCallUsd),
-                      usdToInr: pricingContext.usdToInr,
-                      walletUnitsPerCredit: TOKENS_PER_CREDIT,
-                      walletUnitsPerInr: pricingContext.walletUnitsPerInr,
-                    })
-                  : null;
-                const providerUnavailable =
-                  (providerKey === "serper" && !serperConfigured) || (providerKey === "serpent" && !serpentConfigured);
+        <div className="overflow-hidden rounded-lg border">
+          <div className={`hidden border-b bg-muted/40 px-4 py-2.5 font-medium text-muted-foreground text-xs ${providerGrid}`}>
+            <span>{translate("admin.pricing.provider", "Provider")}</span>
+            <span>{translate("admin.web_search.provider_unit_cost", "Provider unit cost (USD)")}</span>
+            <span>{translate("admin.pricing.markup", "Markup")}</span>
+            <span className="text-right">{translate("admin.pricing.customer_charge", "Customer charge")}</span>
+            <span className="text-right">{translate("admin.pricing.preview.profit", "Profit")}</span>
+            <span className="text-right">{translate("admin.pricing.preview.margin", "Profit margin")}</span>
+            <span className="text-right">{translate("admin.pricing.credit_charge", "Credit charge")}</span>
+          </div>
+          <ul className="divide-y divide-border/60">
+            {orderedProviderRows.map((providerRow) => {
+              const providerKey = providerRow.value;
+              const pricing = providerPricing[providerKey];
+              const isPrimary = provider === providerKey;
+              const isFallback = fallbackProvider === providerKey;
+              const usesTokenPricing = allowanceMode && providerKey === "gemini_grounding";
+              const preview = pricingContext && !usesTokenPricing
+                ? calculateCostPlusPreview({
+                    markupMultiplier: Number(pricing.markupMultiplier),
+                    providerCostUsd: Number(pricing.providerCostPerCallUsd),
+                    usdToInr: pricingContext.usdToInr,
+                    walletUnitsPerCredit: TOKENS_PER_CREDIT,
+                    walletUnitsPerInr: pricingContext.walletUnitsPerInr,
+                  })
+                : null;
+              const providerUnavailable =
+                (providerKey === "serper" && !serperConfigured) || (providerKey === "serpent" && !serpentConfigured);
+              const providerName = translate(providerRow.labelKey, providerRow.defaultLabel);
 
-                return (
-                  <tr
-                    className="bg-card/70 transition hover:bg-muted/20"
-                    key={providerKey}
-                  >
-                    <td className="px-4 py-3 font-medium">
-                      {translate(providerRow.labelKey, providerRow.defaultLabel)}
-                    </td>
-                    <td className="px-4 py-3">
+              return (
+                <li className={`grid gap-3 px-4 py-4 transition hover:bg-muted/30 lg:py-3 ${providerGrid}`} key={providerKey}>
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm">{providerName}</p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {isPrimary ? (
+                        <AdminStatusPill tone="success">
+                          {translate("admin.pricing.active", "Active")}
+                        </AdminStatusPill>
+                      ) : null}
+                      {isFallback ? (
+                        <AdminStatusPill tone="info">
+                          {translate(
+                            "admin.web_search.fallback_status",
+                            "Fallback"
+                          )}
+                        </AdminStatusPill>
+                      ) : null}
+                      {!isPrimary && !isFallback ? (
+                        <AdminStatusPill>
+                          {translate("admin.pricing.inactive", "Inactive")}
+                        </AdminStatusPill>
+                      ) : null}
+                      {providerUnavailable ? (
+                        <AdminStatusPill tone="warning">
+                          {translate(
+                            "admin.web_search.not_configured",
+                            "API key missing"
+                          )}
+                        </AdminStatusPill>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 items-end gap-3 lg:contents">
+                    <label className="flex flex-col gap-1">
+                      <span className={statLabel}>{translate("admin.web_search.provider_unit_cost", "Provider unit cost (USD)")}</span>
                       <input
                         aria-label={translate(
                           "admin.web_search.provider_cost_for",
                           "Provider cost for {provider}"
-                        ).replace(
-                          "{provider}",
-                          translate(
-                            providerRow.labelKey,
-                            providerRow.defaultLabel
-                          )
-                        )}
+                        ).replace("{provider}", providerName)}
                         aria-required={!usesTokenPricing && (isPrimary || isFallback)}
-                        className="w-44 cursor-pointer rounded-md border bg-background px-3 py-2"
+                        className="h-9 w-full min-w-0 cursor-pointer rounded-lg border bg-background px-3 text-sm"
                         disabled={isSaving || usesTokenPricing}
                         max={100}
                         min={0}
@@ -587,20 +589,15 @@ export function WebSearchPricingForm({
                         type="number"
                         value={pricing.providerCostPerCallUsd}
                       />
-                    </td>
-                    <td className="px-4 py-3">
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className={statLabel}>{translate("admin.pricing.markup", "Markup")}</span>
                       <input
                         aria-label={translate(
                           "admin.web_search.markup_for",
                           "Customer markup for {provider}"
-                        ).replace(
-                          "{provider}",
-                          translate(
-                            providerRow.labelKey,
-                            providerRow.defaultLabel
-                          )
-                        )}
-                        className="w-28 cursor-pointer rounded-md border bg-background px-3 py-2"
+                        ).replace("{provider}", providerName)}
+                        className="h-9 w-full min-w-0 cursor-pointer rounded-lg border bg-background px-3 text-sm"
                         disabled={isSaving}
                         max={20}
                         min={1}
@@ -616,74 +613,54 @@ export function WebSearchPricingForm({
                         type="number"
                         value={pricing.markupMultiplier}
                       />
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium">
-                      {usesTokenPricing ? translate("admin.web_search.allowance.variableCharge", GOOGLE_ALLOWANCE_COPY.variableCharge) : preview
-                        ? `₹${formatNumber(preview.billedChargeInr)}`
-                        : "—"}
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium">
-                      {preview ? `₹${formatNumber(preview.profitInr)}` : "—"}
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium">
-                      {preview
-                        ? `${formatNumber(preview.marginPercent, 2)}%`
-                        : "—"}
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium">
-                      {preview ? formatNumber(preview.credits, 2) : "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
-                        {isPrimary ? (
-                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700 text-xs">
-                            {translate("admin.pricing.active", "Active")}
-                          </span>
-                        ) : null}
-                        {isFallback ? (
-                          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-blue-700 text-xs">
-                            {translate(
-                              "admin.web_search.fallback_status",
-                              "Fallback"
-                            )}
-                          </span>
-                        ) : null}
-                        {!isPrimary && !isFallback ? (
-                          <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground text-xs">
-                            {translate("admin.pricing.inactive", "Inactive")}
-                          </span>
-                        ) : null}
-                        {providerUnavailable ? (
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800 text-xs">
-                            {translate(
-                              "admin.web_search.not_configured",
-                              "API key missing"
-                            )}
-                          </span>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    </label>
+                  </div>
+                  <dl className="grid grid-cols-4 gap-2 text-sm tabular-nums lg:contents">
+                    <div className="lg:text-right">
+                      <dt className={statLabel}>{translate("admin.pricing.customer_charge", "Customer charge")}</dt>
+                      <dd className="font-medium">
+                        {usesTokenPricing ? translate("admin.web_search.allowance.variableCharge", GOOGLE_ALLOWANCE_COPY.variableCharge) : preview
+                          ? `₹${formatNumber(preview.billedChargeInr)}`
+                          : "—"}
+                      </dd>
+                    </div>
+                    <div className="lg:text-right">
+                      <dt className={statLabel}>{translate("admin.pricing.preview.profit", "Profit")}</dt>
+                      <dd className="font-medium">{preview ? `₹${formatNumber(preview.profitInr)}` : "—"}</dd>
+                    </div>
+                    <div className="lg:text-right">
+                      <dt className={statLabel}>{translate("admin.pricing.preview.margin", "Profit margin")}</dt>
+                      <dd className="font-medium">
+                        {preview
+                          ? `${formatNumber(preview.marginPercent, 2)}%`
+                          : "—"}
+                      </dd>
+                    </div>
+                    <div className="lg:text-right">
+                      <dt className={statLabel}>{translate("admin.pricing.credit_charge", "Credit charge")}</dt>
+                      <dd className="font-medium">{preview ? formatNumber(preview.credits, 2) : "—"}</dd>
+                    </div>
+                  </dl>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="border-t bg-muted/30 px-4 py-2.5 text-muted-foreground text-xs">
+            {pricingContext?.basePlanName
+              ? translate(
+                  "admin.pricing.preview.base_plan",
+                  "Credit conversion: {plan}"
+                ).replace("{plan}", pricingContext.basePlanName)
+              : translate(
+                  "admin.pricing.preview.unavailable",
+                  "Add an active recharge plan to calculate customer charges and credits."
+                )}
+          </p>
         </div>
-        <p className="border-t bg-muted/20 px-4 py-3 text-muted-foreground text-xs">
-          {pricingContext?.basePlanName
-            ? translate(
-                "admin.pricing.preview.base_plan",
-                "Credit conversion: {plan}"
-              ).replace("{plan}", pricingContext.basePlanName)
-            : translate(
-                "admin.pricing.preview.unavailable",
-                "Add an active recharge plan to calculate customer charges and credits."
-              )}
-        </p>
       </section>
 
-      <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/30 p-3 text-muted-foreground text-xs">
-        <span>{readStateText}</span>
+      <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <span className="text-muted-foreground text-xs">{readStateText}</span>
         <Button
           className="shrink-0 cursor-pointer"
           disabled={isSaving}

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, Loader2, MoreVertical } from "lucide-react";
+import { ChevronDown, Loader2, MoreVertical } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
 import { toast } from "sonner";
 import { useTranslation } from "@/components/language-provider";
@@ -14,18 +14,19 @@ export function PromotionText({ name }: { name: keyof typeof REFERRAL_COPY }) {
   return <EditableTranslation translationKey={`referrals.${name}`} defaultText={REFERRAL_COPY[name]} />;
 }
 
-export function AdminPromotionSection({ title, description, actions, children }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
+/** Collapsible admin card; content sits flush so tables and lists reach the edges. */
+export function AdminPromotionSection({ title, description, actions, children, defaultOpen = true }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; children: ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   const id = useId();
-  return <section className="rounded-2xl border bg-card/60 p-4 shadow-sm">
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <button aria-controls={id} aria-expanded={open} className="flex min-w-0 cursor-pointer items-center gap-3 text-left" onClick={() => setOpen(!open)} type="button">
-        <ChevronRight aria-hidden="true" className={`size-5 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
-        <span><span className="block text-lg font-semibold">{title}</span>{description ? <span className="block text-sm text-muted-foreground">{description}</span> : null}</span>
+  return <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
+    <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+      <button aria-controls={id} aria-expanded={open} className="flex min-w-0 flex-1 basis-full cursor-pointer items-center gap-3 text-left sm:basis-0" onClick={() => setOpen(!open)} type="button">
+        <ChevronDown aria-hidden="true" className={`size-5 shrink-0 text-muted-foreground transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
+        <span className="min-w-0"><span className="block font-semibold text-base">{title}</span>{description ? <span className="mt-0.5 block text-muted-foreground text-sm">{description}</span> : null}</span>
       </button>
-      {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+      {actions ? <div className="ml-8 flex flex-wrap gap-2 sm:ml-0">{actions}</div> : null}
     </div>
-    <div hidden={!open} id={id} className="mt-4 border-t pt-4">{children}</div>
+    <div hidden={!open} id={id} className="border-t">{children}</div>
   </section>;
 }
 

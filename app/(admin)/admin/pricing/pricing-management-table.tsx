@@ -1,11 +1,12 @@
 "use client";
 
-import { ChevronDown, MoreVertical } from "lucide-react";
+import { ChevronDown, MoreVertical, Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 
 import { deletePricingPlanAction } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
+import { AdminNotice, AdminStatusPill } from "@/components/admin/admin-ui";
 import { useTranslation } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,7 +29,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
 
 const DEFAULT_VISIBLE_ROWS = 10;
 
@@ -79,6 +79,30 @@ function formatUpdatedAt(value: string | null) {
       }).format(date);
 }
 
+function MarginPill({ value }: { value: number | null }) {
+  if (value === null) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  return (
+    <AdminStatusPill tone={value >= 0 ? "success" : "danger"}>
+      {value.toFixed(2)}%
+    </AdminStatusPill>
+  );
+}
+
+function PlanStatusPills({ plan }: { plan: PricingPlanRow }) {
+  return (
+    <>
+      <AdminStatusPill tone={plan.isActive ? "success" : "neutral"}>
+        {plan.isActive ? "Active" : "Inactive"}
+      </AdminStatusPill>
+      {plan.isRecommended ? (
+        <AdminStatusPill tone="info">Recommended</AdminStatusPill>
+      ) : null}
+    </>
+  );
+}
+
 export function PricingManagementTable({
   referenceModelName,
   createForm,
@@ -121,26 +145,45 @@ export function PricingManagementTable({
     setDialogMode("delete");
   }
 
+  const planActions = (plan: PricingPlanRow) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button aria-label={translate("admin.pricing.plan_actions", "Pricing plan actions")} className="cursor-pointer" disabled={detailsLoading} size="icon" type="button" variant="ghost">
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem className="cursor-pointer" onSelect={() => openEdit(plan.id)}>{translate("admin.pricing.edit_plan", "Edit pricing")}</DropdownMenuItem>
+        <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive" onSelect={() => openDelete(plan.id)}>{translate("admin.pricing.delete_plan", "Delete pricing")}</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  const emptyMessage = !plansConfirmed
+    ? "Pricing plans could not be loaded. Retry the page before changing values."
+    : "No pricing configurations yet. Add a plan to get started.";
+
   return (
-    <div className="flex flex-col gap-5">
-      <Collapsible className="space-y-5" defaultOpen={false}>
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card/80 p-4 shadow-sm">
+    <div className="flex flex-col gap-4">
+      <Collapsible className="overflow-hidden rounded-xl border bg-card shadow-xs" defaultOpen={false}>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
           <CollapsibleTrigger asChild>
             <button
               aria-label={translate(
                 "admin.pricing.toggle_pricing_plans",
                 "Show or hide pricing plans"
               )}
-              className="group flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 rounded-lg text-left"
+              className="group flex min-w-0 flex-1 basis-full cursor-pointer items-center gap-3 rounded-lg text-left sm:basis-0"
               type="button"
             >
-              <div>
-                <p className="font-medium text-sm">
+              <ChevronDown className="size-5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+              <div className="min-w-0">
+                <p className="font-semibold text-base">
                   {plansConfirmed
                     ? `${plans.length} pricing ${plans.length === 1 ? "configuration" : "configurations"}`
                     : "Pricing configurations are unavailable"}
                 </p>
-                <p className="mt-1 text-muted-foreground text-xs">
+                <p className="mt-0.5 text-muted-foreground text-sm">
                   {detailsLoading
                     ? "Loading provider costs and editing details..."
                     : referenceModelName
@@ -148,77 +191,92 @@ export function PricingManagementTable({
                       : "Margin preview is unavailable until an enabled model cost is configured."}
                 </p>
               </div>
-              <ChevronDown className="size-5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
             </button>
           </CollapsibleTrigger>
-          <Button className="cursor-pointer" onClick={openCreate} type="button">+ Add Pricing</Button>
+          <Button className="ml-8 cursor-pointer sm:ml-0" onClick={openCreate} type="button">
+            <Plus className="size-4" />
+            Add pricing
+          </Button>
         </div>
 
-        {plansConfirmed && !detailsLoading && !modelCostsConfirmed ? <p className="rounded-lg border border-amber-300/60 bg-amber-50/50 p-3 text-amber-900 text-sm dark:bg-amber-950/20 dark:text-amber-100">Provider cost data could not be confirmed. Plans remain editable; margin values are shown as unavailable.</p> : null}
+        {plansConfirmed && !detailsLoading && !modelCostsConfirmed ? (
+          <div className="px-5 pb-4">
+            <AdminNotice>Provider cost data could not be confirmed. Plans remain editable; margin values are shown as unavailable.</AdminNotice>
+          </div>
+        ) : null}
 
         <CollapsibleContent>
-          <div className="overflow-hidden rounded-xl border bg-card/80 shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1120px] text-sm">
-          <thead className="bg-muted/50 text-left text-muted-foreground text-xs uppercase tracking-wide">
-            <tr>
-              <th className="px-4 py-3 font-medium">Pricing / model</th>
-              <th className="px-4 py-3 font-medium">Type</th>
-              <th className="px-4 py-3 text-right font-medium">Price</th>
-              <th className="px-4 py-3 text-right font-medium">Base credits</th>
-              <th className="px-4 py-3 text-right font-medium">Provider input / 1M</th>
-              <th className="px-4 py-3 text-right font-medium">Provider output / 1M</th>
-              <th className="px-4 py-3 text-right font-medium">Customer price / 1M (in / out)</th>
-              <th className="px-4 py-3 text-right font-medium">User credit cost</th>
-              <th className="px-4 py-3 text-right font-medium">Margin</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 font-medium">Last updated</th>
-              <th className="px-4 py-3 text-right font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/60">
-            {!plansConfirmed ? (
-              <tr><td className="px-4 py-8 text-center text-muted-foreground" colSpan={12}>Pricing plans could not be loaded. Retry the page before changing values.</td></tr>
-            ) : plans.length === 0 ? (
-              <tr><td className="px-4 py-8 text-center text-muted-foreground" colSpan={12}>No pricing configurations yet. Add a plan to get started.</td></tr>
-            ) : visiblePlans.map((plan) => (
-              <tr className="bg-card/70 transition hover:bg-muted/20" key={plan.id}>
-                <td className="max-w-[230px] px-4 py-3">
-                  <div className="flex flex-col gap-1">
-                    <span className="font-medium">{plan.name}</span>
-                    {plan.description ? <span className="line-clamp-2 text-muted-foreground text-xs">{plan.description}</span> : null}
+          <div className="border-t">
+            <ul className="divide-y divide-border/60 md:hidden">
+              {!plansConfirmed || plans.length === 0 ? (
+                <li className="px-5 py-8 text-center text-muted-foreground text-sm">{emptyMessage}</li>
+              ) : visiblePlans.map((plan) => (
+                <li className="flex items-start justify-between gap-3 px-5 py-4" key={plan.id}>
+                  <div className="min-w-0 space-y-1.5">
+                    <p className="font-medium">{plan.name}</p>
+                    <div className="flex flex-wrap gap-1.5"><PlanStatusPills plan={plan} /></div>
+                    <p className="text-sm tabular-nums">
+                      {formatCurrency(plan.priceInPaise / 100, "INR")}
+                      <span className="text-muted-foreground"> · {plan.credits.toLocaleString()} credits · {formatCurrency(plan.userCreditCostInr, "INR")} each</span>
+                    </p>
+                    <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                      <span>Margin</span>
+                      <MarginPill value={plan.marginPercent} />
+                    </div>
                   </div>
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">Recharge plan</td>
-                <td className="px-4 py-3 text-right font-medium">{formatCurrency(plan.priceInPaise / 100, "INR")}</td>
-                <td className="px-4 py-3 text-right">{plan.credits.toLocaleString()}<span className="block text-muted-foreground text-xs">{plan.tokenAllowance.toLocaleString()} tokens</span></td>
-                <td className="px-4 py-3 text-right text-muted-foreground text-xs">{formatCurrency(plan.providerInputCostUsd, "USD")}</td>
-                <td className="px-4 py-3 text-right text-muted-foreground text-xs">{formatCurrency(plan.providerOutputCostUsd, "USD")}</td>
-                <td className="px-4 py-3 text-right"><span className="font-medium">{formatCurrency(plan.customerInputPerMillionInr, "INR")} / {formatCurrency(plan.customerOutputPerMillionInr, "INR")}</span><span className="block text-muted-foreground text-xs">{plan.realizedMarkup === null ? "—" : `${plan.realizedMarkup.toFixed(2)}x realized markup`}</span></td>
-                <td className="px-4 py-3 text-right font-medium">{formatCurrency(plan.userCreditCostInr, "INR")}</td>
-                <td className={cn("px-4 py-3 text-right font-medium", plan.marginPercent === null ? "text-muted-foreground" : plan.marginPercent >= 0 ? "text-emerald-600" : "text-destructive")}>{plan.marginPercent === null ? "—" : `${plan.marginPercent.toFixed(2)}%`}</td>
-                <td className="px-4 py-3"><div className="flex flex-wrap gap-1"><span className={cn("rounded-full px-2 py-0.5 text-xs", plan.isActive ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>{plan.isActive ? "Active" : "Inactive"}</span>{plan.isRecommended ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary text-xs">Recommended</span> : null}</div></td>
-                <td className="whitespace-nowrap px-4 py-3 text-muted-foreground text-xs">{formatUpdatedAt(plan.updatedAt)}</td>
-                <td className="px-4 py-3 text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button aria-label={translate("admin.pricing.plan_actions", "Pricing plan actions")} className="cursor-pointer" disabled={detailsLoading} size="icon" type="button" variant="ghost">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem className="cursor-pointer" onSelect={() => openEdit(plan.id)}>{translate("admin.pricing.edit_plan", "Edit pricing")}</DropdownMenuItem>
-                      <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive" onSelect={() => openDelete(plan.id)}>{translate("admin.pricing.delete_plan", "Delete pricing")}</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </td>
-              </tr>
-            ))}
-          </tbody>
+                  {planActions(plan)}
+                </li>
+              ))}
+            </ul>
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full min-w-[920px] text-sm">
+                <thead className="border-b bg-muted/40 text-left text-muted-foreground text-xs">
+                  <tr>
+                    <th className="px-4 py-2.5 font-medium">Plan</th>
+                    <th className="px-4 py-2.5 text-right font-medium">Price</th>
+                    <th className="px-4 py-2.5 text-right font-medium">Per credit</th>
+                    <th className="px-4 py-2.5 text-right font-medium">Customer price / 1M (in / out)</th>
+                    <th className="px-4 py-2.5 text-right font-medium">Provider cost / 1M (in / out)</th>
+                    <th className="px-4 py-2.5 text-right font-medium">Margin</th>
+                    <th className="px-4 py-2.5 font-medium">Last updated</th>
+                    <th className="px-4 py-2.5 font-medium"><span className="sr-only">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {!plansConfirmed || plans.length === 0 ? (
+                    <tr><td className="px-4 py-8 text-center text-muted-foreground" colSpan={8}>{emptyMessage}</td></tr>
+                  ) : visiblePlans.map((plan) => (
+                    <tr className="transition hover:bg-muted/30" key={plan.id}>
+                      <td className="max-w-[260px] px-4 py-3">
+                        <div className="flex flex-col gap-1.5">
+                          <span className="font-medium">{plan.name}</span>
+                          <div className="flex flex-wrap gap-1.5"><PlanStatusPills plan={plan} /></div>
+                          {plan.description ? <span className="line-clamp-2 text-muted-foreground text-xs">{plan.description}</span> : null}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        <span className="font-medium">{formatCurrency(plan.priceInPaise / 100, "INR")}</span>
+                        <span className="block text-muted-foreground text-xs">{plan.credits.toLocaleString()} credits</span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-medium tabular-nums">{formatCurrency(plan.userCreditCostInr, "INR")}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        <span className="font-medium">{formatCurrency(plan.customerInputPerMillionInr, "INR")} / {formatCurrency(plan.customerOutputPerMillionInr, "INR")}</span>
+                        <span className="block text-muted-foreground text-xs">{plan.realizedMarkup === null ? "—" : `${plan.realizedMarkup.toFixed(2)}x realized markup`}</span>
+                      </td>
+                      <td className="px-4 py-3 text-right text-muted-foreground text-xs tabular-nums">
+                        {formatCurrency(plan.providerInputCostUsd, "USD")}
+                        <span className="block">{formatCurrency(plan.providerOutputCostUsd, "USD")}</span>
+                      </td>
+                      <td className="px-4 py-3 text-right"><MarginPill value={plan.marginPercent} /></td>
+                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground text-xs">{formatUpdatedAt(plan.updatedAt)}</td>
+                      <td className="px-4 py-3 text-right">{planActions(plan)}</td>
+                    </tr>
+                  ))}
+                </tbody>
               </table>
             </div>
             {plans.length > DEFAULT_VISIBLE_ROWS ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t px-5 py-3">
                 <span aria-live="polite" className="text-muted-foreground text-xs">
                   {translate("admin.pricing.showing_rows", "Showing {visible} of {total}")
                     .replace("{visible}", String(visiblePlans.length))
@@ -245,7 +303,22 @@ export function PricingManagementTable({
         </CollapsibleContent>
       </Collapsible>
 
-      {Object.keys(deletedForms).length > 0 ? <section className="rounded-xl border bg-card/80 p-4 shadow-sm"><h2 className="font-semibold text-sm">Deleted pricing configurations</h2><div className="mt-3 grid gap-2">{Object.entries(deletedForms).map(([planId, form]) => <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background p-3 text-sm" key={planId}><span className="text-muted-foreground">Soft-deleted plan</span>{form}</div>)}</div></section> : null}
+      {Object.keys(deletedForms).length > 0 ? (
+        <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
+          <div className="border-b px-5 py-3">
+            <h3 className="font-semibold text-sm">Deleted pricing configurations</h3>
+            <p className="mt-0.5 text-muted-foreground text-xs">Soft-deleted plans keep their history until you remove them permanently.</p>
+          </div>
+          <ul className="divide-y divide-border/60">
+            {Object.entries(deletedForms).map(([planId, form]) => (
+              <li className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm" key={planId}>
+                <span className="text-muted-foreground">Soft-deleted plan</span>
+                {form}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <Dialog onOpenChange={(open) => { if (!open) { setDialogMode(null); setSelectedPlanId(null); } }} open={dialogMode === "create" || dialogMode === "edit"}>
         <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">

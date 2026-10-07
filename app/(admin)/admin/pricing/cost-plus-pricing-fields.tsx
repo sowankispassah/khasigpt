@@ -12,7 +12,7 @@ export type PricingPreviewContext = {
   walletUnitsPerInr: number;
 };
 
-const inputClassName = "rounded-md border bg-background px-3 py-2 text-sm";
+const inputClassName = "h-10 rounded-lg border bg-background px-3 text-sm";
 
 function formatNumber(value: number, maximumFractionDigits: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -66,7 +66,7 @@ export function CostPlusPreviewCard({
   );
 
   return (
-    <section className="rounded-lg border bg-muted/25 p-4">
+    <section className="rounded-lg bg-muted/40 p-4">
       <h4 className="font-semibold text-sm">{title}</h4>
       {!context ? (
         <p className="mt-2 text-muted-foreground text-xs">
@@ -298,7 +298,7 @@ export function ImageCostPlusFields({
           Provider Cost Type
         </FieldLabel>
         <select
-          className={inputClassName}
+          className={`${inputClassName} cursor-pointer`}
           id={`${prefix}-cost-type`}
           name="providerCostType"
           onChange={(event) =>

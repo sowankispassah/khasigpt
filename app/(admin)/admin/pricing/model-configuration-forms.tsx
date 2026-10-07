@@ -24,8 +24,8 @@ const PROVIDER_OPTIONS = [
   { label: "Custom", value: "custom" },
 ] as const;
 
-const inputClassName = "rounded-md border bg-background px-3 py-2 text-sm";
-const textareaClassName = `${inputClassName} min-h-[88px]`;
+const inputClassName = "h-10 rounded-lg border bg-background px-3 text-sm";
+const textareaClassName = "min-h-[88px] rounded-lg border bg-background px-3 py-2 text-sm";
 
 function FieldLabel({
   children,
@@ -170,7 +170,7 @@ function CheckboxField({
   return (
     <label className="flex cursor-pointer items-center gap-3" htmlFor={id}>
       <input
-        className="h-4 w-4"
+        className="h-4 w-4 cursor-pointer"
         defaultChecked={defaultChecked}
         id={id}
         name={name}
@@ -198,7 +198,7 @@ function ProviderField({ defaultValue, id }: { defaultValue: string; id: string 
         Provider
       </FieldLabel>
       <select
-        className={inputClassName}
+        className={`${inputClassName} cursor-pointer`}
         defaultValue={defaultValue}
         id={id}
         name="provider"
