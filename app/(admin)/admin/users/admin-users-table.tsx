@@ -162,6 +162,12 @@ function AdminUsersSearchForm({
   });
   const [isPending, startTransition] = useTransition();
   const { translate } = useTranslation();
+  const { editButton: recentChatEditButton, text: recentChatLabel } =
+    useEditableTranslation(
+      "admin.users.filters.sort.recent_chat",
+      "Recent chat",
+      "Sort option that places users with the latest sent chat message first."
+    );
   const { editButton, text: placeholder } = useEditableTranslation(
     "admin.users.search.placeholder",
     "Search by email, name, or user ID",
@@ -347,7 +353,7 @@ function AdminUsersSearchForm({
       <div className="shrink-0">
         <select
           aria-label={translate("admin.users.filters.sort.label", "Sort by")}
-          className="h-9 min-w-44 rounded-md border border-input bg-background px-2 text-sm"
+          className="h-9 min-w-44 cursor-pointer rounded-md border border-input bg-background px-2 text-sm"
           id="admin-user-sort"
           onChange={(event) => {
             const nextSort = event.target.value as AdminUserSortOption;
@@ -361,6 +367,9 @@ function AdminUsersSearchForm({
           </option>
           <option value="created_asc">
             {translate("admin.users.filters.sort.oldest", "Oldest signups")}
+          </option>
+          <option value="recent_chat">
+            {recentChatLabel}
           </option>
           <option value="last_login_desc">
             {translate(
@@ -384,6 +393,7 @@ function AdminUsersSearchForm({
             {translate("admin.users.filters.sort.email_desc", "Email Z-A")}
           </option>
         </select>
+        {sort === "recent_chat" ? recentChatEditButton : null}
       </div>
       <Button
         className="cursor-pointer"

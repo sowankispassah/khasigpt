@@ -50,6 +50,7 @@ import {
 } from "@/lib/billing/cost-plus";
 import type { GenerationPricing } from "@/lib/billing/generation-budget";
 import { withAdminDatabase } from "@/lib/db/admin-database";
+import { adminUserRecentChatOrderBy } from "@/lib/db/admin-user-chat-sort";
 import { normalizeAppSettingValueForWrite } from "@/lib/db/app-setting-validation";
 import { getLiteAppSettingUncached } from "@/lib/db/app-settings-lite";
 import { createManagedPool } from "@/lib/db/managed-client";
@@ -4413,6 +4414,7 @@ export type AdminUserListItem = Pick<
 
 export type AdminUserPresenceFilter = "all" | "offline" | "online";
 export type AdminUserSortOption =
+  | "recent_chat"
   | "created_asc"
   | "created_desc"
   | "email_asc"
@@ -4431,6 +4433,7 @@ export function isAdminUserSortOption(
   value: unknown
 ): value is AdminUserSortOption {
   return (
+    value === "recent_chat" ||
     value === "created_asc" ||
     value === "created_desc" ||
     value === "email_asc" ||
@@ -4463,6 +4466,8 @@ const adminUserIsOfflineExpression = sql<boolean>`(
 
 function adminUserOrderBy(sort: AdminUserSortOption) {
   switch (sort) {
+    case "recent_chat":
+      return adminUserRecentChatOrderBy();
     case "created_asc":
       return [asc(user.createdAt), asc(user.id)];
     case "email_asc":

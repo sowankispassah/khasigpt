@@ -935,6 +935,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Sort option that places oldest signups first.",
   },
   {
+    key: "admin.users.filters.sort.recent_chat",
+    defaultText: "Recent chat",
+    description: "Sort option that places users with the latest sent chat message first.",
+  },
+  {
     key: "admin.users.filters.sort.last_login_newest",
     defaultText: "Latest login",
     description: "Sort option that places users with the latest login first.",
