@@ -31,34 +31,33 @@ export function DeactivateAccountForm() {
   return (
     <form
       action={formAction}
-      className="space-y-4 rounded-lg border border-destructive/40 bg-destructive/5 p-6 shadow-sm"
+      className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6"
       ref={formRef}
     >
-      <div className="space-y-1">
-        <h2 className="font-semibold text-destructive text-lg">
+      <div className="min-w-0 space-y-1">
+        <h3 className="font-medium text-sm">
           <EditableTranslation
             defaultText="Deactivate account"
             translationKey="profile.deactivate.title"
           />
-        </h2>
+        </h3>
         <p className="text-muted-foreground text-sm">
           <EditableTranslation
             defaultText="This process cannot be undone. You can contact support for any further assistance."
             translationKey="profile.deactivate.description"
           />
         </p>
-      </div>
-
-      <div aria-live="polite" className="min-h-[1.25rem] text-sm">
         {state.status === "error" ? (
-          <span className="text-destructive">{state.message}</span>
+          <p aria-live="polite" className="text-destructive text-sm">
+            {state.message}
+          </p>
         ) : null}
       </div>
 
       <AlertDialog onOpenChange={setOpen} open={open}>
         <AlertDialogTrigger asChild>
           <button
-            className="inline-flex cursor-pointer items-center justify-center rounded-md bg-destructive px-4 py-2 font-medium text-destructive-foreground text-sm hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-70"
+            className="inline-flex h-10 w-full shrink-0 cursor-pointer items-center justify-center rounded-lg bg-destructive px-4 font-medium text-destructive-foreground text-sm transition-colors hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
             disabled={isPending}
             onClick={() => setOpen(true)}
             type="button"

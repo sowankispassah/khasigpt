@@ -11,6 +11,8 @@ type BackToHomeButtonProps = {
   className?: string;
   href?: string;
   translationKey?: string;
+  /** "pill" is the compact style used on account pages. */
+  variant?: "default" | "pill";
 };
 
 export function BackToHomeButton({
@@ -18,6 +20,7 @@ export function BackToHomeButton({
   className,
   href = "/",
   translationKey,
+  variant = "default",
 }: BackToHomeButtonProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -32,7 +35,9 @@ export function BackToHomeButton({
     <button
       data-native-back-button="true"
       className={cn(
-        "inline-flex cursor-pointer items-center gap-2 font-medium text-2xl text-primary transition-colors hover:text-primary/80",
+        variant === "pill"
+          ? "inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full border bg-card px-3.5 font-medium text-foreground/80 text-sm shadow-xs transition-colors hover:bg-muted hover:text-foreground [&_svg]:size-4"
+          : "inline-flex cursor-pointer items-center gap-2 font-medium text-2xl text-primary transition-colors hover:text-primary/80",
         className
       )}
       type="button"

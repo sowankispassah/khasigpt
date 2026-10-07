@@ -7,6 +7,13 @@ import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { updateNameAction } from "./actions";
+import {
+  PROFILE_INPUT_CLASS,
+  PROFILE_PRIMARY_BUTTON_CLASS,
+  ProfileField,
+  ProfileFormFooter,
+  ProfileStatusText,
+} from "./profile-ui";
 
 type NameFormProps = {
   initialFirstName: string | null;
@@ -85,34 +92,20 @@ export function NameForm({ initialFirstName, initialLastName }: NameFormProps) {
   };
 
   return (
-    <form
-      className="space-y-4 rounded-lg border bg-card p-6 shadow-sm"
-      onSubmit={handleSubmit}
-    >
-      <div>
-        <h2 className="font-semibold text-lg">
-          <EditableTranslation
-            defaultText="Personal details"
-            translationKey="profile.name.title"
-          />
-        </h2>
-        <p className="text-muted-foreground text-sm">
-          <EditableTranslation
-            defaultText="Update the name that appears across the product."
-            translationKey="profile.name.description"
-          />
-        </p>
-      </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-2">
-          <label className="font-medium text-sm" htmlFor="profile-first-name">
+    <form className="space-y-5" onSubmit={handleSubmit}>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <ProfileField
+          htmlFor="profile-first-name"
+          label={
             <EditableTranslation
               defaultText="First name"
               translationKey="profile.name.first_label"
             />
-          </label>
+          }
+        >
           <input
-            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            autoComplete="given-name"
+            className={PROFILE_INPUT_CLASS}
             id="profile-first-name"
             maxLength={64}
             name="firstName"
@@ -121,16 +114,19 @@ export function NameForm({ initialFirstName, initialLastName }: NameFormProps) {
             type="text"
             value={firstName}
           />
-        </div>
-        <div className="space-y-2">
-          <label className="font-medium text-sm" htmlFor="profile-last-name">
+        </ProfileField>
+        <ProfileField
+          htmlFor="profile-last-name"
+          label={
             <EditableTranslation
               defaultText="Last name"
               translationKey="profile.name.last_label"
             />
-          </label>
+          }
+        >
           <input
-            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            autoComplete="family-name"
+            className={PROFILE_INPUT_CLASS}
             id="profile-last-name"
             maxLength={64}
             name="lastName"
@@ -139,39 +135,41 @@ export function NameForm({ initialFirstName, initialLastName }: NameFormProps) {
             type="text"
             value={lastName}
           />
-        </div>
+        </ProfileField>
       </div>
-      <div aria-live="polite" className="min-h-[1.25rem] text-sm">
-        {status?.type === "error" ? (
-          <span className="text-destructive">{status.message}</span>
-        ) : status?.type === "success" ? (
-          <span className="text-emerald-600">{status.message}</span>
-        ) : null}
-      </div>
-      <button
-        className="inline-flex cursor-pointer items-center justify-center rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground text-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-        disabled={isSaving}
-        type="submit"
-      >
-        {isSaving ? (
-          <span className="flex items-center gap-2">
-            <span className="h-4 w-4 animate-spin">
-              <LoaderIcon size={16} />
-            </span>
-            <span>
+      <ProfileFormFooter
+        action={
+          <button
+            className={PROFILE_PRIMARY_BUTTON_CLASS}
+            disabled={isSaving}
+            type="submit"
+          >
+            {isSaving ? (
+              <>
+                <span className="h-4 w-4 animate-spin">
+                  <LoaderIcon size={16} />
+                </span>
+                <span>
+                  <EditableTranslation
+                    defaultText="Saving..."
+                    translationKey="profile.name.saving"
+                  />
+                </span>
+              </>
+            ) : (
               <EditableTranslation
-                defaultText="Saving..."
-                translationKey="profile.name.saving"
+                defaultText="Save changes"
+                translationKey="profile.name.save_button"
               />
-            </span>
-          </span>
-        ) : (
-          <EditableTranslation
-            defaultText="Save changes"
-            translationKey="profile.name.save_button"
-          />
-        )}
-      </button>
+            )}
+          </button>
+        }
+        status={
+          status ? (
+            <ProfileStatusText type={status.type}>{status.message}</ProfileStatusText>
+          ) : null
+        }
+      />
     </form>
   );
 }

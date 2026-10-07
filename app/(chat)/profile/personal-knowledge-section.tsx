@@ -1,20 +1,17 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
+import { BookUser } from "lucide-react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
+import { AccountSection } from "@/components/account/account-ui";
 import {
   LoaderIcon,
   PencilEditIcon,
   PlusIcon,
   TrashIcon,
 } from "@/components/icons";
+import { useTranslation } from "@/components/language-provider";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,29 +25,38 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { RagEntryStatus } from "@/lib/db/schema";
+import { doneGlobalProgress, startGlobalProgress } from "@/lib/ui/global-progress";
 import {
   deletePersonalKnowledgeAction,
   savePersonalKnowledgeAction,
 } from "./actions";
+import { formatProfileDateTime, ProfilePill } from "./profile-ui";
 
 type StructuredField = {
   key: string;
   label: string;
+  labelKey: string;
   placeholder?: string;
+  placeholderKey?: string;
   format?: (value: string) => string;
 };
 
+// The formatted sentences are stored as entry content, so they stay English.
 const STRUCTURED_FIELDS: StructuredField[] = [
   {
     key: "fullName",
     label: "Full Name",
+    labelKey: "profile.knowledge.field.full_name",
     placeholder: "e.g. Jane Doe",
+    placeholderKey: "profile.knowledge.field.full_name_placeholder",
     format: (value) => `My name is ${value}`,
   },
   {
     key: "gender",
     label: "Gender",
+    labelKey: "profile.knowledge.field.gender",
     placeholder: "enter your gender or type Prefer not to say",
+    placeholderKey: "profile.knowledge.field.gender_placeholder",
     format: (value) => `My gender is ${value}`,
   },
 ];
@@ -79,11 +85,51 @@ const createEmptyStructured = () => {
   return result;
 };
 
+const STATUS_VARIANTS = {
+  approved: {
+    defaultText: "Approved",
+    key: "profile.knowledge.status.approved",
+    tone: "success",
+  },
+  pending: {
+    defaultText: "Pending approval",
+    key: "profile.knowledge.status.pending",
+    tone: "warning",
+  },
+  rejected: {
+    defaultText: "Rejected",
+    key: "profile.knowledge.status.rejected",
+    tone: "danger",
+  },
+} as const;
+
+function StatusBadge({
+  status,
+}: {
+  status: SerializedPersonalKnowledgeEntry["approvalStatus"];
+}) {
+  const variant = STATUS_VARIANTS[status];
+  return (
+    <ProfilePill tone={variant.tone}>
+      <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />
+      <EditableTranslation
+        defaultText={variant.defaultText}
+        description="Approval status of a personal knowledge entry on the profile page."
+        translationKey={variant.key}
+      />
+    </ProfilePill>
+  );
+}
+
 export function PersonalKnowledgeSection({
   entries,
+  id,
 }: {
   entries: SerializedPersonalKnowledgeEntry[];
+  /** Anchor for the in-page section index. */
+  id?: string;
 }) {
+  const { translate } = useTranslation();
   const [items, setItems] = useState(entries);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [draft, setDraft] = useState<DraftEntry>({
@@ -92,9 +138,6 @@ export function PersonalKnowledgeSection({
     structured: createEmptyStructured(),
   });
   const [isPending, startTransition] = useTransition();
-  const [progressVisible, setProgressVisible] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const sortedItems = useMemo(
     () =>
@@ -111,39 +154,6 @@ export function PersonalKnowledgeSection({
       mainText: "",
       structured: createEmptyStructured(),
     });
-  }, []);
-
-  const beginProgress = useCallback(() => {
-    for (const timerId of timers.current) {
-      clearTimeout(timerId);
-    }
-    setProgressVisible(true);
-    setProgress(12);
-    timers.current = [
-      setTimeout(() => setProgress(42), 140),
-      setTimeout(() => setProgress(72), 300),
-      setTimeout(() => setProgress(90), 520),
-    ];
-  }, []);
-
-  const finishProgress = useCallback(() => {
-    for (const timerId of timers.current) {
-      clearTimeout(timerId);
-    }
-    timers.current = [];
-    setProgress(100);
-    setTimeout(() => {
-      setProgressVisible(false);
-      setProgress(0);
-    }, 240);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      for (const timerId of timers.current) {
-        clearTimeout(timerId);
-      }
-    };
   }, []);
 
   const openCreate = () => {
@@ -165,13 +175,23 @@ export function PersonalKnowledgeSection({
     for (const field of STRUCTURED_FIELDS) {
       const value = draft.structured[field.key]?.trim() ?? "";
       if (!value) {
-        toast.error(`${field.label} is required.`);
+        toast.error(
+          translate("profile.knowledge.toast.required", "{field} is required.").replace(
+            "{field}",
+            translate(field.labelKey, field.label)
+          )
+        );
         return;
       }
     }
     const mainText = draft.mainText.trim();
     if (!mainText) {
-      toast.error("Please add what people should know about you.");
+      toast.error(
+        translate(
+          "profile.knowledge.toast.main_required",
+          "Please add what people should know about you."
+        )
+      );
       return;
     }
 
@@ -187,7 +207,7 @@ export function PersonalKnowledgeSection({
       ? `${titleFromName} - Personal knowledge`
       : "Personal knowledge entry";
 
-    beginProgress();
+    startGlobalProgress();
     startTransition(() => {
       savePersonalKnowledgeAction({
         id: draft.id,
@@ -217,142 +237,178 @@ export function PersonalKnowledgeSection({
             ];
           });
           toast.success(
-            draft.id ? "Entry updated" : "Entry submitted for review"
+            draft.id
+              ? translate("profile.knowledge.toast.updated", "Entry updated")
+              : translate(
+                  "profile.knowledge.toast.submitted",
+                  "Entry submitted for review"
+                )
           );
           setDialogOpen(false);
           resetDraft();
         })
         .catch(() =>
-          toast.error("Unable to save your entry. Please try again.")
+          toast.error(
+            translate(
+              "profile.knowledge.toast.save_error",
+              "Unable to save your entry. Please try again."
+            )
+          )
         )
-        .finally(() => finishProgress());
+        .finally(() => doneGlobalProgress());
     });
   };
 
-  const handleDelete = (id: string) => {
-    beginProgress();
+  const handleDelete = (entryId: string) => {
+    startGlobalProgress();
     startTransition(() => {
-      deletePersonalKnowledgeAction({ entryId: id })
+      deletePersonalKnowledgeAction({ entryId })
         .then((result) => {
           if (!result.success) {
             toast.error(result.error);
             return;
           }
-          setItems((prev) => prev.filter((item) => item.id !== id));
-          toast.success("Entry deleted");
+          setItems((prev) => prev.filter((item) => item.id !== entryId));
+          toast.success(
+            translate("profile.knowledge.toast.deleted", "Entry deleted")
+          );
         })
-        .catch(() => toast.error("Unable to delete entry. Please try again."))
-        .finally(() => finishProgress());
+        .catch(() =>
+          toast.error(
+            translate(
+              "profile.knowledge.toast.delete_error",
+              "Unable to delete entry. Please try again."
+            )
+          )
+        )
+        .finally(() => doneGlobalProgress());
     });
   };
 
-  const statusBadge = (
-    status: SerializedPersonalKnowledgeEntry["approvalStatus"]
-  ) => {
-    const variants: Record<
-      SerializedPersonalKnowledgeEntry["approvalStatus"],
-      { label: string; className: string }
-    > = {
-      approved: {
-        label: "Approved",
-        className: "bg-emerald-100 text-emerald-700",
-      },
-      pending: {
-        label: "Pending approval",
-        className: "bg-amber-100 text-amber-800",
-      },
-      rejected: { label: "Rejected", className: "bg-rose-100 text-rose-700" },
-    };
-    const variant = variants[status];
-    return (
-      <span
-        className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs ${variant.className}`}
-      >
-        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />
-        {variant.label}
+  const addButton = (
+    <Button
+      className="h-10 w-full cursor-pointer rounded-lg sm:w-auto"
+      disabled={isPending}
+      onClick={openCreate}
+      type="button"
+    >
+      <PlusIcon />
+      <span>
+        <EditableTranslation
+          defaultText="Add knowledge"
+          description="Button that opens the dialog to add a personal knowledge entry."
+          translationKey="profile.knowledge.add"
+        />
       </span>
-    );
-  };
+    </Button>
+  );
 
   return (
-    <section className="rounded-lg border bg-card p-6 shadow-sm">
-      {progressVisible ? (
-        <div className="fixed inset-x-0 top-0 z-40 h-1 bg-border/60">
-          <div
-            className="h-full bg-primary transition-[width] duration-200"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      ) : null}
+    <AccountSection
+      action={addButton}
+      description={
+        <EditableTranslation
+          defaultText="This information will be used to generate responses when users on the platform ask or search about you."
+          description="Description of the personal knowledge section on the profile page."
+          translationKey="profile.knowledge.description"
+        />
+      }
+      icon={BookUser}
+      id={id}
+      title={
+        <EditableTranslation
+          defaultText="Personal knowledge"
+          description="Title of the personal knowledge section on the profile page."
+          translationKey="profile.knowledge.title"
+        />
+      }
+    >
+      <p className="mb-4 text-muted-foreground text-xs">
+        <EditableTranslation
+          defaultText="New or edited entries stay pending until an admin approves them."
+          description="Explains that personal knowledge entries need admin approval."
+          translationKey="profile.knowledge.review_note"
+        />
+      </p>
 
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h2 className="font-semibold text-lg">Personal knowledge</h2>
+      {sortedItems.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed px-4 py-8 text-center">
+          <span className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <BookUser aria-hidden="true" className="size-5" />
+          </span>
           <p className="text-muted-foreground text-sm">
-            This information will be used to generate responses when users on
-            the platform ask or search about you.
-          </p>
-          <p className="text-muted-foreground text-xs">
-            New or edited entries stay pending until an admin approves them.
+            <EditableTranslation
+              defaultText="No personal knowledge added yet."
+              description="Empty state of the personal knowledge section."
+              translationKey="profile.knowledge.empty"
+            />
           </p>
         </div>
-        <Button onClick={openCreate} type="button">
-          <PlusIcon />
-          <span>Add knowledge</span>
-        </Button>
-      </div>
-
-      <div className="mt-4 space-y-3">
-        {sortedItems.length === 0 ? (
-          <div className="rounded-md border border-dashed p-4 text-muted-foreground text-sm">
-            No personal knowledge added yet.
-          </div>
-        ) : (
-          sortedItems.map((entry) => (
-            <div
-              className="rounded-lg border bg-background/60 p-4 shadow-sm"
-              key={entry.id}
-            >
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="space-y-1">
+      ) : (
+        <ul className="space-y-3">
+          {sortedItems.map((entry) => (
+            <li className="rounded-xl border bg-background p-4" key={entry.id}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="font-semibold text-base">{entry.title}</h3>
-                    {statusBadge(entry.approvalStatus)}
+                    <h3 className="break-words font-medium text-sm">{entry.title}</h3>
+                    <StatusBadge status={entry.approvalStatus} />
                   </div>
-                  <p className="text-muted-foreground text-sm">
-                    Updated {new Date(entry.updatedAt).toLocaleString()}
+                  <p className="text-muted-foreground text-xs">
+                    <EditableTranslation
+                      defaultText="Updated {date}"
+                      description="When a personal knowledge entry was last updated."
+                      translationKey="profile.knowledge.updated"
+                      values={{
+                        date: formatProfileDateTime(entry.updatedAt) ?? "—",
+                      }}
+                    />
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2">
                   <Button
+                    className="h-9 cursor-pointer rounded-lg"
                     disabled={isPending}
                     onClick={() => openEdit(entry)}
                     size="sm"
                     type="button"
-                    variant="secondary"
+                    variant="outline"
                   >
                     <PencilEditIcon />
-                    <span>Edit</span>
+                    <span>
+                      <EditableTranslation
+                        defaultText="Edit"
+                        description="Edit a personal knowledge entry."
+                        translationKey="profile.knowledge.edit"
+                      />
+                    </span>
                   </Button>
                   <Button
+                    className="h-9 cursor-pointer rounded-lg text-rose-700 hover:bg-rose-500/10 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-400"
                     disabled={isPending}
                     onClick={() => handleDelete(entry.id)}
                     size="sm"
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                   >
                     <TrashIcon />
-                    <span>Delete</span>
+                    <span>
+                      <EditableTranslation
+                        defaultText="Delete"
+                        description="Delete a personal knowledge entry."
+                        translationKey="profile.knowledge.delete"
+                      />
+                    </span>
                   </Button>
                 </div>
               </div>
-              <p className="line-clamp-3 text-foreground/90 text-sm leading-relaxed">
+              <p className="mt-3 line-clamp-3 text-foreground/90 text-sm leading-relaxed">
                 {entry.content}
               </p>
-            </div>
-          ))
-        )}
-      </div>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <Dialog
         onOpenChange={(open) => {
@@ -365,17 +421,40 @@ export function PersonalKnowledgeSection({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{draft.id ? "Edit entry" : "Add entry"}</DialogTitle>
+            <DialogTitle>
+              {draft.id ? (
+                <EditableTranslation
+                  defaultText="Edit entry"
+                  description="Title of the dialog for editing a personal knowledge entry."
+                  translationKey="profile.knowledge.dialog.edit_title"
+                />
+              ) : (
+                <EditableTranslation
+                  defaultText="Add entry"
+                  description="Title of the dialog for adding a personal knowledge entry."
+                  translationKey="profile.knowledge.dialog.add_title"
+                />
+              )}
+            </DialogTitle>
             <DialogDescription>
-              Keep details concise and focused on information you want the
-              platform to surface about you.
+              <EditableTranslation
+                defaultText="Keep details concise and focused on information you want the platform to surface about you."
+                description="Guidance in the personal knowledge entry dialog."
+                translationKey="profile.knowledge.dialog.description"
+              />
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div className="grid gap-3 md:grid-cols-2">
               {STRUCTURED_FIELDS.map((field) => (
                 <div className="space-y-1" key={field.key}>
-                  <Label htmlFor={`pk-${field.key}`}>{field.label}</Label>
+                  <Label htmlFor={`pk-${field.key}`}>
+                    <EditableTranslation
+                      defaultText={field.label}
+                      description="Field label in the personal knowledge entry dialog."
+                      translationKey={field.labelKey}
+                    />
+                  </Label>
                   <Input
                     id={`pk-${field.key}`}
                     onChange={(event) =>
@@ -387,7 +466,11 @@ export function PersonalKnowledgeSection({
                         },
                       }))
                     }
-                    placeholder={field.placeholder ?? ""}
+                    placeholder={
+                      field.placeholder && field.placeholderKey
+                        ? translate(field.placeholderKey, field.placeholder)
+                        : ""
+                    }
                     required
                     value={draft.structured[field.key] ?? ""}
                   />
@@ -395,7 +478,13 @@ export function PersonalKnowledgeSection({
               ))}
             </div>
             <div className="space-y-1">
-              <Label htmlFor="pk-content">Main text</Label>
+              <Label htmlFor="pk-content">
+                <EditableTranslation
+                  defaultText="Main text"
+                  description="Label of the main text field in the personal knowledge entry dialog."
+                  translationKey="profile.knowledge.field.main_text"
+                />
+              </Label>
               <Textarea
                 className="min-h-[160px] resize-y"
                 id="pk-content"
@@ -405,22 +494,45 @@ export function PersonalKnowledgeSection({
                     mainText: event.target.value,
                   }))
                 }
-                placeholder="Write what people should know about you when they search or ask about you. Your story, your profession, your achievements or anything that you do that people can know about"
+                placeholder={translate(
+                  "profile.knowledge.field.main_text_placeholder",
+                  "Write what people should know about you when they search or ask about you. Your story, your profession, your achievements or anything that you do that people can know about"
+                )}
                 required
                 value={draft.mainText}
               />
             </div>
           </div>
           <DialogFooter className="mt-4 flex items-center gap-2">
-            <Button disabled={isPending} onClick={handleSave} type="button">
+            <Button
+              className="cursor-pointer"
+              disabled={isPending}
+              onClick={handleSave}
+              type="button"
+            >
               {isPending ? (
                 <span className="h-4 w-4 animate-spin">
                   <LoaderIcon />
                 </span>
               ) : null}
-              <span>{draft.id ? "Save changes" : "Submit for approval"}</span>
+              <span>
+                {draft.id ? (
+                  <EditableTranslation
+                    defaultText="Save changes"
+                    description="Save an edited personal knowledge entry."
+                    translationKey="profile.knowledge.save_changes"
+                  />
+                ) : (
+                  <EditableTranslation
+                    defaultText="Submit for approval"
+                    description="Submit a new personal knowledge entry for admin approval."
+                    translationKey="profile.knowledge.submit"
+                  />
+                )}
+              </span>
             </Button>
             <Button
+              className="cursor-pointer"
               onClick={() => {
                 setDialogOpen(false);
                 resetDraft();
@@ -428,11 +540,15 @@ export function PersonalKnowledgeSection({
               type="button"
               variant="ghost"
             >
-              Cancel
+              <EditableTranslation
+                defaultText="Cancel"
+                description="Close the personal knowledge entry dialog without saving."
+                translationKey="profile.knowledge.cancel"
+              />
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </section>
+    </AccountSection>
   );
 }

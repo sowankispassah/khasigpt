@@ -1,10 +1,12 @@
 "use client";
 
+import { Camera } from "lucide-react";
 import Image from "next/image";
 import { useSession } from "next-auth/react";
 import {
   type ChangeEvent,
   type FormEvent,
+  type ReactNode,
   useEffect,
   useMemo,
   useState,
@@ -30,9 +32,12 @@ type AvatarFormProps = {
   initialImage: string | null;
   userName?: string | null;
   userEmail?: string | null;
+  /** Identity details shown beside the avatar. */
+  children?: ReactNode;
 };
 
 export function AvatarForm({
+  children,
   initialImage,
   userEmail,
   userName,
@@ -294,120 +299,141 @@ export function AvatarForm({
   };
 
   const showRemoveButton = Boolean(savedImage);
+  const fileInputId = "profile-avatar-file";
+  const savingLabel = (
+    <span className="flex items-center gap-2">
+      <span className="h-4 w-4 animate-spin">
+        <LoaderIcon size={16} />
+      </span>
+      <span>
+        <EditableTranslation
+          defaultText="Saving..."
+          translationKey="profile.picture.saving"
+        />
+      </span>
+    </span>
+  );
 
   return (
-    <form className="space-y-4" onSubmit={handleUpload}>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <Avatar className="h-20 w-20 overflow-hidden">
+    <form
+      className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6"
+      onSubmit={handleUpload}
+    >
+      <div className="relative shrink-0 self-start sm:self-center">
+        <Avatar className="size-24 overflow-hidden ring-4 ring-card">
           {preview ? (
             <Image
               alt="Profile avatar"
               className="h-full w-full object-cover"
-              height={80}
+              height={96}
               src={preview}
               unoptimized
-              width={80}
+              width={96}
             />
           ) : (
             <AvatarFallback
-              className="font-semibold text-lg text-white uppercase"
+              className="font-semibold text-2xl text-white uppercase"
               style={{ backgroundColor: avatarColor }}
             >
               {initials}
             </AvatarFallback>
           )}
         </Avatar>
+        <label
+          className="absolute right-0 bottom-0 flex size-9 cursor-pointer items-center justify-center rounded-full border bg-background text-foreground shadow-sm transition-colors hover:bg-muted"
+          htmlFor={fileInputId}
+          title={translate("profile.picture.choose", "Choose image")}
+        >
+          <Camera aria-hidden="true" className="size-4" />
+          <span className="sr-only">
+            <EditableTranslation
+              defaultText="Choose image"
+              translationKey="profile.picture.choose"
+            />
+          </span>
+        </label>
+        <input
+          accept={ACCEPTED_TYPES.join(",")}
+          className="sr-only"
+          disabled={isSaving}
+          id={fileInputId}
+          onChange={handleFileChange}
+          onClick={(event) => {
+            event.currentTarget.value = "";
+          }}
+          type="file"
+        />
+      </div>
 
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative inline-flex h-10 overflow-hidden rounded-md border border-input bg-background">
-              <span className="pointer-events-none inline-flex h-full items-center justify-center px-4 font-medium text-sm transition-colors">
-                <EditableTranslation
-                  defaultText="Choose image"
-                  translationKey="profile.picture.choose"
-                />
-              </span>
-              <input
-                accept={ACCEPTED_TYPES.join(",")}
-                className="absolute inset-0 cursor-pointer opacity-0"
-                onChange={handleFileChange}
-                onClick={(event) => {
-                  event.currentTarget.value = "";
-                }}
-                type="file"
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
+        {children}
+        <div className="flex flex-wrap items-center gap-2">
+          <label
+            className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg border border-input bg-background px-4 font-medium text-sm transition-colors hover:bg-muted"
+            htmlFor={fileInputId}
+          >
+            <EditableTranslation
+              defaultText="Choose image"
+              translationKey="profile.picture.choose"
+            />
+          </label>
+          <Button
+            className="h-10 cursor-pointer rounded-lg"
+            disabled={isSaving || !selectedFile}
+            type="submit"
+          >
+            {isSaving && pendingAction === "upload" ? (
+              savingLabel
+            ) : selectedFile ? (
+              <EditableTranslation
+                defaultText="Save changes"
+                translationKey="profile.picture.save_changes"
               />
-            </div>
-            <Button disabled={isSaving || !selectedFile} type="submit">
-              {isSaving && pendingAction === "upload" ? (
-                <span className="flex items-center gap-2">
-                  <span className="h-4 w-4 animate-spin">
-                    <LoaderIcon size={16} />
-                  </span>
-                  <span>
-                    <EditableTranslation
-                      defaultText="Saving..."
-                      translationKey="profile.picture.saving"
-                    />
-                  </span>
-                </span>
-              ) : selectedFile ? (
-                <EditableTranslation
-                  defaultText="Save changes"
-                  translationKey="profile.picture.save_changes"
-                />
+            ) : (
+              <EditableTranslation
+                defaultText="Upload"
+                translationKey="profile.picture.upload"
+              />
+            )}
+          </Button>
+          {showRemoveButton ? (
+            <Button
+              className="h-10 cursor-pointer rounded-lg"
+              disabled={isSaving}
+              onClick={handleRemove}
+              type="button"
+              variant="ghost"
+            >
+              {isSaving && pendingAction === "remove" ? (
+                savingLabel
               ) : (
                 <EditableTranslation
-                  defaultText="Upload"
-                  translationKey="profile.picture.upload"
+                  defaultText="Remove"
+                  translationKey="profile.picture.remove"
                 />
               )}
             </Button>
-            {showRemoveButton ? (
-              <Button
-                disabled={isSaving}
-                onClick={handleRemove}
-                type="button"
-                variant="ghost"
-              >
-                {isSaving && pendingAction === "remove" ? (
-                  <span className="flex items-center gap-2">
-                    <span className="h-4 w-4 animate-spin">
-                      <LoaderIcon size={16} />
-                    </span>
-                    <span>
-                      <EditableTranslation
-                        defaultText="Saving..."
-                        translationKey="profile.picture.saving"
-                      />
-                    </span>
-                  </span>
-                ) : (
-                  <EditableTranslation
-                    defaultText="Remove"
-                    translationKey="profile.picture.remove"
-                  />
-                )}
-              </Button>
-            ) : null}
-          </div>
-          <p className="text-muted-foreground text-xs">
-            <EditableTranslation
-              defaultText="PNG, JPG, or WEBP up to 2 MB."
-              translationKey="profile.picture.size_help"
-            />
-          </p>
+          ) : null}
         </div>
-      </div>
-
-      {message ? (
-        <p
-          className={`text-xs ${
-            messageType === "error" ? "text-destructive" : "text-emerald-600"
-          }`}
-        >
-          {message}
+        <p className="text-muted-foreground text-xs">
+          <EditableTranslation
+            defaultText="PNG, JPG, or WEBP up to 2 MB."
+            translationKey="profile.picture.size_help"
+          />
         </p>
-      ) : null}
+        {message ? (
+          <p
+            aria-live="polite"
+            className={
+              messageType === "error"
+                ? "text-destructive text-sm"
+                : "text-emerald-700 text-sm dark:text-emerald-400"
+            }
+          >
+            {message}
+          </p>
+        ) : null}
+      </div>
     </form>
   );
 }

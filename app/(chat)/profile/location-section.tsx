@@ -1,12 +1,17 @@
 "use client";
 
+import { LocateFixed, MapPin } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AccountSection } from "@/components/account/account-ui";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
+import { formatProfileDateTime } from "./profile-ui";
 
 type LocationSectionProps = {
+  /** Anchor for the in-page section index. */
+  id?: string;
   initialLatitude: number | null;
   initialLongitude: number | null;
   initialAccuracy: number | null;
@@ -14,6 +19,7 @@ type LocationSectionProps = {
 };
 
 export function LocationSection({
+  id,
   initialLatitude,
   initialLongitude,
   initialAccuracy,
@@ -193,27 +199,52 @@ export function LocationSection({
       });
   }, [persistLocation, translate]);
 
+  const formatCoordinate = (value: number | null) =>
+    value === null || value === undefined || !Number.isFinite(value)
+      ? "—"
+      : value.toFixed(5);
+  const lastUpdatedLabel = formatProfileDateTime(lastUpdated);
+  const values = [
+    {
+      key: "latitude",
+      label: (
+        <EditableTranslation
+          defaultText="Latitude"
+          translationKey="profile.location.latitude_label"
+        />
+      ),
+      value: formatCoordinate(latitude),
+    },
+    {
+      key: "longitude",
+      label: (
+        <EditableTranslation
+          defaultText="Longitude"
+          translationKey="profile.location.longitude_label"
+        />
+      ),
+      value: formatCoordinate(longitude),
+    },
+    {
+      key: "accuracy",
+      label: (
+        <EditableTranslation
+          defaultText="Accuracy (m)"
+          translationKey="profile.location.accuracy_label"
+        />
+      ),
+      value:
+        accuracy !== null && accuracy !== undefined ? String(Math.round(accuracy)) : "—",
+    },
+  ];
+
   return (
-    <section className="rounded-lg border bg-card p-6 shadow-sm">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="font-semibold text-lg">
-            <EditableTranslation
-              defaultText="Location (optional)"
-              translationKey="profile.location.title"
-            />
-          </h2>
-          <p className="text-muted-foreground text-sm">
-            <EditableTranslation
-              defaultText="Save your current location to power nearby business searches. If your device already allows location, we capture it automatically; otherwise you can save it manually."
-              translationKey="profile.location.description"
-            />
-          </p>
-        </div>
+    <AccountSection
+      action={
         <Button
+          className="h-10 w-full cursor-pointer rounded-lg sm:w-auto"
           disabled={isSaving}
           onClick={handleCapture}
-          size="sm"
           variant="outline"
         >
           {isSaving ? (
@@ -227,67 +258,59 @@ export function LocationSection({
               </span>
             </span>
           ) : (
-            <EditableTranslation
-              defaultText="Save current location"
-              translationKey="profile.location.save_button"
-            />
+            <span className="flex items-center gap-2">
+              <LocateFixed aria-hidden="true" className="size-4" />
+              <EditableTranslation
+                defaultText="Save current location"
+                translationKey="profile.location.save_button"
+              />
+            </span>
           )}
         </Button>
-      </div>
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-md border border-dashed px-3 py-2 text-sm">
-          <p className="text-muted-foreground text-xs uppercase">
-            <EditableTranslation
-              defaultText="Latitude"
-              translationKey="profile.location.latitude_label"
-            />
-          </p>
-          <p className="font-mono">{latitude ?? "—"}</p>
-        </div>
-        <div className="rounded-md border border-dashed px-3 py-2 text-sm">
-          <p className="text-muted-foreground text-xs uppercase">
-            <EditableTranslation
-              defaultText="Longitude"
-              translationKey="profile.location.longitude_label"
-            />
-          </p>
-          <p className="font-mono">{longitude ?? "—"}</p>
-        </div>
-        <div className="rounded-md border border-dashed px-3 py-2 text-sm">
-          <p className="text-muted-foreground text-xs uppercase">
-            <EditableTranslation
-              defaultText="Accuracy (m)"
-              translationKey="profile.location.accuracy_label"
-            />
-          </p>
-          <p className="font-mono">
-            {accuracy !== null && accuracy !== undefined
-              ? Math.round(accuracy)
-              : "—"}
-          </p>
-        </div>
-        <div className="rounded-md border border-dashed px-3 py-2 text-sm">
-          <p className="text-muted-foreground text-xs uppercase">
-            <EditableTranslation
-              defaultText="Last updated"
-              translationKey="profile.location.last_updated_label"
-            />
-          </p>
-          <p className="font-mono">
-            {lastUpdated
-              ? new Date(lastUpdated).toLocaleString()
-              : translate(
-                  "profile.location.not_captured",
-                  "Not captured yet"
-                )}
-          </p>
-        </div>
-      </div>
-
+      }
+      description={
+        <EditableTranslation
+          defaultText="Save your current location to power nearby business searches. If your device already allows location, we capture it automatically; otherwise you can save it manually."
+          translationKey="profile.location.description"
+        />
+      }
+      icon={MapPin}
+      id={id}
+      title={
+        <EditableTranslation
+          defaultText="Location (optional)"
+          translationKey="profile.location.title"
+        />
+      }
+    >
+      <dl className="grid grid-cols-3 gap-2 sm:gap-3">
+        {values.map((item) => (
+          <div className="min-w-0 rounded-xl bg-muted/50 px-3 py-3 sm:px-4" key={item.key}>
+            <dt className="text-muted-foreground text-xs">{item.label}</dt>
+            <dd className="mt-1 truncate font-medium font-mono text-sm tabular-nums">
+              {item.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-muted-foreground text-sm">
+        <span>
+          <EditableTranslation
+            defaultText="Last updated"
+            translationKey="profile.location.last_updated_label"
+          />
+          :
+        </span>
+        <span className="font-medium text-foreground">
+          {lastUpdatedLabel ??
+            translate("profile.location.not_captured", "Not captured yet")}
+        </span>
+      </p>
       {status ? (
-        <p className="mt-3 text-muted-foreground text-sm">{status}</p>
+        <p aria-live="polite" className="mt-2 text-muted-foreground text-sm">
+          {status}
+        </p>
       ) : null}
-    </section>
+    </AccountSection>
   );
 }
