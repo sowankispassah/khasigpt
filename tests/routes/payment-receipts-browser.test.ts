@@ -45,16 +45,16 @@ test("users and admins download receipts from recharge history; mobile ownership
     await dialog.getByRole("button", { name: "Hide transaction code" }).click();
     await dialog.getByRole("button", { name: "Download receipt" }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: "tmp/pdfs/receipt-history-mobile.png" });
+    // The admin recharge table shows from the md breakpoint; phones get a list.
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto("/admin/account");
-    const recharge = page.locator("summary").filter({ hasText: "Recharge log" });
+    const recharge = page.getByRole("heading", { exact: true, name: "Recharges" });
     await expect(recharge).toBeVisible();
-    await recharge.click();
     const adminDownload = page.getByRole("row").filter({ hasText: email }).getByRole("button", { name: "Download receipt" });
     await adminDownload.scrollIntoViewIfNeeded();
     const adminPromise = page.waitForEvent("download");
     await adminDownload.click();
     expect((await adminPromise).suggestedFilename()).toMatch(/^KhasiGPT-receipt-KG-/);
-    await page.setViewportSize({ width: 1440, height: 1000 });
     await recharge.scrollIntoViewIfNeeded();
     await page.screenshot({ path: "tmp/pdfs/receipt-admin-log.png" });
     const login = await request.post("/api/mobile/auth/login", { data: { email, password } });

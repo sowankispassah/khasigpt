@@ -121,9 +121,9 @@ test("Settings renders its confirmed sections without browser errors", async ({ 
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.goto("/admin/settings");
-  await expect(page.getByRole("heading", { name: "Maintenance", exact: true })).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByRole("heading", { name: "Feature settings", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Language settings", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Site access and maintenance", exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("heading", { name: "Feature access", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Languages", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Toggle admin sidebar", exact: true })).toBeEnabled();
   const databaseUrl = process.env.POSTGRES_URL;
   if (!databaseUrl) throw new Error("Read-only database verification requires local credentials.");
@@ -132,7 +132,7 @@ test("Settings renders its confirmed sections without browser errors", async ({ 
     const [counts] = await sql`SELECT (SELECT count(*)::int FROM language) AS languages, (SELECT count(*)::int FROM "TranslationFeatureLanguage") AS translations`;
     expect(counts.languages).toBeGreaterThan(0);
     expect(counts.translations).toBeGreaterThan(0);
-    for (const [name, count] of [["Language settings", counts.languages], ["Translation settings", counts.translations]] as const) {
+    for (const [name, count] of [["Languages", counts.languages], ["Translate page", counts.translations]] as const) {
       const section = page.locator("details").filter({ has: page.getByRole("heading", { name, exact: true }) });
       await section.locator(":scope > summary").click();
       await expect(section.locator(":scope > div details")).toHaveCount(count);
