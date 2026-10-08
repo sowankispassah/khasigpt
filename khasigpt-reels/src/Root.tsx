@@ -1,6 +1,8 @@
 import './index.css';
 import {Composition, Folder} from 'remotion';
 import {Reel} from './Reel';
+import {PromoEnhanced} from './enhanced/PromoEnhanced';
+import {ENH} from './enhanced/timing';
 import {S1Hook} from './scenes/S1Hook';
 import {S2Chat} from './scenes/S2Chat';
 import {S3Voice} from './scenes/S3Voice';
@@ -19,6 +21,7 @@ const base = {fps: FPS, width: WIDTH, height: HEIGHT};
 export const RemotionRoot: React.FC = () => (
 	<>
 		<Composition id="KhasiGPTReel" component={Reel} durationInFrames={TOTAL} {...base} />
+		<Composition id="KhasiGPTPromoEnhanced" component={PromoEnhanced} durationInFrames={Math.round(ENH.duration * FPS)} {...base} />
 		<Folder name="Scenes">
 			<Composition id="S1-Hook" component={S1Hook} durationInFrames={SCENES.hook} {...base} />
 			<Composition id="S2-Chat" component={S2Chat} durationInFrames={SCENES.chat} {...base} />

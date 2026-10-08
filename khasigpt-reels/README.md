@@ -13,7 +13,27 @@ npm run lint       # eslint + tsc
 
 Each scene is also registered on its own under **Scenes** in Studio. Scene timing lives in `src/timeline.ts`. All copy lives in `src/content.ts`.
 
-## Timeline
+## Enhanced cut of the current promo (`KhasiGPTPromoEnhanced`)
+
+The cut for today's release. It keeps the 21 s "KhasiGPT Promo Video Final.mp4" (`public/source/promo-final.mp4`), with its music and story, and adds motion on top. Render it with:
+
+```sh
+npx remotion render KhasiGPTPromoEnhanced out/KhasiGPT-promo-enhanced.mp4 --codec h264 --crf 16 --audio-codec aac --audio-bitrate 320k
+```
+
+| Time | What changed |
+| --- | --- |
+| 0–5.4 s | The real logo assembles, landing on the music's first hit at 0.87 s. Then "Wanrah sha phi" and a big "KhasiGPT" hit at 2.17 s, the "Kylli da ka ktien Khasi." pill at 3.47 s, and a build into the drop. |
+| 5.4–13.7 s | The original screen recording runs as a floating app card. Camera punch-ins frame the language chip, the dropdown, the dialog and the Khasi greeting. Captions, tap ripples and an English → Khasi indicator are added. |
+| 13.7–21 s | The end card is rebuilt sharp with the same copy and order: KhasiGPT 1.0, Download ïa ka app na, a Google Play button with a shine, Link ha bio with a bouncing arrow, Lane leit ha, and a typed khasigpt.com pill. |
+
+**Recording timing:**
+- **Lead:** until the dialog, the recording runs 0.4 s ahead, so the UI is fully visible on the drop.
+- **Freeze:** the dialog is then held on its last frame that still reads "change to Khasi?" (`public/source/modal-freeze.png`). In the app, the language name disappears about half a second after the dialog opens. The freeze ends at the original tap, after which everything is back in sync with the music.
+
+**Audio:** `python scripts/make_enhanced_audio.py` keeps the original music and layers synced effects on it, writing `public/promo-enhanced-soundtrack.wav`. Effects come from `scripts/sfx.py`. Timings are in `src/enhanced/timing.ts`.
+
+## Timeline (full feature reel)
 
 Every cut lands on a bar line of the 120 BPM score.
 
