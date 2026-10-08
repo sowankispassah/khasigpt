@@ -158,18 +158,18 @@ export async function sendPasswordResetEmail({
   const client = getBrevoClient();
   const email = new SendSmtpEmail();
 
-  email.subject = "Reset your AI Chatbot password";
+  email.subject = "Reset your KhasiGPT password";
   email.sender = { email: senderEmail, name: senderName };
   email.replyTo = { email: senderEmail, name: senderName };
   email.to = [{ email: toEmail, name: toName ?? undefined }];
   email.textContent =
-    "We received a request to reset your AI Chatbot password.\n\n" +
+    "We received a request to reset your KhasiGPT password.\n\n" +
     `You can choose a new password using the link below:\n${resetUrl}\n\n` +
     `If you didn't make this request, you can safely ignore this email.`;
   email.htmlContent = `
     <html>
       <body style="font-family: Arial, sans-serif;">
-        <p>We received a request to reset your AI Chatbot password.</p>
+        <p>We received a request to reset your KhasiGPT password.</p>
         <p>Click the button below to choose a new password.</p>
         <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0;">
           <tr>
