@@ -93,11 +93,11 @@ const camAt = (time: number) => {
 };
 
 const CAPTIONS: {from: number; to: number; lines: React.ReactNode[]}[] = [
-	{from: 5.55, to: 6.95, lines: ['Chat in', 'your language.']},
-	{from: 7.14, to: 8.42, lines: ['Pick', 'Khasi.']},
-	{from: 8.62, to: 10.15, lines: ['Switch the', 'whole app.']},
-	{from: 10.34, to: 11.2, lines: ['One tap.']},
-	{from: 11.4, to: 13.62, lines: ['Now it speaks', 'Khasi.']},
+	{from: 5.55, to: 6.95, lines: ['Ia kren da', 'ka ktien Khasi']},
+	{from: 7.14, to: 8.42, lines: ['Jied', 'Khasi']},
+	{from: 8.62, to: 10.15, lines: ['Kylla ha baroh', 'ka app']},
+	{from: 10.34, to: 11.2, lines: ['Tang shi click']},
+	{from: 11.4, to: 13.62, lines: ['Mynta text', 'da Khasi']},
 ];
 
 const LangPill: React.FC<{label: string; active: number}> = ({label, active}) => (
