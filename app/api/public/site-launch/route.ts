@@ -122,10 +122,22 @@ async function loadSiteLaunchSettingsMap() {
   throw new Error("site_launch_settings_unavailable");
 }
 
+// This endpoint is public, so it must never reveal the hidden admin entry
+// path or whether admin entry is enabled.
+function toPublicAvailability({
+  adminAccessEnabled: _adminAccessEnabled,
+  adminEntryPath: _adminEntryPath,
+  ...availability
+}: ReturnType<typeof parseSiteAvailability>) {
+  return availability;
+}
+
 export async function GET() {
   try {
     const { degraded, map: settingsMap } = await loadSiteLaunchSettingsMap();
-    const availability = parseSiteAvailability(settingsMap);
+    const availability = toPublicAvailability(
+      parseSiteAvailability(settingsMap)
+    );
     const payload = {
       confirmed: !degraded,
       degraded,
@@ -144,7 +156,7 @@ export async function GET() {
       }
     );
   } catch (error) {
-    const fallbackState = getSafeSiteAvailability();
+    const fallbackState = toPublicAvailability(getSafeSiteAvailability());
     console.error(
       "[api/public/site-launch] Failed to resolve site availability. Falling back to safe defaults.",
       error

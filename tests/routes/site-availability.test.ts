@@ -93,14 +93,14 @@ for (const [webLaunched, mobileAppLaunched] of [
 }
 
 test("keeps the public endpoint compatible with installed native releases", async () => {
-  const [route, nativeClient, nativeGate] = await Promise.all([
+  const [route, nativeLaunchStatus, nativeGate] = await Promise.all([
     readFile("app/api/public/site-launch/route.ts", "utf8"),
-    readFile("native/src/api/client.ts", "utf8"),
+    readFile("native/src/lib/launch-status.ts", "utf8"),
     readFile("native/src/screens/LaunchGateScreen.tsx", "utf8"),
   ]);
 
   expect(route).toContain("publicLaunched: availability.mobileAppLaunched");
-  expect(nativeClient).toContain("mobileAppLaunched: boolean");
+  expect(nativeLaunchStatus).toContain("mobileAppLaunched: boolean");
   expect(nativeGate).toContain("status.mobileAppLaunched");
 });
 
