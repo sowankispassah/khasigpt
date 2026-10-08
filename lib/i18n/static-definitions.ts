@@ -1001,6 +1001,26 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Admin user table actions column heading.",
   },
   {
+    key: "sidebar.history.study.more",
+    defaultText: "More study history",
+    description: "Sidebar button that loads more study mode chats in the history list.",
+  },
+  {
+    key: "sidebar.close",
+    defaultText: "Close sidebar",
+    description: "Accessible label for the phone-only button that closes the sidebar.",
+  },
+  {
+    key: "sidebar.section.tools",
+    defaultText: "Tools",
+    description: "Heading of the tools group in the app sidebar.",
+  },
+  {
+    key: "sidebar.history.item_actions",
+    defaultText: "Chat options",
+    description: "Accessible label for the button that opens actions for a chat in the sidebar history.",
+  },
+  {
     key: "user_menu.admin_console",
     defaultText: "Admin Console",
     description: "User menu entry that opens the admin console from the mobile app.",
