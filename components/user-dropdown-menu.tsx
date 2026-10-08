@@ -12,6 +12,7 @@ import {
   PenLine,
   ShieldCheck,
   Sparkles,
+  Sun,
   User,
   Wallet,
 } from "lucide-react";
@@ -711,25 +712,37 @@ export function UserDropdownMenu({
               />
             ))
           : null}
+        {/* The label names the mode the row switches to, so it reads
+            "Light mode" while dark and "Dark mode" while light. */}
         <UserMenuRow
-          aria-label={translate("user_menu.theme.dark", "Dark mode")}
+          aria-label={
+            isDark
+              ? translate("user_menu.theme.light", "Light mode")
+              : translate("user_menu.theme.dark", "Dark mode")
+          }
           data-testid="user-nav-item-theme"
-          icon={Moon}
+          icon={isDark ? Sun : Moon}
           label={
-            <EditableTranslation
-              defaultText="Dark mode"
-              translationKey="user_menu.theme.dark"
-            />
+            isDark ? (
+              <EditableTranslation
+                defaultText="Light mode"
+                translationKey="user_menu.theme.light"
+              />
+            ) : (
+              <EditableTranslation
+                defaultText="Dark mode"
+                translationKey="user_menu.theme.dark"
+              />
+            )
           }
           onSelect={(event) => {
-            // The switch flips in place, so keep the menu open.
+            // The label flips in place, so keep the menu open.
             event.preventDefault();
             if (isBusy) {
               return;
             }
             onToggleTheme();
           }}
-          switchValue={isDark}
         />
 
         {isAuthenticated && showInternalTools ? (
