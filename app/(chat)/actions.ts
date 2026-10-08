@@ -1,12 +1,9 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import type { VisibilityType } from "@/components/visibility-selector";
 import {
-  createAuditLogEntry,
-  createUserSubscription,
   deleteMessagesByChatIdAfterTimestamp,
   getChatById,
   getMessageById,
@@ -14,7 +11,6 @@ import {
   updateChatVisiblityById,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
-import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getChatRequestSession } from "./chat-route-session";
 
@@ -145,38 +141,4 @@ export async function ensureChatExistsAction({
   });
 
   return { id: chatId, existed: false };
-}
-
-export async function rechargeSubscriptionAction(formData: FormData) {
-  "use server";
-  const session = await getChatRequestSession();
-
-  if (!session?.user) {
-    throw new Error("unauthorized");
-  }
-
-  const planId = formData.get("planId")?.toString();
-
-  if (!planId) {
-    throw new Error("missing plan id");
-  }
-
-  const clientInfo = await getClientInfoFromHeaders();
-  const subscription = await createUserSubscription({
-    userId: session.user.id,
-    planId,
-  });
-
-  await createAuditLogEntry({
-    actorId: session.user.id,
-    action: "billing.recharge",
-    target: { subscriptionId: subscription.id, planId },
-    subjectUserId: session.user.id,
-    ...clientInfo,
-  });
-
-  revalidatePath("/", "layout");
-  revalidatePath("/chat");
-  revalidatePath("/recharge");
-  revalidatePath("/subscriptions");
 }
