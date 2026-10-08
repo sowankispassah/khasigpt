@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   forumDisabledResponse,
   forumErrorResponse,
+  forumWriteRateLimitResponse,
 } from "@/lib/forum/api-helpers";
 import { isForumEnabledForRole } from "@/lib/forum/config";
 import { createForumPost } from "@/lib/forum/service";
@@ -42,6 +43,10 @@ export async function POST(
   try {
     const { slug } = await context.params;
     const payload = createPostSchema.parse(await request.json());
+    const limited = await forumWriteRateLimitResponse(session.user.id, "reply");
+    if (limited) {
+      return limited;
+    }
     const post = await createForumPost({
       threadSlug: slug,
       authorId: session.user.id,

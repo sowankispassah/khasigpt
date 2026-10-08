@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import { ChatSDKError } from "@/lib/errors";
+import { incrementRateLimit } from "@/lib/security/rate-limit";
 
 export function forumErrorResponse(error: unknown) {
   if (error instanceof ChatSDKError) {
@@ -40,4 +41,23 @@ export function forumDisabledResponse() {
     },
     { status: 404 }
   );
+}
+
+// Per-user caps on forum writes so an open signup cannot flood threads,
+// replies or reaction toggles. Returns a 429 response when over the cap.
+const FORUM_WRITE_LIMITS = {
+  thread: { limit: 5, windowMs: 60 * 60 * 1000 },
+  reply: { limit: 10, windowMs: 10 * 60 * 1000 },
+  reaction: { limit: 60, windowMs: 60 * 1000 },
+} as const;
+
+export async function forumWriteRateLimitResponse(
+  userId: string,
+  action: keyof typeof FORUM_WRITE_LIMITS
+) {
+  const { allowed } = await incrementRateLimit(
+    `forum-${action}:${userId}`,
+    FORUM_WRITE_LIMITS[action]
+  );
+  return allowed ? null : new ChatSDKError("rate_limit:forum").toResponse();
 }

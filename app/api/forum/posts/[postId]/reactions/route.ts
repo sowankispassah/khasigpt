@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   forumDisabledResponse,
   forumErrorResponse,
+  forumWriteRateLimitResponse,
 } from "@/lib/forum/api-helpers";
 import { isForumEnabledForRole } from "@/lib/forum/config";
 import { toggleForumPostReaction } from "@/lib/forum/service";
@@ -38,6 +39,13 @@ export async function POST(request: NextRequest, context: PostRouteContext) {
   try {
     const { postId } = await context.params;
     const payload = reactionSchema.parse(await request.json());
+    const limited = await forumWriteRateLimitResponse(
+      session.user.id,
+      "reaction"
+    );
+    if (limited) {
+      return limited;
+    }
     const result = await toggleForumPostReaction({
       postId,
       userId: session.user.id,

@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import {
   forumErrorResponse,
+  forumWriteRateLimitResponse,
 } from "@/lib/forum/api-helpers";
 import { createForumThread, getForumOverview } from "@/lib/forum/service";
 import { getMobileSession } from "@/lib/mobile-auth-session";
@@ -80,6 +81,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const payload = createThreadSchema.parse(await request.json());
+    const limited = await forumWriteRateLimitResponse(session.user.id, "thread");
+    if (limited) {
+      return limited;
+    }
     const thread = await createForumThread({
       ...payload,
       authorId: session.user.id,

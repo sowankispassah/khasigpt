@@ -150,6 +150,8 @@ export function getMessageByErrorCode(errorCode: ErrorCode): string {
       return "The forum request could not be processed. Please verify the category or parameters.";
     case "not_found:forum":
       return "The requested forum resource was not found.";
+    case "rate_limit:forum":
+      return "You are posting too quickly. Please wait a few minutes and try again.";
 
     default:
       return "Something went wrong. Please try again later.";
