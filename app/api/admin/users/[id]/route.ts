@@ -1,4 +1,4 @@
-import { type NextRequest, NextResponse } from "next/server";
+import { after, type NextRequest, NextResponse } from "next/server";
 import { noStoreHeaders } from "@/lib/api/cache";
 import { verifyUserEmailForAdmin } from "@/lib/db/admin-user-email-verification";
 import {
@@ -11,6 +11,7 @@ import {
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
+import { deleteAccountAvatarBlobs } from "@/lib/uploads/account-avatar-cleanup";
 import { withTimeout } from "@/lib/utils/async";
 
 export const runtime = "nodejs";
@@ -368,6 +369,15 @@ export async function DELETE(
       return NextResponse.json(
         { error: "not_found" },
         { headers: noStoreHeaders(), status: 404 }
+      );
+    }
+
+    if (mode === "permanent") {
+      // Profile photos are public blobs outside the deletion transaction.
+      after(() =>
+        deleteAccountAvatarBlobs(userId).catch(() => {
+          console.error("[api/admin/users] Failed to delete profile photos.");
+        })
       );
     }
 

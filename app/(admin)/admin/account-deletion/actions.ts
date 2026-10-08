@@ -11,6 +11,7 @@ import type { AccountDeletionRequestStatus } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
 import { getActiveAdminSession } from "@/lib/security/admin-session";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
+import { deleteAccountAvatarBlobs } from "@/lib/uploads/account-avatar-cleanup";
 
 const VALID_STATUSES = new Set<AccountDeletionRequestStatus>([
   "pending",
@@ -61,6 +62,13 @@ export async function updateDeletionRequestStatusAction(formData: FormData) {
     if (!updated) {
       notice = "not-found";
     } else {
+      if (updated.status === "completed" && updated.userId) {
+        // Profile photos live outside the database transaction. A failure is
+        // logged, and saving the request as completed again retries it.
+        await deleteAccountAvatarBlobs(updated.userId).catch(() => {
+          console.error("[account-deletion] Failed to delete profile photos.");
+        });
+      }
       await createAuditLogEntry({
         actorId: session.user.id,
         action: "admin.account_deletion.status_update",

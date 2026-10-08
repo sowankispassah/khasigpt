@@ -63,6 +63,7 @@ import {
   type FeatureSettingWriteContext,
   isFeatureAccessSettingKey,
 } from "@/lib/settings/feature-setting-guard";
+import { claimAccountFilesForCleanup } from "@/lib/uploads/storage-lifecycle";
 import { DEFAULT_FREE_MESSAGES_PER_DAY, TOKENS_PER_CREDIT } from "../constants";
 import { ChatSDKError } from "../errors";
 import {
@@ -4256,6 +4257,9 @@ async function deleteUserPermanentlyInTransaction(
     DELETE FROM "Chat"
     WHERE "userId" = ${id}
   `);
+  // ChatFile rows have no foreign key to User, so hand the account's uploads
+  // and generated images to the next daily cleanup explicitly.
+  await claimAccountFilesForCleanup(tx, id);
 
   // Remove records that otherwise retain the deleted user's identity or
   // block deletion through a non-cascading foreign key.
@@ -6333,6 +6337,10 @@ async function deleteAccountDataForRequest(tx: any, userId: string) {
     await tx.delete(stream).where(inArray(stream.chatId, chatIds));
     await tx.delete(chat).where(inArray(chat.id, chatIds));
   }
+
+  // Runs after the chats are gone so their references no longer protect the
+  // account's uploads and generated images from the next daily cleanup.
+  await claimAccountFilesForCleanup(tx, userId);
 }
 
 export async function updateAccountDeletionRequestStatus({

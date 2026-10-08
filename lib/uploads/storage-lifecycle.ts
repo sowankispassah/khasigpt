@@ -36,6 +36,18 @@ export async function selectCleanupFiles(db: StorageDatabase, { now = new Date()
   });
 }
 
+// Account deletion hands the account's private files to the next daily
+// cleanup, which still checks ownership and the ETag before each delete. A
+// file that a live chat of another account or a shared configuration (hold)
+// still uses is kept; the normal rules release it once that use ends.
+export async function claimAccountFilesForCleanup(db: Pick<StorageDatabase, "execute">, userId: string) {
+  await db.execute(sql`
+    UPDATE "ChatFile" f SET "state" = 'deleting', "retryAt" = now()
+    WHERE f."userId" = ${userId}::uuid AND f."state" IN ('reserved','ready')
+      AND NOT EXISTS (SELECT 1 FROM "ChatFileHold" h WHERE h."key" = f."key")
+      AND NOT EXISTS (SELECT 1 FROM "ChatFileReference" r JOIN "Chat" c ON c."id" = r."chatId" WHERE r."key" = f."key" AND c."deletedAt" IS NULL)`);
+}
+
 export type StorageCleanupResult = { ok: boolean; dryRun: boolean; scanned: number; registered: number; eligible: number; deleted: number; failed: number; deferred: number; inventoryComplete: boolean };
 
 // The claim transaction has already made new attachments/restores fail closed.

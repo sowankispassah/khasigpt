@@ -10,7 +10,7 @@ import ts from "typescript";
 import * as schema from "@/lib/db/schema";
 import * as fileKeys from "@/lib/uploads/private-file-key";
 import * as lifecycle from "@/lib/uploads/storage-lifecycle";
-import { cleanClaimedFiles, selectCleanupFiles } from "@/lib/uploads/storage-lifecycle";
+import { claimAccountFilesForCleanup, cleanClaimedFiles, selectCleanupFiles } from "@/lib/uploads/storage-lifecycle";
 
 test.skip(process.env.ISOLATED_TEST_RUN !== "1", "Requires a disposable local database.");
 let client: ReturnType<typeof postgres>;
@@ -376,4 +376,21 @@ test("admin summary reads a validated coherent snapshot including inventory resu
     expect(summary.pending.unknown).toBeGreaterThanOrEqual(0);
     expect(typeof summary.hasNext).toBe("boolean");
   } finally { await client`DELETE FROM "ChatStorageAccount" WHERE "userId" = ${smaller}`; }
+});
+
+test("account deletion claims the account's files at once but keeps shared and in-use ones", async () => {
+  const fresh = await file(1);
+  const inUse = await file(1000);
+  await message(await chat(), inUse);
+  const held = await file(1000);
+  const id = randomUUID();
+  characters.push(id);
+  await client`INSERT INTO "Character" (id,"canonicalName","refImages") VALUES (${id},${`Storage fixture ${id}`},${JSON.stringify([{ url: part(held).url, type: "front" }])}::jsonb)`;
+  // A one-hour-old unattached upload is normally kept for 24 hours.
+  expect(await eligible()).not.toContain(fresh);
+  await claimAccountFilesForCleanup(database, owner);
+  const claimed = await eligible();
+  expect(claimed).toContain(fresh);
+  expect(claimed).not.toContain(inUse);
+  expect(claimed).not.toContain(held);
 });
