@@ -1,7 +1,20 @@
 "use client";
 
-import { EllipsisVertical } from "lucide-react";
-import Link from "next/link";
+import {
+  BookOpen,
+  CreditCard,
+  EllipsisVertical,
+  ExternalLink,
+  Languages,
+  LogOut,
+  MessagesSquare,
+  Moon,
+  PenLine,
+  ShieldCheck,
+  Sparkles,
+  User,
+  Wallet,
+} from "lucide-react";
 import React from "react";
 import useSWR from "swr";
 import { useTranslation } from "@/components/language-provider";
@@ -13,13 +26,16 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  UserMenuDivider,
+  UserMenuIdentity,
+  UserMenuPlanCard,
+  UserMenuPrimaryAction,
+  UserMenuRow,
+  UserMenuSubItem,
+} from "@/components/user-menu/user-menu-parts";
 import { cn, fetcher } from "@/lib/utils";
 
 type UserDropdownMenuProps = {
@@ -46,6 +62,8 @@ type UserDropdownMenuProps = {
   align?: "start" | "center" | "end";
   userDisplayName?: string;
   userEmail?: string;
+  /** Avatar version, so the menu header shows the same image as the trigger. */
+  userImageVersion?: string | null;
   currentPathname?: string | null;
   forumEnabled?: boolean;
 };
@@ -55,6 +73,7 @@ const AVATAR_COLORS = [
 ];
 const NON_ALPHA_REGEX = /[^a-zA-Z\s]/g;
 const WHITESPACE_SPLIT_REGEX = /\s+/;
+const PLAN_LOAD_DELAY_MS = 750;
 
 export function getInitials(name?: string | null, email?: string | null) {
   const source = name ?? email ?? "";
@@ -88,27 +107,23 @@ type BasicUser = {
   imageVersion?: string | null;
 };
 
-type UserMenuTriggerProps = React.ComponentPropsWithoutRef<"button"> & {
-  user: BasicUser;
-  isBusy?: boolean;
-  shouldFetchAvatar?: boolean;
-};
-
-export const UserMenuTrigger = React.forwardRef<
-  HTMLButtonElement,
-  UserMenuTriggerProps
->(({ user, className, isBusy = false, shouldFetchAvatar = true, ...props }, ref) => {
-  const initials = getInitials(user.name, user.email);
-  const avatarColor = getAvatarColor(user.email ?? user.name ?? undefined);
+/**
+ * Current avatar image. Shared by the trigger and the menu header; SWR
+ * dedupes the request because both use the same key.
+ */
+function useUserAvatarSrc(
+  imageVersion: string | null | undefined,
+  shouldFetch: boolean
+) {
   const [avatarOverride, setAvatarOverride] = React.useState<string | null>(
     null
   );
   const [versionOverride, setVersionOverride] = React.useState<
     string | null
   >(null);
-  const avatarKey = shouldFetchAvatar
+  const avatarKey = shouldFetch
     ? `/api/profile/avatar?v=${encodeURIComponent(
-        versionOverride ?? user.imageVersion ?? "none"
+        versionOverride ?? imageVersion ?? "none"
       )}`
     : null;
 
@@ -130,7 +145,22 @@ export const UserMenuTrigger = React.forwardRef<
   const { data } = useSWR<{ image: string | null }>(avatarKey, fetcher, {
     revalidateOnFocus: false,
   });
-  const avatarSrc = avatarOverride ?? data?.image ?? null;
+  return avatarOverride ?? data?.image ?? null;
+}
+
+type UserMenuTriggerProps = React.ComponentPropsWithoutRef<"button"> & {
+  user: BasicUser;
+  isBusy?: boolean;
+  shouldFetchAvatar?: boolean;
+};
+
+export const UserMenuTrigger = React.forwardRef<
+  HTMLButtonElement,
+  UserMenuTriggerProps
+>(({ user, className, isBusy = false, shouldFetchAvatar = true, ...props }, ref) => {
+  const initials = getInitials(user.name, user.email);
+  const avatarColor = getAvatarColor(user.email ?? user.name ?? undefined);
+  const avatarSrc = useUserAvatarSrc(user.imageVersion, shouldFetchAvatar);
 
   return (
     <button
@@ -169,6 +199,48 @@ export const UserMenuTrigger = React.forwardRef<
 
 UserMenuTrigger.displayName = "UserMenuTrigger";
 
+type PlanSnapshot = {
+  label: string | null;
+  credits: { remaining: number; total: number } | null;
+};
+
+const INFO_LINKS = [
+  {
+    labelKey: "user_menu.resources.about",
+    defaultLabel: "About Us",
+    path: "/about",
+    testId: "user-nav-item-about",
+  },
+  {
+    labelKey: "user_menu.resources.contact",
+    defaultLabel: "Contact Us",
+    path: "/about#contact",
+    testId: "user-nav-item-contact",
+  },
+  {
+    labelKey: "user_menu.resources.privacy",
+    defaultLabel: "Privacy Policy",
+    path: "/privacy-policy",
+    testId: "user-nav-item-privacy",
+  },
+  {
+    labelKey: "user_menu.resources.terms",
+    defaultLabel: "Terms of Service",
+    path: "/terms-of-service",
+    testId: "user-nav-item-terms",
+  },
+  {
+    labelKey: "user_menu.resources.refund",
+    defaultLabel: "Refund Policy",
+    path: "/refund-policy",
+    testId: "user-nav-item-refund",
+  },
+];
+
+const creditFormatter = new Intl.NumberFormat("en-IN", {
+  maximumFractionDigits: 2,
+});
+
 export function UserDropdownMenu({
   trigger,
   isAdmin,
@@ -189,16 +261,19 @@ export function UserDropdownMenu({
   align = "end",
   userDisplayName,
   userEmail,
+  userImageVersion = null,
   currentPathname,
   forumEnabled = true,
 }: UserDropdownMenuProps) {
-  const [planLabel, setPlanLabel] = React.useState<string | null>(null);
-  const [isPlanLoading, setIsPlanLoading] = React.useState(false);
+  const [plan, setPlan] = React.useState<PlanSnapshot | null>(null);
+  const [planStatus, setPlanStatus] = React.useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
   const [isLanguageOpen, setIsLanguageOpen] = React.useState(false);
   const [isResourcesOpen, setIsResourcesOpen] = React.useState(false);
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
+  const [hasOpenedMenu, setHasOpenedMenu] = React.useState(false);
   const dropdownTriggerRef = React.useRef<HTMLButtonElement | null>(null);
-  const ignoreNextResourcesOpenRef = React.useRef(false);
   const planRequestAbortRef = React.useRef<AbortController | null>(null);
   const planLoadTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null
@@ -210,12 +285,15 @@ export function UserDropdownMenu({
     isAdmin: canEditTranslations,
     toggleEnabled: toggleTranslationEdit,
   } = useTranslationEdit();
+  const avatarSrc = useUserAvatarSrc(
+    userImageVersion,
+    isAuthenticated && hasOpenedMenu
+  );
 
   const closeMenuImmediately = React.useCallback(() => {
     setIsMenuOpen(false);
     onOpenChange?.(false);
     onMenuClose?.();
-    ignoreNextResourcesOpenRef.current = false;
     setIsLanguageOpen(false);
     setIsResourcesOpen(false);
   }, [onMenuClose, onOpenChange]);
@@ -228,8 +306,8 @@ export function UserDropdownMenu({
     planRequestAbortRef.current?.abort();
     planRequestAbortRef.current = null;
     planLoadTriggeredRef.current = false;
-    setPlanLabel(null);
-    setIsPlanLoading(false);
+    setPlan(null);
+    setPlanStatus("idle");
   }, []);
 
   const cancelPendingPlanLoad = React.useCallback(() => {
@@ -239,7 +317,7 @@ export function UserDropdownMenu({
     clearTimeout(planLoadTimerRef.current);
     planLoadTimerRef.current = null;
     planLoadTriggeredRef.current = false;
-    setIsPlanLoading(false);
+    setPlanStatus((current) => (current === "loading" ? "idle" : current));
   }, []);
 
   React.useEffect(() => {
@@ -257,7 +335,7 @@ export function UserDropdownMenu({
     const controller = new AbortController();
     planRequestAbortRef.current = controller;
 
-    setIsPlanLoading(true);
+    setPlanStatus("loading");
 
     try {
       const response = await fetch("/api/billing/balance", {
@@ -270,6 +348,8 @@ export function UserDropdownMenu({
       }
 
       const data: {
+        creditsRemaining?: number | null;
+        creditsTotal?: number | null;
         plan: {
           name?: string | null;
           priceInPaise?: number | null;
@@ -280,6 +360,7 @@ export function UserDropdownMenu({
         return;
       }
 
+      let label: string | null = null;
       if (data.plan) {
         const formatter = new Intl.NumberFormat("en-IN", {
           style: "currency",
@@ -291,26 +372,30 @@ export function UserDropdownMenu({
             ? formatter.format(data.plan.priceInPaise / 100)
             : null;
 
-        const label =
+        label =
           data.plan.name && priceLabel
             ? `${data.plan.name} (${priceLabel})`
             : (data.plan.name ?? priceLabel ?? null);
-
-        setPlanLabel(label ?? null);
-      } else {
-        setPlanLabel(null);
       }
+      const total = Number(data.creditsTotal);
+      const remaining = Number(data.creditsRemaining);
+      setPlan({
+        credits:
+          Number.isFinite(total) && total > 0 && Number.isFinite(remaining)
+            ? { remaining: Math.max(0, remaining), total }
+            : null,
+        label,
+      });
+      setPlanStatus("ready");
     } catch (_error) {
       if (!controller.signal.aborted) {
-        setPlanLabel(null);
+        setPlan(null);
+        setPlanStatus("error");
         planLoadTriggeredRef.current = false;
-      }
-    } finally {
-      if (!controller.signal.aborted) {
-        setIsPlanLoading(false);
       }
     }
   }, [isAuthenticated]);
+
   React.useEffect(() => {
     if (!isAuthenticated) {
       resetPlanState();
@@ -360,15 +445,19 @@ export function UserDropdownMenu({
     (open: boolean) => {
       setIsMenuOpen(open);
       if (open) {
+        setHasOpenedMenu(true);
         onOpenChange?.(true);
         if (isAuthenticated && !planLoadTriggeredRef.current) {
           planLoadTriggeredRef.current = true;
+          // Show "Checking plan..." straight away; the request itself waits
+          // briefly so a quick open-and-close does not hit the API.
+          setPlanStatus((current) => (current === "ready" ? current : "loading"));
           planLoadTimerRef.current = setTimeout(() => {
             planLoadTimerRef.current = null;
             fetchPlan().catch((error) =>
               console.warn("Failed to load plan", error)
             );
-          }, 750);
+          }, PLAN_LOAD_DELAY_MS);
         }
         return;
       }
@@ -376,7 +465,6 @@ export function UserDropdownMenu({
       onOpenChange?.(false);
       onMenuClose?.();
       cancelPendingPlanLoad();
-      ignoreNextResourcesOpenRef.current = false;
       setIsLanguageOpen(false);
       setIsResourcesOpen(false);
     },
@@ -391,102 +479,23 @@ export function UserDropdownMenu({
     return () => window.removeEventListener("user-menu-close-request", handler);
   }, [handleMenuOpenChange]);
 
-  const toggleResources = React.useCallback(() => {
-    setIsResourcesOpen((prev) => {
-      const next = !prev;
-      ignoreNextResourcesOpenRef.current = !next;
-      return next;
-    });
-  }, []);
-
-  const handleResourcesPointerDown = React.useCallback(
-    (event: React.PointerEvent<HTMLElement>) => {
+  /** Rows that expand inline keep the menu open instead of selecting. */
+  const toggleSection = React.useCallback(
+    (event: Event, section: "language" | "resources") => {
       event.preventDefault();
-      event.stopPropagation();
-      toggleResources();
-    },
-    [toggleResources]
-  );
-
-  const handleResourcesKeyDown = React.useCallback(
-    (event: React.KeyboardEvent<HTMLElement>) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        event.stopPropagation();
-        toggleResources();
+      if (section === "language") {
+        setIsLanguageOpen((current) => !current);
+        setIsResourcesOpen(false);
+      } else {
+        setIsResourcesOpen((current) => !current);
+        setIsLanguageOpen(false);
       }
     },
-    [toggleResources]
+    []
   );
-
-  const handleResourcesOpenChange = React.useCallback((open: boolean) => {
-    if (open) {
-      if (ignoreNextResourcesOpenRef.current) {
-        ignoreNextResourcesOpenRef.current = false;
-        return;
-      }
-      setIsResourcesOpen(true);
-      return;
-    }
-
-    ignoreNextResourcesOpenRef.current = false;
-    setIsResourcesOpen(false);
-  }, []);
 
   const showSignOut = Boolean(isAuthenticated && onSignOut);
-
-  const infoLinks = [
-    {
-      labelKey: "user_menu.resources.about",
-      defaultLabel: "About Us",
-      path: "/about",
-      testId: "user-nav-item-about",
-    },
-    {
-      labelKey: "user_menu.resources.contact",
-      defaultLabel: "Contact Us",
-      path: "/about#contact",
-      testId: "user-nav-item-contact",
-    },
-    {
-      labelKey: "user_menu.resources.privacy",
-      defaultLabel: "Privacy Policy",
-      path: "/privacy-policy",
-      testId: "user-nav-item-privacy",
-    },
-    {
-      labelKey: "user_menu.resources.terms",
-      defaultLabel: "Terms of Service",
-      path: "/terms-of-service",
-      testId: "user-nav-item-terms",
-    },
-    {
-      labelKey: "user_menu.resources.refund",
-      defaultLabel: "Refund Policy",
-      path: "/refund-policy",
-      testId: "user-nav-item-refund",
-    },
-  ];
-
-  const renderInfoLinks = (className?: string) =>
-    infoLinks.map((item) => (
-      <DropdownMenuItem
-        className={cn("cursor-pointer", className)}
-        data-testid={item.testId}
-        key={item.path}
-        asChild
-      >
-        <Link href={item.path}>
-          <span className="flex w-full items-center justify-between gap-2">
-            <EditableTranslation
-              defaultText={item.defaultLabel}
-              translationKey={item.labelKey}
-            />
-          </span>
-        </Link>
-      </DropdownMenuItem>
-    ));
-
+  const isDark = resolvedTheme === "dark";
   const primaryLabel =
     (userDisplayName && userDisplayName.trim().length > 0
       ? userDisplayName.trim()
@@ -498,6 +507,33 @@ export function UserDropdownMenu({
       path && currentPathname ? currentPathname === path : false,
     [currentPathname]
   );
+  const activeLanguageName =
+    languageOptions.find((language) => language.code === activeLanguageCode)
+      ?.name ?? null;
+  const planLabel =
+    planStatus === "loading"
+      ? translate("user_menu.manage_subscriptions_status_checking", "Checking plan...")
+      : planStatus === "error"
+        ? translate(
+            "user_menu.manage_subscriptions_status_unavailable",
+            "Plan unavailable"
+          )
+        : (plan?.label ??
+          translate("user_menu.manage_subscriptions_status_fallback", "Free Plan"));
+  const planCredits = plan?.credits
+    ? {
+        percent: (plan.credits.remaining / plan.credits.total) * 100,
+        remaining: creditFormatter.format(plan.credits.remaining),
+        summary: (
+          <EditableTranslation
+            defaultText="of {total} credits left"
+            translationKey="recharge.current_balance.of_total"
+            values={{ total: creditFormatter.format(plan.credits.total) }}
+          />
+        ),
+      }
+    : null;
+  const showInternalTools = isAdmin || canEditTranslations;
 
   return (
     <DropdownMenu
@@ -505,298 +541,272 @@ export function UserDropdownMenu({
       onOpenChange={handleMenuOpenChange}
       open={isMenuOpen}
     >
-        <DropdownMenuTrigger
-          asChild
-          data-user-menu-trigger="1"
-          ref={dropdownTriggerRef}
-        >
-          {trigger}
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align={align}
-          className="w-[min(15rem,calc(100vw-1rem))] min-w-0 max-sm:[&_[role=menuitem]]:py-1 max-sm:[&_[role=separator]]:my-0.5 sm:w-auto sm:min-w-[16rem]"
-          data-testid="user-nav-menu"
-          side={side}
-        >
-          {primaryLabel && isAuthenticated ? (
-            <DropdownMenuItem
-              className="cursor-pointer font-medium text-foreground"
-              data-testid="user-nav-item-email"
-              asChild
-            >
-              <Link href="/profile">
-                <span className="flex w-full items-center justify-between gap-2">
-                  {primaryLabel}
-                </span>
-              </Link>
-            </DropdownMenuItem>
-          ) : null}
-          {isAuthenticated && (
-            <>
-              {primaryLabel ? <DropdownMenuSeparator /> : null}
-              <DropdownMenuItem
-                className="cursor-pointer"
-                data-testid="user-nav-item-profile"
-                asChild
-              >
-                <Link href="/profile">
-                  <span className="flex w-full items-center justify-between gap-2">
-                    <EditableTranslation
-                      defaultText="Profile"
-                      translationKey="user_menu.profile"
-                    />
-                  </span>
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="flex cursor-pointer flex-col items-start gap-1"
-                data-testid="user-nav-item-manage-subscriptions"
-                asChild
-              >
-                <Link href="/subscriptions">
-                  <span className="flex w-full items-center justify-between gap-2">
-                    <EditableTranslation
-                      defaultText="Manage Subscriptions"
-                      translationKey="user_menu.manage_subscriptions"
-                    />
-                  </span>
-                  <span className="text-muted-foreground text-xs opacity-80">
-                    {isPlanLoading
-                      ? translate(
-                          "user_menu.manage_subscriptions_status_checking",
-                          "Checking plan..."
-                        )
-                      : (planLabel ??
-                        translate(
-                          "user_menu.manage_subscriptions_status_fallback",
-                          "Free Plan"
-                        ))}
-                  </span>
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="cursor-pointer"
-                data-testid="user-nav-item-upgrade-plan"
-                asChild
-              >
-                <Link href="/recharge">
-                  <span className="flex w-full items-center justify-between gap-2">
+      <DropdownMenuTrigger
+        asChild
+        data-user-menu-trigger="1"
+        ref={dropdownTriggerRef}
+      >
+        {trigger}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align={align}
+        className="w-[min(20rem,calc(100vw-1rem))] min-w-0 rounded-2xl p-1.5 shadow-xl"
+        collisionPadding={8}
+        data-testid="user-nav-menu"
+        side={side}
+        sideOffset={8}
+      >
+        {isAuthenticated ? (
+          <>
+            {primaryLabel ? (
+              <UserMenuIdentity
+                avatarColor={getAvatarColor(userEmail ?? primaryLabel)}
+                avatarSrc={avatarSrc}
+                email={userEmail ?? null}
+                href="/profile"
+                initials={getInitials(userDisplayName ?? null, userEmail ?? null)}
+                name={primaryLabel}
+                nameTestId="user-nav-item-email"
+              />
+            ) : null}
+            <UserMenuPlanCard
+              action={
+                <UserMenuPrimaryAction
+                  href="/recharge"
+                  icon={Sparkles}
+                  label={
                     <EditableTranslation
                       defaultText="Upgrade plan"
                       translationKey="user_menu.upgrade_plan"
                     />
-                  </span>
-                </Link>
-              </DropdownMenuItem>
-              {isAdmin ? (
-                <DropdownMenuItem
-                  className="cursor-pointer"
-                  data-testid="user-nav-item-admin"
-                  onSelect={(event) =>
-                    handleSelect(event, {
-                      callback: () => {
-                        window.open("/admin", "_blank", "noopener,noreferrer");
-                        setIsMenuOpen(false);
-                      },
-                      skipProgress: true,
-                    })
                   }
-                >
-                  <span className="flex w-full items-center justify-between gap-2">
-                    <EditableTranslation
-                      defaultText="Open admin console"
-                      translationKey="user_menu.open_admin_console"
-                    />
-                  </span>
-                </DropdownMenuItem>
-              ) : null}
-              {canEditTranslations ? (
-                <DropdownMenuItem
-                  className="cursor-pointer"
-                  data-testid="user-nav-item-translation-edit-mode"
-                  onSelect={(event) =>
-                    handleSelect(event, {
-                      callback: toggleTranslationEdit,
-                      skipProgress: true,
-                    })
-                  }
-                >
-                  <span className="flex w-full items-center justify-between gap-2">
-                    {translationEditEnabled
-                      ? translate(
-                          "translation_edit.mode.disable",
-                          "Disable translation edit mode"
-                        )
-                      : translate(
-                          "translation_edit.mode.enable",
-                          "Enable translation edit mode"
-                        )}
-                  </span>
-                </DropdownMenuItem>
-              ) : null}
-              {isCreator ? (
-                <DropdownMenuItem
-                  className="cursor-pointer"
-                  data-testid="user-nav-item-creator"
-                  asChild
-                >
-                  <Link href="/creator-dashboard">
-                    <span className="flex w-full items-center justify-between gap-2">
-                      <EditableTranslation
-                        defaultText="Earnings dashboard"
-                        translationKey="referrals.dashboard_label"
-                      />
-                    </span>
-                  </Link>
-                </DropdownMenuItem>
-              ) : null}
-              <DropdownMenuSeparator />
-            </>
-          )}
+                  testId="user-nav-item-upgrade-plan"
+                />
+              }
+              credits={planCredits}
+              href="/subscriptions"
+              icon={CreditCard}
+              isLoading={planStatus === "loading"}
+              planLabel={planLabel}
+              testId="user-nav-item-manage-subscriptions"
+              title={
+                <EditableTranslation
+                  defaultText="Manage Subscriptions"
+                  translationKey="user_menu.manage_subscriptions"
+                />
+              }
+            />
+            <UserMenuRow
+              data-testid="user-nav-item-profile"
+              href="/profile"
+              icon={User}
+              label={
+                <EditableTranslation
+                  defaultText="Profile"
+                  translationKey="user_menu.profile"
+                />
+              }
+            />
+            {isCreator ? (
+              <UserMenuRow
+                data-testid="user-nav-item-creator"
+                href="/creator-dashboard"
+                icon={Wallet}
+                label={
+                  <EditableTranslation
+                    defaultText="Earnings dashboard"
+                    translationKey="referrals.dashboard_label"
+                  />
+                }
+              />
+            ) : null}
+          </>
+        ) : null}
 
-          {forumEnabled ? (
-            <DropdownMenuItem
-              className="cursor-pointer"
-              data-testid="user-nav-item-forum"
-              asChild
-            >
-              <Link href="/forum">
-                <span className="flex w-full items-center justify-between gap-2">
-                  <EditableTranslation
-                    defaultText="Community Forum"
-                    translationKey="user_menu.community_forum"
-                  />
-                </span>
-              </Link>
-            </DropdownMenuItem>
-          ) : null}
-          {languageOptions.length > 0 ? (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuSub
-                onOpenChange={setIsLanguageOpen}
-                open={isLanguageOpen}
-              >
-                <DropdownMenuSubTrigger
-                  className={cn(
-                    "flex w-full cursor-pointer items-center justify-between gap-2 sm:w-auto sm:justify-start"
-                  )}
-                  chevronOpen={isLanguageOpen}
-                  data-testid="user-nav-item-language"
-                >
-                  <EditableTranslation
-                    defaultText="Language"
-                    translationKey="user_menu.language"
-                  />
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="w-full min-w-0 rounded-md border bg-popover p-1 shadow-none max-sm:ml-[7px] sm:w-auto sm:min-w-[12rem] sm:shadow-lg">
-                  {languageOptions.map((language) => (
-                    <DropdownMenuItem
-                      className="cursor-pointer"
-                      data-testid={`user-nav-item-language-${language.code}`}
-                      disabled={
-                        isLanguageUpdating &&
-                        language.code !== activeLanguageCode
+        {forumEnabled ? (
+          <UserMenuRow
+            data-testid="user-nav-item-forum"
+            href="/forum"
+            icon={MessagesSquare}
+            label={
+              <EditableTranslation
+                defaultText="Community Forum"
+                translationKey="user_menu.community_forum"
+              />
+            }
+          />
+        ) : null}
+        {isAuthenticated || forumEnabled ? <UserMenuDivider /> : null}
+
+        {languageOptions.length > 0 ? (
+          <>
+            <UserMenuRow
+              data-testid="user-nav-item-language"
+              expanded={isLanguageOpen}
+              icon={Languages}
+              label={
+                <EditableTranslation
+                  defaultText="Language"
+                  translationKey="user_menu.language"
+                />
+              }
+              onSelect={(event) => toggleSection(event, "language")}
+              value={isLanguageOpen ? null : activeLanguageName}
+            />
+            {isLanguageOpen
+              ? languageOptions.map((language) => {
+                  const isActive = language.code === activeLanguageCode;
+                  return (
+                    <UserMenuSubItem
+                      aria-label={
+                        isActive
+                          ? `${language.name}, ${translate("user_menu.language.active", "Active")}`
+                          : language.name
                       }
+                      data-testid={`user-nav-item-language-${language.code}`}
+                      disabled={isLanguageUpdating && !isActive}
                       key={language.code}
+                      label={
+                        isActive && isLanguageUpdating
+                          ? `${language.name} · ${translate("user_menu.language.updating", "Updating...")}`
+                          : language.name
+                      }
                       onSelect={(event) =>
                         handleSelect(event, {
                           callback: () => onLanguageChange?.(language.code),
                         })
                       }
-                    >
-                      <span className="flex w-full items-center justify-between gap-2">
-                        <span className="truncate">{language.name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {language.code === activeLanguageCode
-                            ? isLanguageUpdating
-                              ? translate(
-                                  "user_menu.language.updating",
-                                  "Updating..."
-                                )
-                              : translate(
-                                  "user_menu.language.active",
-                                  "Active"
-                                )
-                            : null}
-                        </span>
-                      </span>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-            </>
-          ) : null}
-          <DropdownMenuSeparator />
-          <DropdownMenuSub
-            onOpenChange={handleResourcesOpenChange}
-            open={isResourcesOpen}
-          >
-            <DropdownMenuSubTrigger
-              className={cn(
-                "flex w-full cursor-pointer items-center justify-between gap-2 sm:w-auto sm:justify-start [&>svg]:ml-1 [&>svg]:shrink-0"
-              )}
-              chevronOpen={isResourcesOpen}
-              data-testid="user-nav-item-more"
-              onKeyDown={handleResourcesKeyDown}
-              onPointerDown={handleResourcesPointerDown}
-            >
-                <EditableTranslation
-                  defaultText="Resources"
-                  translationKey="user_menu.resources"
-                />
-            </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent className="w-full min-w-0 rounded-md border bg-popover p-1 shadow-none max-sm:ml-[7px] sm:w-auto sm:min-w-[12rem] sm:shadow-lg">
-              {renderInfoLinks()}
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            className="cursor-pointer"
-            data-testid="user-nav-item-theme"
-            onSelect={(event) =>
-              handleSelect(event, {
-                callback: onToggleTheme,
-              })
+                      pending={isActive && isLanguageUpdating}
+                      selected={isActive}
+                    />
+                  );
+                })
+              : null}
+          </>
+        ) : null}
+        <UserMenuRow
+          data-testid="user-nav-item-more"
+          expanded={isResourcesOpen}
+          icon={BookOpen}
+          label={
+            <EditableTranslation
+              defaultText="Resources"
+              translationKey="user_menu.resources"
+            />
+          }
+          onSelect={(event) => toggleSection(event, "resources")}
+        />
+        {isResourcesOpen
+          ? INFO_LINKS.map((item) => (
+              <UserMenuSubItem
+                data-testid={item.testId}
+                href={item.path}
+                key={item.path}
+                label={
+                  <EditableTranslation
+                    defaultText={item.defaultLabel}
+                    translationKey={item.labelKey}
+                  />
+                }
+              />
+            ))
+          : null}
+        <UserMenuRow
+          aria-label={translate("user_menu.theme.dark", "Dark mode")}
+          data-testid="user-nav-item-theme"
+          icon={Moon}
+          label={
+            <EditableTranslation
+              defaultText="Dark mode"
+              translationKey="user_menu.theme.dark"
+            />
+          }
+          onSelect={(event) => {
+            // The switch flips in place, so keep the menu open.
+            event.preventDefault();
+            if (isBusy) {
+              return;
             }
-          >
-            <span className="flex w-full items-center justify-between gap-2">
-              {resolvedTheme === "light" ? (
-                <EditableTranslation
-                  defaultText="Dark mode"
-                  translationKey="user_menu.theme.dark"
-                />
-              ) : (
-                <EditableTranslation
-                  defaultText="Light mode"
-                  translationKey="user_menu.theme.light"
-                />
-              )}
-            </span>
-          </DropdownMenuItem>
-          {showSignOut ? (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="cursor-pointer text-destructive focus:text-destructive"
-                data-testid="user-nav-item-auth"
+            onToggleTheme();
+          }}
+          switchValue={isDark}
+        />
+
+        {isAuthenticated && showInternalTools ? (
+          <>
+            <UserMenuDivider />
+            {isAdmin ? (
+              <UserMenuRow
+                data-testid="user-nav-item-admin"
+                icon={ShieldCheck}
+                label={
+                  <EditableTranslation
+                    defaultText="Admin Console"
+                    translationKey="user_menu.admin_console"
+                  />
+                }
                 onSelect={(event) =>
-                  onSignOut &&
                   handleSelect(event, {
-                    callback: onSignOut,
+                    callback: () => {
+                      window.open("/admin", "_blank", "noopener,noreferrer");
+                      setIsMenuOpen(false);
+                    },
+                    skipProgress: true,
                   })
                 }
-              >
-                <span className="flex w-full items-center justify-between gap-2">
-                  <EditableTranslation
-                    defaultText="Sign out"
-                    translationKey="user_menu.sign_out"
-                  />
-                </span>
-              </DropdownMenuItem>
-            </>
-          ) : null}
-        </DropdownMenuContent>
-      </DropdownMenu>
+                trailingIcon={ExternalLink}
+              />
+            ) : null}
+            {canEditTranslations ? (
+              <UserMenuRow
+                data-testid="user-nav-item-translation-edit-mode"
+                icon={PenLine}
+                label={
+                  translationEditEnabled
+                    ? translate(
+                        "translation_edit.mode.disable",
+                        "Disable translation edit mode"
+                      )
+                    : translate(
+                        "translation_edit.mode.enable",
+                        "Enable translation edit mode"
+                      )
+                }
+                onSelect={(event) =>
+                  handleSelect(event, {
+                    callback: toggleTranslationEdit,
+                    skipProgress: true,
+                  })
+                }
+                switchValue={translationEditEnabled}
+              />
+            ) : null}
+          </>
+        ) : null}
+
+        {showSignOut ? (
+          <>
+            <UserMenuDivider />
+            <UserMenuRow
+              data-testid="user-nav-item-auth"
+              destructive
+              icon={LogOut}
+              label={
+                <EditableTranslation
+                  defaultText="Sign out"
+                  translationKey="user_menu.sign_out"
+                />
+              }
+              onSelect={(event) =>
+                onSignOut &&
+                handleSelect(event, {
+                  callback: onSignOut,
+                })
+              }
+            />
+          </>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

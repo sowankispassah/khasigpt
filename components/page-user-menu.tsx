@@ -280,6 +280,7 @@ export function PageUserMenu({
           }
           userDisplayName={displayName ?? undefined}
           userEmail={user.email ?? undefined}
+          userImageVersion={user.imageVersion ?? null}
         />
       ) : (
         <UserDropdownMenu

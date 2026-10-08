@@ -44,9 +44,12 @@ test.describe("responsive chat navigation", () => {
   test("caps the account menu to the viewport without making it full width", async () => {
     const source = await readWorkspaceFile("components/user-dropdown-menu.tsx");
 
+    // 20rem matches the native account menu (320px) and still fits a 360px
+    // phone; the shared DropdownMenuContent caps height and scrolls.
     expect(source).toContain(
-      "w-[min(15rem,calc(100vw-1rem))] min-w-0"
+      "w-[min(20rem,calc(100vw-1rem))] min-w-0"
     );
-    expect(source).toContain("max-sm:[&_[role=menuitem]]:py-1");
+    expect(source).toContain("collisionPadding={8}");
+    expect(source).not.toContain("w-screen");
   });
 });
