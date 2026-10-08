@@ -712,8 +712,8 @@ export function UserDropdownMenu({
               />
             ))
           : null}
-        {/* The label names the mode the row switches to, so it reads
-            "Light mode" while dark and "Dark mode" while light. */}
+        {/* The switch shows the current theme; the label names the mode
+            it switches to ("Light mode" while dark, "Dark mode" while light). */}
         <UserMenuRow
           aria-label={
             isDark
@@ -736,13 +736,14 @@ export function UserDropdownMenu({
             )
           }
           onSelect={(event) => {
-            // The label flips in place, so keep the menu open.
+            // The switch flips in place, so keep the menu open.
             event.preventDefault();
             if (isBusy) {
               return;
             }
             onToggleTheme();
           }}
+          switchValue={isDark}
         />
 
         {isAuthenticated && showInternalTools ? (
