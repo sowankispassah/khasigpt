@@ -103,13 +103,13 @@ export async function sendVerificationEmail({
   email.replyTo = { email: senderEmail, name: senderName };
   email.to = [{ email: toEmail, name: toName ?? undefined }];
   email.textContent =
-    "Thanks for signing up for AI Chatbot!\n\n" +
+    "Thanks for signing up to KhasiGPT.\n\n" +
     `Please confirm your address by opening the link below:\n${verificationUrl}\n\n` +
     "If you didn’t create an account, you can ignore this message.";
   email.htmlContent = `
     <html>
       <body style="font-family: Arial, sans-serif;">
-        <p>Thanks for signing up for AI Chatbot!</p>
+        <p>Thanks for signing up to KhasiGPT.</p>
         <p>Click the button below to verify your email address and activate your account.</p>
         <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0;">
           <tr>
