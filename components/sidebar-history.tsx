@@ -1,12 +1,14 @@
 "use client";
 
 import { subMonths, subWeeks } from "date-fns";
+import { MessageSquareText } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { User } from "next-auth";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWRInfinite from "swr/infinite";
 import { useTranslation } from "@/components/language-provider";
+import { SidebarSectionLabel } from "@/components/sidebar/sidebar-section-label";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
   AlertDialog,
@@ -211,6 +213,27 @@ export function getChatHistoryPaginationKey(
     previousPageData
   );
 }
+
+function HistoryGroupLabel({ children }: { children: ReactNode }) {
+  return (
+    <div className="px-2.5 pt-2 pb-1 font-medium text-[11px] text-sidebar-foreground/45">
+      {children}
+    </div>
+  );
+}
+
+/** Dashed, muted panel used for the signed-out, empty and error states. */
+function HistoryStatePanel({ children }: { children: ReactNode }) {
+  return (
+    <div className="mx-0.5 flex flex-col items-start gap-2 rounded-lg border border-sidebar-border border-dashed px-3 py-3 text-sidebar-foreground/60 text-xs leading-relaxed">
+      <MessageSquareText aria-hidden="true" className="size-4 text-sidebar-foreground/40" />
+      {children}
+    </div>
+  );
+}
+
+const HISTORY_RETRY_BUTTON_CLASS =
+  "inline-flex h-8 cursor-pointer items-center rounded-lg border border-sidebar-border bg-background px-3 font-medium text-sidebar-foreground text-xs transition hover:bg-sidebar-accent";
 
 export function SidebarHistory({
   user,
@@ -512,7 +535,7 @@ export function SidebarHistory({
       : null;
   const resolvedLabel = label ?? (dynamicStudyLabel ? dynamicStudyLabel : null);
   const sectionLabel = resolvedLabel ? (
-    <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
+    <SidebarSectionLabel>
       {labelKey ? (
         <EditableTranslation
           defaultText={resolvedLabel}
@@ -521,20 +544,20 @@ export function SidebarHistory({
       ) : (
         resolvedLabel
       )}
-    </div>
+    </SidebarSectionLabel>
   ) : null;
 
   if (!user) {
     return (
-      <SidebarGroup>
+      <SidebarGroup className="px-2 py-0">
         {sectionLabel}
         <SidebarGroupContent>
-          <div className="flex w-full flex-row items-center justify-center gap-2 px-2 text-sm text-zinc-500">
+          <HistoryStatePanel>
             <EditableTranslation
               defaultText="Login to save and revisit previous chats!"
               translationKey="sidebar.history.login_prompt"
             />
-          </div>
+          </HistoryStatePanel>
         </SidebarGroupContent>
       </SidebarGroup>
     );
@@ -542,28 +565,25 @@ export function SidebarHistory({
 
   if (isLoading) {
     return (
-      <SidebarGroup>
+      <SidebarGroup className="px-2 py-0">
         {sectionLabel}
-        <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
+        <HistoryGroupLabel>
           <EditableTranslation
             defaultText="Today"
             translationKey="sidebar.history.section.today"
           />
-        </div>
+        </HistoryGroupLabel>
         <SidebarGroupContent>
-          <div className="flex flex-col">
-            {[44, 32, 28, 64, 52].map((item) => (
+          <div aria-busy="true" className="flex flex-col gap-0.5">
+            {[64, 48, 72, 40, 56].map((item) => (
               <div
-                className="flex h-8 items-center gap-2 rounded-md px-2"
+                className="flex h-9 items-center gap-2.5 rounded-lg px-2.5"
                 key={item}
               >
+                <div className="size-3.5 shrink-0 animate-pulse rounded bg-sidebar-accent-foreground/10" />
                 <div
-                  className="h-4 max-w-(--skeleton-width) flex-1 rounded-md bg-sidebar-accent-foreground/10"
-                  style={
-                    {
-                      "--skeleton-width": `${item}%`,
-                    } as React.CSSProperties
-                  }
+                  className="h-3 animate-pulse rounded bg-sidebar-accent-foreground/10"
+                  style={{ width: `${item}%` }}
                 />
               </div>
             ))}
@@ -575,10 +595,10 @@ export function SidebarHistory({
 
   if ((historyError || isHistoryDegraded) && chatsFromHistory.length === 0) {
     return (
-      <SidebarGroup>
+      <SidebarGroup className="px-2 py-0">
         {sectionLabel}
         <SidebarGroupContent>
-          <div className="flex flex-col gap-2 px-2 text-sm text-zinc-500">
+          <HistoryStatePanel>
             <span>
               <EditableTranslation
                 defaultText="Chat history could not load."
@@ -586,7 +606,7 @@ export function SidebarHistory({
               />
             </span>
             <button
-              className="w-fit cursor-pointer rounded-md border px-2 py-1 font-medium text-sidebar-foreground text-xs"
+              className={HISTORY_RETRY_BUTTON_CLASS}
               onClick={() => {
                 void mutate();
               }}
@@ -597,7 +617,7 @@ export function SidebarHistory({
                 translationKey="sidebar.history.retry"
               />
             </button>
-          </div>
+          </HistoryStatePanel>
         </SidebarGroupContent>
       </SidebarGroup>
     );
@@ -605,15 +625,15 @@ export function SidebarHistory({
 
   if (hasEmptyChatHistory && !isHistoryDegraded) {
     return (
-      <SidebarGroup>
+      <SidebarGroup className="px-2 py-0">
         {sectionLabel}
         <SidebarGroupContent>
-          <div className="flex w-full flex-row items-center justify-center gap-2 px-2 text-sm text-zinc-500">
+          <HistoryStatePanel>
             <EditableTranslation
               defaultText="Your conversations will appear here once you start chatting!"
               translationKey="sidebar.history.empty"
             />
-          </div>
+          </HistoryStatePanel>
         </SidebarGroupContent>
       </SidebarGroup>
     );
@@ -621,18 +641,18 @@ export function SidebarHistory({
 
   return (
     <>
-      <SidebarGroup>
+      <SidebarGroup className="px-2 py-0">
         {sectionLabel}
         <SidebarGroupContent>
           <SidebarMenu>
             {isHistoryDegraded ? (
-              <div className="mb-3 rounded-md border border-sidebar-border bg-sidebar-accent/40 px-2 py-2 text-sidebar-foreground/70 text-xs">
+              <div className="mx-0.5 mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-800 text-xs dark:text-amber-300">
                 <EditableTranslation
                   defaultText="Chat history could not be fully confirmed. Showing the last available items."
                   translationKey="sidebar.history.degraded"
                 />
                 <button
-                  className="mt-2 block cursor-pointer font-medium text-sidebar-foreground underline underline-offset-2"
+                  className="mt-1.5 block cursor-pointer font-medium underline underline-offset-2"
                   onClick={() => {
                     void mutate();
                   }}
@@ -645,15 +665,15 @@ export function SidebarHistory({
                 </button>
               </div>
             ) : null}
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-2">
               {groupedChats.today.length > 0 && (
                 <div>
-                  <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
+                  <HistoryGroupLabel>
                     <EditableTranslation
                       defaultText="Today"
                       translationKey="sidebar.history.section.today"
                     />
-                  </div>
+                  </HistoryGroupLabel>
                   {groupedChats.today.map((chat) => (
                     <ChatItem
                       chat={chat}
@@ -674,12 +694,12 @@ export function SidebarHistory({
 
               {groupedChats.yesterday.length > 0 && (
                 <div>
-                  <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
+                  <HistoryGroupLabel>
                     <EditableTranslation
                       defaultText="Yesterday"
                       translationKey="sidebar.history.section.yesterday"
                     />
-                  </div>
+                  </HistoryGroupLabel>
                   {groupedChats.yesterday.map((chat) => (
                     <ChatItem
                       chat={chat}
@@ -700,12 +720,12 @@ export function SidebarHistory({
 
               {groupedChats.lastWeek.length > 0 && (
                 <div>
-                  <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
+                  <HistoryGroupLabel>
                     <EditableTranslation
                       defaultText="Last 7 days"
                       translationKey="sidebar.history.section.last_week"
                     />
-                  </div>
+                  </HistoryGroupLabel>
                   {groupedChats.lastWeek.map((chat) => (
                     <ChatItem
                       chat={chat}
@@ -726,12 +746,12 @@ export function SidebarHistory({
 
               {groupedChats.lastMonth.length > 0 && (
                 <div>
-                  <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
+                  <HistoryGroupLabel>
                     <EditableTranslation
                       defaultText="Last 30 days"
                       translationKey="sidebar.history.section.last_month"
                     />
-                  </div>
+                  </HistoryGroupLabel>
                   {groupedChats.lastMonth.map((chat) => (
                     <ChatItem
                       chat={chat}
@@ -752,12 +772,12 @@ export function SidebarHistory({
 
               {groupedChats.older.length > 0 && (
                 <div>
-                  <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
+                  <HistoryGroupLabel>
                     <EditableTranslation
                       defaultText="Older than last month"
                       translationKey="sidebar.history.section.older"
                     />
-                  </div>
+                  </HistoryGroupLabel>
                   {groupedChats.older.map((chat) => (
                     <ChatItem
                       chat={chat}
@@ -781,9 +801,9 @@ export function SidebarHistory({
           {shouldObserveSentinel ? <div aria-hidden ref={sentinelRef} /> : null}
 
           {hasHiddenStudyHistory ? (
-            <div className="mt-4 px-2">
+            <div className="mt-3 px-2.5">
               <button
-                className="cursor-pointer rounded-full border border-sidebar-border bg-sidebar-accent/40 px-3 py-1 text-sidebar-foreground text-xs transition hover:bg-sidebar-accent"
+                className={HISTORY_RETRY_BUTTON_CLASS}
                 onClick={() => setShowAllStudyHistory(true)}
                 type="button"
               >
@@ -795,7 +815,7 @@ export function SidebarHistory({
             </div>
           ) : hasReachedEnd ? (
             mode === "study" ? null : (
-              <div className="mt-8 flex w-full flex-row items-center justify-center gap-2 px-2 text-sm text-zinc-500">
+              <div className="mt-4 px-2.5 text-center text-sidebar-foreground/45 text-xs">
                 <EditableTranslation
                   defaultText="You have reached the end of your chat history."
                   translationKey="sidebar.history.end"
@@ -803,9 +823,9 @@ export function SidebarHistory({
               </div>
             )
           ) : (
-            <div className="mt-8 flex flex-row items-center gap-2 p-2 text-zinc-500 dark:text-zinc-400">
+            <div className="mt-2 flex flex-row items-center gap-2 px-2.5 py-2 text-sidebar-foreground/55 text-xs">
               <div className="animate-spin">
-                <LoaderIcon />
+                <LoaderIcon size={12} />
               </div>
               <div>
                 <EditableTranslation

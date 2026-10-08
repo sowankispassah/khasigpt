@@ -1,13 +1,17 @@
 "use client";
 
 import {
-  BookOpen,
+  AudioLines,
   BriefcaseBusiness,
   Calculator,
-  Compass,
+  GraduationCap,
   Languages,
-  MicVocal,
+  Loader2,
+  type LucideIcon,
+  MapPin,
   Newspaper,
+  SquarePen,
+  X,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -17,8 +21,8 @@ import type { User } from "next-auth";
 import { useSession } from "next-auth/react";
 import { type MouseEvent, useCallback, useEffect, useState } from "react";
 import { preloadChat } from "@/components/chat-loader";
-import { PlusIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
+import { SidebarSectionLabel } from "@/components/sidebar/sidebar-section-label";
 import { SidebarResizeHandle } from "@/components/sidebar-resize-handle";
 import {
   EditableTranslation,
@@ -31,7 +35,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { buildPendingChatHref } from "@/lib/chat/navigation";
@@ -49,24 +52,26 @@ const SidebarHistory = dynamic(
     ),
   {
     ssr: false,
-    loading: () => (
-      <div className="flex flex-col gap-4 px-2 py-3">
-        <div className="h-3 w-16 animate-pulse rounded bg-sidebar-accent-foreground/15" />
-        <div className="flex flex-col gap-2">
-          {[1, 2, 3, 4, 5].map((item) => (
-            <div
-              className="flex h-8 animate-pulse items-center gap-2 rounded-md bg-sidebar-accent-foreground/10 px-2"
-              key={item}
-            >
-              <div className="h-4 w-5 rounded-full bg-sidebar-accent-foreground/20" />
-              <div className="h-3 flex-1 rounded bg-sidebar-accent-foreground/20" />
-            </div>
-          ))}
-        </div>
-      </div>
-    ),
+    loading: () => <SidebarHistorySkeleton />,
   }
 );
+
+function SidebarHistorySkeleton() {
+  return (
+    <div aria-busy="true" className="flex flex-col gap-1 px-2">
+      <div className="mx-2.5 mb-2 h-3 w-20 animate-pulse rounded bg-sidebar-accent-foreground/10" />
+      {[68, 52, 80, 44, 60].map((width) => (
+        <div className="flex h-9 items-center gap-2.5 rounded-lg px-2.5" key={width}>
+          <div className="size-3.5 shrink-0 animate-pulse rounded bg-sidebar-accent-foreground/10" />
+          <div
+            className="h-3 animate-pulse rounded bg-sidebar-accent-foreground/10"
+            style={{ width: `${width}%` }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // These request a fresh `/chat` render so a new chat id is generated, then the
 // Chat UI strips `new` back out of the URL.
@@ -146,6 +151,7 @@ export function AppSidebar({
   studyModeEnabled?: boolean;
 }) {
   const { setOpenMobile } = useSidebar();
+  const { translate } = useTranslation();
   const { data: sessionData } = useSession();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -515,25 +521,62 @@ export function AppSidebar({
     prefetchJobsModeData();
   }, [prefetchChatRoute, prefetchJobsModeData]);
 
+  const searchMode = searchParams.get("mode");
+  const isChatRootPath = pathname === "/" || pathname === "/chat";
+  const isOnPath = (href: string) =>
+    pathname === href || pathname.startsWith(`${href}/`);
+  const activeTool:
+    | "translate"
+    | "live-translation"
+    | "study"
+    | "jobs"
+    | "news"
+    | "calculator"
+    | "explore"
+    | null = isOnPath(TRANSLATE_HREF)
+    ? "translate"
+    : isOnPath(LIVE_TRANSLATION_HREF)
+      ? "live-translation"
+      : isOnPath(CALCULATOR_HREF)
+        ? "calculator"
+        : isOnPath(EXPLORE_HREF)
+          ? "explore"
+          : isChatRootPath && searchMode === "study"
+            ? "study"
+            : isChatRootPath && searchMode === "jobs"
+              ? "jobs"
+              : isChatRootPath && searchMode === "news"
+                ? "news"
+                : null;
+  const hasTools =
+    translateEnabled ||
+    liveTranslationEnabled ||
+    studyModeEnabled ||
+    jobsModeEnabled ||
+    newsEnabled ||
+    calculatorEnabled ||
+    exploreMeghalayaEnabled;
+  const isNavigationPending = pendingNavigation !== null;
+
   return (
     <Sidebar className="group-data-[side=left]:border-r-0">
-      <SidebarHeader>
+      <SidebarHeader className="gap-3 px-2 pt-3 pb-2">
         <SidebarMenu>
-          <div className="flex flex-row items-center justify-between">
+          <div className="flex flex-row items-center justify-between gap-2">
             <Link
-              className="flex cursor-pointer flex-row items-center"
+              className="flex min-w-0 cursor-pointer flex-row items-center gap-2 rounded-lg px-1.5 py-1 transition hover:bg-sidebar-accent/60"
               href={HOME_HREF}
               onClick={handleHomeClick}
             >
               <Image
                 alt="KhasiGPT logo"
-                className="h-8 w-6 rounded-md object-contain dark:brightness-150 dark:invert"
-                height={32}
+                className="h-7 w-5 shrink-0 rounded-md object-contain dark:brightness-150 dark:invert"
+                height={28}
                 priority
                 src="/images/khasigptlogo.png"
-                width={24}
+                width={20}
               />
-              <span className="cursor-pointer rounded-md px-2 font-semibold text-lg hover:bg-muted">
+              <span className="truncate font-semibold text-base tracking-tight">
                 {pendingNavigation === "home" ? (
                   <EditableTranslation
                     defaultText="Opening..."
@@ -548,219 +591,146 @@ export function AppSidebar({
                 )}
               </span>
             </Link>
-            <div className="md:hidden" />
+            <button
+              aria-label={translate("sidebar.close", "Close sidebar")}
+              className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-sidebar-foreground/70 transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground md:hidden"
+              onClick={() => setOpenMobile(false)}
+              title={translate("sidebar.close", "Close sidebar")}
+              type="button"
+            >
+              <X aria-hidden="true" className="size-4" />
+            </button>
           </div>
         </SidebarMenu>
+        <Link
+          aria-busy={pendingNavigation === "chat"}
+          aria-disabled={isNavigationPending}
+          className="flex h-10 w-full cursor-pointer items-center gap-2.5 rounded-lg border border-sidebar-border bg-background px-3 font-medium text-sidebar-foreground text-sm shadow-xs transition hover:bg-sidebar-accent aria-disabled:pointer-events-none aria-disabled:opacity-70"
+          href={NEW_CHAT_HREF}
+          onClick={handleNewChatClick}
+        >
+          {pendingNavigation === "chat" ? (
+            <Loader2 aria-hidden="true" className="size-4 shrink-0 animate-spin" />
+          ) : (
+            <SquarePen aria-hidden="true" className="size-4 shrink-0" />
+          )}
+          {pendingNavigation === "chat" ? (
+            <SidebarEditableMenuLabel
+              defaultText="Opening..."
+              translationKey="navigation.opening"
+            />
+          ) : (
+            <SidebarEditableMenuLabel
+              defaultText="New chat"
+              translationKey="sidebar.new_chat"
+            />
+          )}
+        </Link>
       </SidebarHeader>
-      <SidebarContent>
-        <div className="mt-5 px-2">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild className="cursor-pointer text-sm">
-                <Link
-                  aria-disabled={pendingNavigation !== null}
-                  href={NEW_CHAT_HREF}
-                  onClick={handleNewChatClick}
-                >
-                  <PlusIcon />
-                  {pendingNavigation === "chat" ? (
-                    <SidebarEditableMenuLabel
-                      defaultText="Opening..."
-                      translationKey="navigation.opening"
-                    />
-                  ) : (
-                    <SidebarEditableMenuLabel
-                      defaultText="New chat"
-                      translationKey="sidebar.new_chat"
-                    />
-                  )}
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-
-            {translateEnabled ? (
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild className="cursor-pointer text-sm">
-                  <Link
-                    aria-disabled={pendingNavigation !== null}
-                    href={TRANSLATE_HREF}
-                    onClick={handleTranslateClick}
-                    onFocus={handleTranslatePrefetch}
-                    onMouseEnter={handleTranslatePrefetch}
-                    onTouchStart={handleTranslatePrefetch}
-                  >
-                    <Languages />
-                    {pendingNavigation === "translate" ? (
-                      <SidebarEditableMenuLabel
-                        defaultText="Opening..."
-                        translationKey="navigation.opening"
-                      />
-                    ) : (
-                      <SidebarEditableMenuLabel
-                        defaultText="Translate"
-                        translationKey="sidebar.translate"
-                      />
-                    )}
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ) : null}
-            {liveTranslationEnabled ? (
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild className="cursor-pointer text-sm">
-                  <Link
-                    aria-disabled={pendingNavigation !== null}
-                    href={LIVE_TRANSLATION_HREF}
-                    onClick={handleLiveTranslationClick}
-                    onFocus={handleLiveTranslationPrefetch}
-                    onMouseEnter={handleLiveTranslationPrefetch}
-                    onTouchStart={handleLiveTranslationPrefetch}
-                  >
-                    <MicVocal />
-                    {pendingNavigation === "live-translation" ? (
-                      <SidebarEditableMenuLabel
-                        defaultText="Opening..."
-                        translationKey="navigation.opening"
-                      />
-                    ) : (
-                      <SidebarEditableMenuLabel
-                        defaultText="Live Translation"
-                        translationKey="sidebar.live_translation"
-                      />
-                    )}
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ) : null}
-            {studyModeEnabled ? (
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild className="cursor-pointer text-sm">
-                  <Link
-                    aria-disabled={pendingNavigation !== null}
-                    href={NEW_STUDY_HREF}
-                    onClick={handleNewStudyClick}
-                  >
-                    <BookOpen />
-                    {pendingNavigation === "study" ? (
-                      <SidebarEditableMenuLabel
-                        defaultText="Opening..."
-                        translationKey="navigation.opening"
-                      />
-                    ) : (
-                      <SidebarEditableMenuLabel
-                        defaultText="Study Mode"
-                        translationKey="sidebar.study_mode"
-                      />
-                    )}
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ) : null}
-            {jobsModeEnabled ? (
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild className="cursor-pointer text-sm">
-                  <Link
-                    aria-disabled={pendingNavigation !== null}
-                    href={VIEW_JOBS_HREF}
-                    onClick={handleViewJobsClick}
-                    onFocus={handleViewJobsPrefetch}
-                    onMouseEnter={handleViewJobsPrefetch}
-                    onTouchStart={handleViewJobsPrefetch}
-                  >
-                    <BriefcaseBusiness />
-                    {pendingNavigation === "jobs" ? (
-                      <SidebarEditableMenuLabel
-                        defaultText="Opening..."
-                        translationKey="navigation.opening"
-                      />
-                    ) : (
-                      <SidebarEditableMenuLabel
-                        defaultText="Jobs"
-                        translationKey="sidebar.jobs"
-                      />
-                    )}
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ) : null}
-            {newsEnabled ? (
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild className="cursor-pointer text-sm">
-                  <Link
-                    aria-disabled={pendingNavigation !== null}
-                    href={NEWS_HREF}
-                    onClick={handleNewsClick}
-                    onFocus={handleNewsPrefetch}
-                    onMouseEnter={handleNewsPrefetch}
-                    onTouchStart={handleNewsPrefetch}
-                  >
-                    <Newspaper />
-                    {pendingNavigation === "news" ? (
-                      <SidebarEditableMenuLabel
-                        defaultText="Opening..."
-                        translationKey="navigation.opening"
-                      />
-                    ) : (
-                      <SidebarEditableMenuLabel
-                        defaultText="News"
-                        translationKey="sidebar.news"
-                      />
-                    )}
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ) : null}
-            {calculatorEnabled ? (
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild className="cursor-pointer text-sm">
-                  <Link
-                    aria-disabled={pendingNavigation !== null}
-                    href={CALCULATOR_HREF}
-                    onClick={handleCalculatorClick}
-                    onFocus={handleCalculatorPrefetch}
-                    onMouseEnter={handleCalculatorPrefetch}
-                    onTouchStart={handleCalculatorPrefetch}
-                  >
-                    <Calculator />
-                    {pendingNavigation === "calculator" ? (
-                      <SidebarEditableMenuLabel
-                        defaultText="Opening..."
-                        translationKey="navigation.opening"
-                      />
-                    ) : (
-                      <SidebarEditableMenuLabel
-                        defaultText="Calculator"
-                        translationKey="sidebar.calculator"
-                      />
-                    )}
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ) : null}
-            {exploreMeghalayaEnabled ? (
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild className="cursor-pointer text-sm">
-                  <Link
-                    aria-disabled={pendingNavigation !== null}
-                    href={EXPLORE_HREF}
-                    onClick={handleExploreClick}
-                    onFocus={handleExplorePrefetch}
-                    onMouseEnter={handleExplorePrefetch}
-                    onTouchStart={handleExplorePrefetch}
-                  >
-                    <Compass />
-                    {pendingNavigation === "explore" ? (
-                      <SidebarEditableMenuLabel defaultText="Opening..." translationKey="navigation.opening" />
-                    ) : (
-                      <SidebarEditableMenuLabel defaultText="Nearby" translationKey="sidebar.nearby" />
-                    )}
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ) : null}
-          </SidebarMenu>
-        </div>
-        <SidebarSeparator />
+      <SidebarContent className="gap-4 pb-4">
+        {hasTools ? (
+          <section className="px-2">
+            <SidebarSectionLabel>
+              <EditableTranslation
+                defaultText="Tools"
+                description="Sidebar heading above the tool links such as Translate, Study mode and Calculator."
+                translationKey="sidebar.section.tools"
+              />
+            </SidebarSectionLabel>
+            <SidebarMenu className="gap-0.5">
+              {translateEnabled ? (
+                <SidebarNavRow
+                  active={activeTool === "translate"}
+                  defaultText="Translate"
+                  disabled={isNavigationPending}
+                  href={TRANSLATE_HREF}
+                  icon={Languages}
+                  onClick={handleTranslateClick}
+                  onPrefetch={handleTranslatePrefetch}
+                  pending={pendingNavigation === "translate"}
+                  translationKey="sidebar.translate"
+                />
+              ) : null}
+              {liveTranslationEnabled ? (
+                <SidebarNavRow
+                  active={activeTool === "live-translation"}
+                  defaultText="Live Translation"
+                  disabled={isNavigationPending}
+                  href={LIVE_TRANSLATION_HREF}
+                  icon={AudioLines}
+                  onClick={handleLiveTranslationClick}
+                  onPrefetch={handleLiveTranslationPrefetch}
+                  pending={pendingNavigation === "live-translation"}
+                  translationKey="sidebar.live_translation"
+                />
+              ) : null}
+              {studyModeEnabled ? (
+                <SidebarNavRow
+                  active={activeTool === "study"}
+                  defaultText="Study Mode"
+                  disabled={isNavigationPending}
+                  href={NEW_STUDY_HREF}
+                  icon={GraduationCap}
+                  onClick={handleNewStudyClick}
+                  pending={pendingNavigation === "study"}
+                  translationKey="sidebar.study_mode"
+                />
+              ) : null}
+              {jobsModeEnabled ? (
+                <SidebarNavRow
+                  active={activeTool === "jobs"}
+                  defaultText="Jobs"
+                  disabled={isNavigationPending}
+                  href={VIEW_JOBS_HREF}
+                  icon={BriefcaseBusiness}
+                  onClick={handleViewJobsClick}
+                  onPrefetch={handleViewJobsPrefetch}
+                  pending={pendingNavigation === "jobs"}
+                  translationKey="sidebar.jobs"
+                />
+              ) : null}
+              {newsEnabled ? (
+                <SidebarNavRow
+                  active={activeTool === "news"}
+                  defaultText="News"
+                  disabled={isNavigationPending}
+                  href={NEWS_HREF}
+                  icon={Newspaper}
+                  onClick={handleNewsClick}
+                  onPrefetch={handleNewsPrefetch}
+                  pending={pendingNavigation === "news"}
+                  translationKey="sidebar.news"
+                />
+              ) : null}
+              {calculatorEnabled ? (
+                <SidebarNavRow
+                  active={activeTool === "calculator"}
+                  defaultText="Calculator"
+                  disabled={isNavigationPending}
+                  href={CALCULATOR_HREF}
+                  icon={Calculator}
+                  onClick={handleCalculatorClick}
+                  onPrefetch={handleCalculatorPrefetch}
+                  pending={pendingNavigation === "calculator"}
+                  translationKey="sidebar.calculator"
+                />
+              ) : null}
+              {exploreMeghalayaEnabled ? (
+                <SidebarNavRow
+                  active={activeTool === "explore"}
+                  defaultText="Nearby"
+                  disabled={isNavigationPending}
+                  href={EXPLORE_HREF}
+                  icon={MapPin}
+                  onClick={handleExploreClick}
+                  onPrefetch={handleExplorePrefetch}
+                  pending={pendingNavigation === "explore"}
+                  translationKey="sidebar.nearby"
+                />
+              ) : null}
+            </SidebarMenu>
+          </section>
+        ) : null}
         <SidebarHistory
           label="Chat History"
           labelKey="sidebar.history.title"
@@ -771,5 +741,68 @@ export function AppSidebar({
       </SidebarContent>
       <SidebarResizeHandle />
     </Sidebar>
+  );
+}
+
+function SidebarNavRow({
+  active,
+  defaultText,
+  disabled,
+  href,
+  icon: Icon,
+  onClick,
+  onPrefetch,
+  pending,
+  translationKey,
+}: {
+  active: boolean;
+  defaultText: string;
+  disabled: boolean;
+  href: string;
+  icon: LucideIcon;
+  onClick: (event: MouseEvent<HTMLAnchorElement>) => void;
+  onPrefetch?: () => void;
+  pending: boolean;
+  translationKey: string;
+}) {
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        asChild
+        className="group/nav-row h-9 cursor-pointer gap-2.5 rounded-lg px-2.5 text-sidebar-foreground/85 hover:bg-sidebar-accent/60 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground"
+        isActive={active}
+      >
+        <Link
+          aria-busy={pending}
+          aria-current={active ? "page" : undefined}
+          aria-disabled={disabled}
+          href={href}
+          onClick={onClick}
+          onFocus={onPrefetch}
+          onMouseEnter={onPrefetch}
+          onTouchStart={onPrefetch}
+        >
+          {pending ? (
+            <Loader2 aria-hidden="true" className="animate-spin text-sidebar-foreground/60" />
+          ) : (
+            <Icon
+              aria-hidden="true"
+              className="text-sidebar-foreground/55 transition-colors group-hover/nav-row:text-sidebar-foreground/80 group-data-[active=true]/nav-row:text-sidebar-accent-foreground"
+            />
+          )}
+          {pending ? (
+            <SidebarEditableMenuLabel
+              defaultText="Opening..."
+              translationKey="navigation.opening"
+            />
+          ) : (
+            <SidebarEditableMenuLabel
+              defaultText={defaultText}
+              translationKey={translationKey}
+            />
+          )}
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
   );
 }

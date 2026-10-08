@@ -1,9 +1,4 @@
-import {
-  BookOpen,
-  BriefcaseBusiness,
-  MessageSquareText,
-  Newspaper,
-} from "lucide-react";
+import { BookOpen, BriefcaseBusiness, MessageSquareText, MoreVertical, Newspaper } from "lucide-react";
 import Link from "next/link";
 import { memo, useCallback, useRef } from "react";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
@@ -14,7 +9,6 @@ import {
   CheckCircleFillIcon,
   GlobeIcon,
   LockIcon,
-  MoreHorizontalIcon,
   ShareIcon,
   TrashIcon,
 } from "./icons";
@@ -93,9 +87,14 @@ const PureChatItem = ({
   });
 
   return (
-      <SidebarMenuItem>
-      <SidebarMenuButton asChild isActive={isActive}>
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        asChild
+        className="group/history-row h-9 rounded-lg px-2.5 text-sidebar-foreground/85 hover:bg-sidebar-accent/60 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground"
+        isActive={isActive}
+      >
         <Link
+          aria-current={isActive ? "page" : undefined}
           className="flex w-full items-center truncate text-left"
           href={href}
           prefetch={false}
@@ -135,10 +134,11 @@ const PureChatItem = ({
             maybePrefetch();
           }}
         >
-          <span className="flex min-w-0 flex-1 items-center gap-1">
-            <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-              <ChatModeIcon className="h-[11px] w-[11px] text-muted-foreground" />
-            </span>
+          <span className="flex min-w-0 flex-1 items-center gap-2.5">
+            <ChatModeIcon
+              aria-hidden="true"
+              className="size-3.5 shrink-0 text-sidebar-foreground/45 group-data-[active=true]/history-row:text-sidebar-accent-foreground/80"
+            />
             <span className="flex-1 truncate">{displayTitle}</span>
           </span>
         </Link>
@@ -147,10 +147,10 @@ const PureChatItem = ({
       <DropdownMenu modal={true}>
         <DropdownMenuTrigger asChild>
           <SidebarMenuAction
-            className="mr-0.5 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+            className="!top-1.5 right-1.5 size-6 rounded-md data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             showOnHover={!isActive}
           >
-            <MoreHorizontalIcon />
+            <MoreVertical aria-hidden="true" className="size-4" />
             <span className="sr-only">More</span>
           </SidebarMenuAction>
         </DropdownMenuTrigger>
