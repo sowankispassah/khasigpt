@@ -2,8 +2,8 @@ import React from 'react';
 import {Audio, Video} from '@remotion/media';
 import {AbsoluteFill, Img, interpolate, Sequence, staticFile, useCurrentFrame} from 'remotion';
 import {ArrowDown, ArrowRight, ArrowUp, Globe} from 'lucide-react';
-import {GradientText, LogoBuild} from '../components/Brand';
-import {Aurora, Caret, Flash, RiseWord, Shockwave, Tap} from '../components/Fx';
+import {LogoBuild} from '../components/Brand';
+import {Caret, Flash, RiseWord, Shockwave, Tap} from '../components/Fx';
 import {C, clamp, expoIn, expoOut, FONT, inOut, kf, pop, sec, tw} from '../theme';
 import {copy} from '../content';
 import {CARD, ENH, toCanvas, VIEW} from './timing';
@@ -23,12 +23,11 @@ const Opener: React.FC<{f: number}> = ({f}) => {
 	const title = s(ENH.titleHit);
 	return (
 		<AbsoluteFill style={{transform: `scale(${1 + out * 0.7})`, opacity: 1 - out, filter: out > 0.02 ? `blur(${out * 14}px)` : undefined}}>
-			<Aurora f={f} x={540} y={interpolate(up, [0, 1], [800, 860])} w={1500} h={1700} opacity={0.95} speed={1.3} />
 			<div style={{position: 'absolute', left: 540 - 170, top: interpolate(up, [0, 1], [800, 470]) - 171, transform: `scale(${punch * interpolate(up, [0, 1], [1, 0.62])}) rotate(${interpolate(f, [0, lock], [-30, 0], {...clamp, easing: expoOut})}deg)`}}>
 				<LogoBuild size={340} state={{ring, shield, spearA, spearB, spin: interpolate(f, [0, lock], [-60, 0], clamp)}} />
 			</div>
 			<Shockwave f={f} at={lock} x={540} y={800} size={520} width={5} dur={28} />
-			<Shockwave f={f} at={lock + 4} x={540} y={800} size={720} width={3} color={C.emerald} dur={32} />
+			<Shockwave f={f} at={lock + 4} x={540} y={800} size={720} width={3} color={C.mutedFg} dur={32} />
 
 			<div style={{position: 'absolute', left: 0, right: 0, top: 690, display: 'flex', justifyContent: 'center', gap: 28}}>
 				{['Wanrah', 'sha', 'phi'].map((w, i) => (
@@ -39,10 +38,10 @@ const Opener: React.FC<{f: number}> = ({f}) => {
 			</div>
 			<div style={{position: 'absolute', left: 0, right: 0, top: 830, display: 'flex', justifyContent: 'center', transform: `scale(${kf(f, [title, title + 5, title + 22], [1.18, 0.97, 1], expoOut)})`}}>
 				<RiseWord f={f} at={title - 6} size={212} weight={800} dur={14}>
-					<GradientText shift={interpolate(f, [title, s(5.4)], [0, 100], clamp)}>KhasiGPT</GradientText>
+					KhasiGPT
 				</RiseWord>
 			</div>
-			<Shockwave f={f} at={title} x={540} y={960} size={900} width={3} color={C.teal} dur={30} />
+			<Shockwave f={f} at={title} x={540} y={960} size={900} width={3} color={C.mutedFg} dur={30} />
 			<div
 				style={{
 					position: 'absolute',
@@ -95,10 +94,10 @@ const camAt = (time: number) => {
 
 const CAPTIONS: {from: number; to: number; lines: React.ReactNode[]}[] = [
 	{from: 5.55, to: 6.95, lines: ['Chat in', 'your language.']},
-	{from: 7.14, to: 8.42, lines: ['Pick', <GradientText key="k">Khasi.</GradientText>]},
+	{from: 7.14, to: 8.42, lines: ['Pick', 'Khasi.']},
 	{from: 8.62, to: 10.15, lines: ['Switch the', 'whole app.']},
 	{from: 10.34, to: 11.2, lines: ['One tap.']},
-	{from: 11.4, to: 13.62, lines: ['Now it speaks', <GradientText key="k">Khasi.</GradientText>]},
+	{from: 11.4, to: 13.62, lines: ['Now it speaks', 'Khasi.']},
 ];
 
 const LangPill: React.FC<{label: string; active: number}> = ({label, active}) => (
@@ -141,7 +140,6 @@ const Demo: React.FC<{f: number}> = ({f}) => {
 
 	return (
 		<AbsoluteFill style={{opacity: 1 - exit}}>
-			<Aurora f={f} x={540} y={960} w={1700} h={1300} opacity={0.75} speed={1.1} />
 			{/* camera */}
 			<AbsoluteFill style={{transformOrigin: '0 0', transform: `translate(${ax - cam.x * cam.z}px, ${ay - cam.y * cam.z}px) scale(${cam.z})`}}>
 				<div
@@ -154,7 +152,7 @@ const Demo: React.FC<{f: number}> = ({f}) => {
 						borderRadius: 26,
 						overflow: 'hidden',
 						background: '#fff',
-						boxShadow: '0 30px 70px rgba(15,23,42,0.12), 0 0 0 2px #e4e4e7',
+						boxShadow: '0 10px 28px rgba(9,9,11,0.08), 0 0 0 2px #e4e4e7',
 						transform: `scale(${interpolate(enter, [0, 1], [0.82, 1]) * (1 - exit * 0.2)}) translateY(${(1 - enter) * 60}px)`,
 					}}
 				>
@@ -220,7 +218,6 @@ const EndCard: React.FC<{f: number}> = ({f}) => {
 
 	return (
 		<AbsoluteFill>
-			<Aurora f={f} x={540} y={lockY + 300} w={1600} h={1700} opacity={interpolate(f, [start, start + 20], [0, 0.9], clamp)} speed={1.1} />
 			<div style={{position: 'absolute', left: logoX - logoSize / 2, top: lockY - logoSize / 2, transform: `scale(${punch}) rotate(${interpolate(f, [start, lock], [-28, 0], {...clamp, easing: expoOut})}deg)`}}>
 				<LogoBuild size={logoSize} state={{ring, shield, spearA, spearB, spin: interpolate(f, [start, lock], [-60, 0], clamp)}} />
 			</div>
@@ -266,7 +263,6 @@ const EndCard: React.FC<{f: number}> = ({f}) => {
 			</div>
 			<div style={{position: 'absolute', left: 0, right: 0, top: 1052, textAlign: 'center', fontSize: 42, fontWeight: 500, color: C.mutedFg, opacity: interpolate(f, [s(ENH.orVisit), s(ENH.orVisit) + 10], [0, 1], clamp)}}>Lane leit ha</div>
 			<div style={{position: 'absolute', left: 540, top: 1196, transform: `translate(-50%, -50%) scale(${pop(f, s(ENH.urlPill), 15, 150)})`}}>
-				<div style={{position: 'absolute', inset: '-50px -30px', borderRadius: 999, background: 'radial-gradient(50% 60% at 50% 50%, rgba(16,185,129,0.34), rgba(59,130,246,0.16) 55%, rgba(255,255,255,0) 75%)', opacity: f >= tapAt ? 1 : 0.6}} />
 				<div style={{position: 'relative', width: interpolate(f, [s(ENH.urlPill), s(ENH.urlPill) + 18], [140, 780], {...clamp, easing: expoOut}), height: 132, borderRadius: 999, background: '#fff', boxShadow: '0 26px 70px rgba(9,9,11,0.18), 0 0 0 2px #e4e4e7', display: 'flex', alignItems: 'center', padding: '0 18px 0 56px', overflow: 'hidden'}}>
 					<div style={{flex: 1, fontSize: 66, fontWeight: 700, letterSpacing: -2, color: C.ink, whiteSpace: 'nowrap'}}>
 						{url}
