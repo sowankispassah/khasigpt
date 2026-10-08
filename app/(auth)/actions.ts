@@ -15,8 +15,8 @@ import {
   updateUserProfile,
 } from "@/lib/db/queries";
 import { sendVerificationEmail } from "@/lib/email/brevo";
+import { allowAuthEmailAttempt } from "@/lib/security/auth-email-rate-limit";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
-import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { withTimeout } from "@/lib/utils/async";
 import { signIn } from "./auth";
@@ -26,10 +26,6 @@ const authFormSchema = z.object({
   password: z.string().min(6),
 });
 
-const REGISTER_RATE_LIMIT = {
-  limit: 5,
-  windowMs: 10 * 60 * 1000,
-};
 const AUTH_ACTION_DB_TIMEOUT_MS = 4000;
 
 async function runAuthActionDb<T>(
@@ -44,15 +40,11 @@ async function runAuthActionDb<T>(
 
 async function allowRegisterAttempt(email: string) {
   const headerStore = await headers();
-  const clientKey = getClientKeyFromHeaders(headerStore);
-  const normalizedEmail = email.trim().toLowerCase();
-
-  const [ipResult, emailResult] = await Promise.all([
-    incrementRateLimit(`register:ip:${clientKey}`, REGISTER_RATE_LIMIT),
-    incrementRateLimit(`register:email:${normalizedEmail}`, REGISTER_RATE_LIMIT),
-  ]);
-
-  return ipResult.allowed && emailResult.allowed;
+  return allowAuthEmailAttempt({
+    clientKey: getClientKeyFromHeaders(headerStore),
+    email,
+    kind: "register",
+  });
 }
 
 export type LoginActionState = {

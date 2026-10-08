@@ -10,6 +10,7 @@ import {
   getUser,
 } from "@/lib/db/queries";
 import { sendPasswordResetEmail } from "@/lib/email/brevo";
+import { allowAuthEmailAttempt } from "@/lib/security/auth-email-rate-limit";
 import { newPasswordSchema } from "@/lib/security/password-change";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
@@ -31,10 +32,6 @@ const resetSchema = z
   });
 
 const PASSWORD_RESET_EXPIRY_MS = 1000 * 60 * 60; // 1 hour
-const PASSWORD_RESET_RATE_LIMIT = {
-  limit: 5,
-  windowMs: 10 * 60 * 1000,
-};
 const PASSWORD_RESET_DB_TIMEOUT_MS = 4000;
 
 async function runPasswordResetDb<T>(
@@ -76,18 +73,11 @@ function resolveAppBaseUrl(): string {
 
 async function allowPasswordResetAttempt(email: string) {
   const headerStore = await headers();
-  const clientKey = getClientKeyFromHeaders(headerStore);
-  const normalizedEmail = email.trim().toLowerCase();
-
-  const [ipResult, emailResult] = await Promise.all([
-    incrementRateLimit(`password-reset:ip:${clientKey}`, PASSWORD_RESET_RATE_LIMIT),
-    incrementRateLimit(
-      `password-reset:email:${normalizedEmail}`,
-      PASSWORD_RESET_RATE_LIMIT
-    ),
-  ]);
-
-  return ipResult.allowed && emailResult.allowed;
+  return allowAuthEmailAttempt({
+    clientKey: getClientKeyFromHeaders(headerStore),
+    email,
+    kind: "password-reset",
+  });
 }
 
 export async function requestPasswordResetAction(
