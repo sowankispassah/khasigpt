@@ -13,5 +13,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ status: "not_found" }, { status: 400 });
   }
   const result = await verifyUserEmailByToken(parsed.data.token);
-  return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
+  // The query result carries the full User row (password hash, role,
+  // location); the app only needs the verification status.
+  return NextResponse.json(
+    { status: result.status },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }
