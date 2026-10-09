@@ -1,13 +1,13 @@
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { auth } from "@/app/(auth)/auth";
+import { safeAiErrorDiagnostics } from "@/lib/ai/error-diagnostics";
 import { TRANSLATE_FEATURE_FLAG_KEY } from "@/lib/constants";
 import {
   getLastKnownAppSetting,
   getTranslationFeatureLanguageByCodeRaw,
 } from "@/lib/db/queries";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
-import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { loadFeatureAccessSettingsByKeys } from "@/lib/settings/feature-access-settings";
 import { isFeatureEnabledForUser } from "@/lib/settings/user-feature-access";
 import { parseTranslateAccessModeSetting } from "@/lib/translate/config";
@@ -17,18 +17,38 @@ import {
 } from "@/lib/translate/live";
 import { withTimeout } from "@/lib/utils/async";
 
+// About 15 seconds of 16 kHz 16-bit mono PCM once base64 encoded. No web or
+// native client calls this route today, so nothing larger is expected.
+const LIVE_PREVIEW_MAX_AUDIO_BASE64_LENGTH = 640_000;
+// A preview is one short transcript and translation in a small JSON object.
+const LIVE_PREVIEW_MAX_OUTPUT_TOKENS = 512;
+// Limits are keyed by user only, so rotating networks cannot multiply them.
+const LIVE_PREVIEW_RATE_LIMIT = {
+  limit: 10,
+  windowMs: 60 * 1000,
+};
+const LIVE_PREVIEW_DAILY_RATE_LIMIT = {
+  limit: 200,
+  windowMs: 24 * 60 * 60 * 1000,
+};
+
 const bodySchema = z.object({
-  audioBase64: z.string().trim().min(1).max(2_500_000),
-  mimeType: z.string().trim().min(3).max(128),
+  audioBase64: z
+    .string()
+    .trim()
+    .min(1)
+    .max(LIVE_PREVIEW_MAX_AUDIO_BASE64_LENGTH),
+  mimeType: z
+    .string()
+    .trim()
+    .min(3)
+    .max(128)
+    .regex(/^audio\//i),
   targetLanguageCode: z.string().trim().min(2).max(16),
 });
 
 const TRANSLATE_SETTING_TIMEOUT_MS = 5_000;
 const LIVE_PREVIEW_TIMEOUT_MS = 20_000;
-const LIVE_PREVIEW_RATE_LIMIT = {
-  limit: 20,
-  windowMs: 5 * 60 * 1000,
-};
 
 export const runtime = "nodejs";
 
@@ -61,19 +81,30 @@ function parsePreviewResponse(text: string) {
   }
 }
 
-async function enforceLivePreviewRateLimit(request: Request, userId: string) {
-  const clientKey = getClientKeyFromHeaders(request.headers);
-  const { allowed, resetAt } = await incrementRateLimit(
-    `translate-live-preview:${userId}:${clientKey}`,
-    LIVE_PREVIEW_RATE_LIMIT
-  );
+async function enforceLivePreviewRateLimit(userId: string) {
+  const [shortTerm, daily] = await Promise.all([
+    incrementRateLimit(
+      `translate-live-preview:${userId}`,
+      LIVE_PREVIEW_RATE_LIMIT
+    ),
+    incrementRateLimit(
+      `translate-live-preview:daily:${userId}`,
+      LIVE_PREVIEW_DAILY_RATE_LIMIT
+    ),
+  ]);
 
-  if (allowed) {
+  if (shortTerm.allowed && daily.allowed) {
     return null;
   }
 
+  const { resetAt } = daily.allowed ? shortTerm : daily;
+
   return Response.json(
-    { message: "Too many live translation previews. Please try again shortly." },
+    {
+      message: daily.allowed
+        ? "Too many live translation previews. Please try again shortly."
+        : "You have reached today's live preview limit. Please try again later.",
+    },
     {
       status: 429,
       headers: {
@@ -94,10 +125,7 @@ export async function POST(request: Request) {
     return Response.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const rateLimited = await enforceLivePreviewRateLimit(
-    request,
-    session.user.id
-  );
+  const rateLimited = await enforceLivePreviewRateLimit(session.user.id);
   if (rateLimited) {
     return rateLimited;
   }
@@ -126,15 +154,22 @@ export async function POST(request: Request) {
   const translateMode = parseTranslateAccessModeSetting(rawTranslateSetting);
   const translateSettingsUnavailable =
     translateAccessSettings.status === "unavailable" && rawTranslateSetting == null;
-  const translateEnabled =
-    translateSettingsUnavailable ||
-    (await isFeatureEnabledForUser({
-      featureKey: TRANSLATE_FEATURE_FLAG_KEY,
-      mode: translateMode,
-      role: session.user.role,
-      source: "api.translate.live-preview.user-feature-access",
-      userId: session.user.id,
-    }));
+
+  // Fail closed: an unreadable setting must never open a paid feature.
+  if (translateSettingsUnavailable) {
+    return Response.json(
+      { message: "Live preview is temporarily unavailable." },
+      { status: 503, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+
+  const translateEnabled = await isFeatureEnabledForUser({
+    featureKey: TRANSLATE_FEATURE_FLAG_KEY,
+    mode: translateMode,
+    role: session.user.role,
+    source: "api.translate.live-preview.user-feature-access",
+    userId: session.user.id,
+  });
 
   if (!translateEnabled) {
     return Response.json({ message: "Not found" }, { status: 404 });
@@ -159,8 +194,9 @@ export async function POST(request: Request) {
 
   const apiKey = process.env.GOOGLE_API_KEY?.trim();
   if (!apiKey) {
+    console.error("[api/translate/live-preview] Google API key is not configured.");
     return Response.json(
-      { message: "GOOGLE_API_KEY is not configured." },
+      { message: "Live preview is unavailable." },
       { status: 500 }
     );
   }
@@ -175,6 +211,7 @@ export async function POST(request: Request) {
       ai.models.generateContent({
         model: GEMINI_LIVE_TRANSLATION_MODEL_ID,
         config: {
+          maxOutputTokens: LIVE_PREVIEW_MAX_OUTPUT_TOKENS,
           responseMimeType: "application/json",
           systemInstruction: buildLiveTranscriptAndTranslationPrompt({
             languageName: targetLanguage.name,
@@ -205,7 +242,10 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    console.error("[api/translate/live-preview] Preview generation failed.", error);
+    console.error(
+      "[api/translate/live-preview] Preview generation failed.",
+      safeAiErrorDiagnostics(error)
+    );
 
     return Response.json(
       {

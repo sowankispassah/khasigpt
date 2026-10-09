@@ -13,6 +13,8 @@ type Bucket = { count: number; resetAt: number };
 type RateLimitOptions = {
   windowMs?: number;
   limit?: number;
+  // Units this call consumes (default 1), e.g. characters for a text budget.
+  weight?: number;
   // Local fallback is appropriate only for inexpensive reads. Authentication
   // and billable work require the shared counter in production.
   failureMode?: "closed" | "local";
@@ -27,7 +29,7 @@ type RateLimitResult = {
 // One atomic operation for TCP and REST. Later requests never extend the
 // window, and a stale counter without an expiry is repaired atomically.
 const INCREMENT_SCRIPT = `
-  local count = redis.call("INCR", KEYS[1])
+  local count = redis.call("INCRBY", KEYS[1], ARGV[2])
   local ttl = redis.call("PTTL", KEYS[1])
   if ttl < 0 then
     redis.call("PEXPIRE", KEYS[1], ARGV[1])
@@ -129,16 +131,16 @@ async function restCommand(command: Array<string | number>) {
   });
 }
 
-async function incrementRemote(key: string, windowMs: number, limit: number) {
+async function incrementRemote(key: string, windowMs: number, limit: number, weight: number) {
   if (Date.now() < blockedUntil) return null;
   try {
     // Never fall back between different stores: that would split a quota.
     const result = await withTimeout((async () => {
       if (restUrl && restToken) {
-        return restCommand(["EVAL", INCREMENT_SCRIPT, 1, key, windowMs]);
+        return restCommand(["EVAL", INCREMENT_SCRIPT, 1, key, windowMs, weight]);
       }
       const client = await getRedisClient();
-      return client.eval(INCREMENT_SCRIPT, { keys: [key], arguments: [String(windowMs)] });
+      return client.eval(INCREMENT_SCRIPT, { keys: [key], arguments: [String(windowMs), String(weight)] });
     })(), REMOTE_TIMEOUT_MS, disconnectRedis);
     return decodeCounter(result, limit, windowMs);
   } catch {
@@ -149,7 +151,7 @@ async function incrementRemote(key: string, windowMs: number, limit: number) {
   }
 }
 
-function incrementLocal(key: string, windowMs: number, limit: number): RateLimitResult {
+function incrementLocal(key: string, windowMs: number, limit: number, weight: number): RateLimitResult {
   const now = Date.now();
   if (now >= nextCleanupAt || (buckets.size >= MAX_LOCAL_BUCKETS && now >= nextCapacityCleanupAt)) {
     for (const [bucketKey, bucket] of buckets) {
@@ -164,7 +166,7 @@ function incrementLocal(key: string, windowMs: number, limit: number): RateLimit
     bucket = { count: 0, resetAt: now + windowMs };
     buckets.set(key, bucket);
   }
-  if (bucket.count < limit) bucket.count += 1;
+  if (bucket.count + weight <= limit) bucket.count += weight;
   else return { allowed: false, remaining: 0, resetAt: bucket.resetAt };
   return { allowed: true, remaining: limit - bucket.count, resetAt: bucket.resetAt };
 }
@@ -172,15 +174,17 @@ function incrementLocal(key: string, windowMs: number, limit: number): RateLimit
 export async function incrementRateLimit(key: string, {
   windowMs = DEFAULT_WINDOW_MS,
   limit = DEFAULT_LIMIT,
+  weight = 1,
   failureMode = process.env.NODE_ENV === "production" && !isDisposableTestRun() ? "closed" : "local",
 }: RateLimitOptions = {}): Promise<RateLimitResult> {
-  if (!Number.isSafeInteger(windowMs) || windowMs < 1 || !Number.isSafeInteger(limit) || limit < 1) {
+  if (!Number.isSafeInteger(windowMs) || windowMs < 1 || !Number.isSafeInteger(limit) || limit < 1 ||
+    !Number.isSafeInteger(weight) || weight < 1) {
     throw new Error("Invalid rate-limit policy");
   }
   const hashedKey = storageKey(key);
-  const remote = await incrementRemote(hashedKey, windowMs, limit);
+  const remote = await incrementRemote(hashedKey, windowMs, limit, weight);
   if (remote) return remote;
-  return failureMode === "closed" ? unavailable() : incrementLocal(hashedKey, windowMs, limit);
+  return failureMode === "closed" ? unavailable() : incrementLocal(hashedKey, windowMs, limit, weight);
 }
 
 export function resetRateLimit(key: string) {

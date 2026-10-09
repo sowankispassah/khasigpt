@@ -122,15 +122,22 @@ export async function POST(request: Request) {
   const translateMode = parseTranslateAccessModeSetting(rawTranslateSetting);
   const translateSettingsUnavailable =
     translateAccessSettings.status === "unavailable" && rawTranslateSetting == null;
-  const translateEnabled =
-    translateSettingsUnavailable ||
-    (await isFeatureEnabledForUser({
-      featureKey: TRANSLATE_FEATURE_FLAG_KEY,
-      mode: translateMode,
-      role: session.user.role,
-      source: "api.translate.live-token.user-feature-access",
-      userId: session.user.id,
-    }));
+
+  // Fail closed: an unreadable setting must never open a paid feature.
+  if (translateSettingsUnavailable) {
+    return Response.json(
+      { message: "Live translation is temporarily unavailable." },
+      { status: 503, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+
+  const translateEnabled = await isFeatureEnabledForUser({
+    featureKey: TRANSLATE_FEATURE_FLAG_KEY,
+    mode: translateMode,
+    role: session.user.role,
+    source: "api.translate.live-token.user-feature-access",
+    userId: session.user.id,
+  });
 
   if (!translateEnabled) {
     return Response.json({ message: "Not found" }, { status: 404 });

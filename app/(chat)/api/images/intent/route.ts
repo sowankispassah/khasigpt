@@ -10,10 +10,17 @@ import {
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { RequestBodyLimitError, readBoundedJson, requestLimitResponse } from "@/lib/security/request-body";
-import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+// Each request may run an unbilled classifier model call. Limits are keyed by
+// user only, so rotating networks cannot multiply them.
+const IMAGE_INTENT_RATE_LIMIT = { limit: 30, windowMs: 60 * 1000 };
+const IMAGE_INTENT_DAILY_RATE_LIMIT = {
+  limit: 500,
+  windowMs: 24 * 60 * 60 * 1000,
+};
 
 const intentRequestSchema = z.object({
   message: z.string().trim().min(1).max(2000),
@@ -38,15 +45,31 @@ export async function POST(request: Request) {
     return new ChatSDKError("unauthorized:auth").toResponse();
   }
 
-  const clientKey = getClientKeyFromHeaders(request.headers);
-  const rateLimit = await incrementRateLimit(
-    `api:image-intent:${session.user.id}:${clientKey}`,
-    { limit: 60, windowMs: 60 * 1000 }
-  );
-  if (!rateLimit.allowed) {
+  const [shortTermLimit, dailyLimit] = await Promise.all([
+    incrementRateLimit(
+      `api:image-intent:${session.user.id}`,
+      IMAGE_INTENT_RATE_LIMIT
+    ),
+    incrementRateLimit(
+      `api:image-intent:daily:${session.user.id}`,
+      IMAGE_INTENT_DAILY_RATE_LIMIT
+    ),
+  ]);
+  if (!shortTermLimit.allowed || !dailyLimit.allowed) {
+    // Clients fall back to local intent heuristics when this is refused.
+    const { resetAt } = dailyLimit.allowed ? shortTermLimit : dailyLimit;
     return Response.json(
       { code: "rate_limit:api", message: "Too many requests." },
-      { status: 429 }
+      {
+        status: 429,
+        headers: {
+          "Cache-Control": "no-store",
+          "Retry-After": Math.max(
+            Math.ceil((resetAt - Date.now()) / 1000),
+            1
+          ).toString(),
+        },
+      }
     );
   }
 
