@@ -374,9 +374,11 @@ export const {
     },
   },
   callbacks: {
-    async signIn({ user, account }: { user: any; account?: any }) {
+    async signIn({ user, account, profile }: { user: any; account?: any; profile?: any }) {
       if (account?.provider === "google") {
-        if (!user.email) {
+        // Accounts are matched (and pending signups claimed) by email, so
+        // require Google's proof that this person controls the address.
+        if (!user.email || profile?.email_verified !== true) {
           return false;
         }
 

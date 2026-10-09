@@ -2340,7 +2340,10 @@ export async function updateUserEmail({
   }
 }
 
-export async function updateUserPassword({
+// Re-registration may only replace the password of a signup that is still
+// pending email verification. Once Google sign-in or link verification has
+// activated the account, a racing re-registration must not set a password.
+export async function updatePendingSignupPassword({
   id,
   password,
 }: {
@@ -2354,7 +2357,7 @@ export async function updateUserPassword({
     const [updated] = await tx
       .update(user)
       .set({ password: hashedPassword, sessionVersion: sql`${user.sessionVersion} + 1`, updatedAt: new Date() })
-      .where(eq(user.id, id))
+      .where(and(eq(user.id, id), eq(user.emailVerificationPending, true)))
       .returning();
 
     if (updated) await tx.delete(passwordResetToken).where(eq(passwordResetToken.userId, id));

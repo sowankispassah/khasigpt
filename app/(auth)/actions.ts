@@ -10,8 +10,8 @@ import {
   createUser,
   deleteEmailVerificationTokensForUser,
   getUser,
+  updatePendingSignupPassword,
   updateUserActiveState,
-  updateUserPassword,
   updateUserProfile,
 } from "@/lib/db/queries";
 import { sendVerificationEmail } from "@/lib/email/brevo";
@@ -139,13 +139,17 @@ export const register = async (
     let userRecord = existingUser;
 
     if (userRecord) {
-      await runAuthActionDb(
+      const updated = await runAuthActionDb(
         "register.update_existing_password",
-        updateUserPassword({
+        updatePendingSignupPassword({
           id: userRecord.id,
           password: validatedData.password,
         })
       );
+      // Verified or claimed by Google sign-in since the lookup above.
+      if (!updated) {
+        return { status: "user_exists" };
+      }
     } else {
       userRecord = await runAuthActionDb(
         "register.create_user",

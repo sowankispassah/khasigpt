@@ -6,7 +6,7 @@ import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
-import { creatorReferral, mobileOAuthHandoffReceipt, passwordResetToken, type User, user } from "@/lib/db/schema";
+import { creatorReferral, emailVerificationToken, mobileOAuthHandoffReceipt, passwordResetToken, type User, user } from "@/lib/db/schema";
 import { generateHashedPassword } from "@/lib/db/utils";
 import { ChatSDKError } from "@/lib/errors";
 import { generateUUID } from "@/lib/utils";
@@ -386,6 +386,38 @@ export async function createAuthGuestUser(): Promise<AuthDbUser> {
   }
 }
 
+// A signup still pending email verification never proved control of the
+// mailbox, so whoever chose its password may not own the address. Google has
+// now proved it: hand the account to the mailbox owner and drop the unproven
+// password. Only a pending row matches, so accounts deactivated by an admin or
+// the user stay rejected, and a concurrent link verification wins at most once.
+async function claimPendingAuthUserForOAuth(
+  id: string
+): Promise<AuthDbUser | null> {
+  try {
+    return await getAuthDb().transaction(async (tx) => {
+      const [claimed] = await tx.update(user).set({
+        isActive: true, emailVerificationPending: false, password: null, authProvider: "google",
+        sessionVersion: sql`${user.sessionVersion} + 1`, updatedAt: new Date(),
+      }).where(and(eq(user.id, id), eq(user.emailVerificationPending, true)))
+        .returning(authUserColumns);
+      if (!claimed) {
+        // A concurrent link verification may have activated it first.
+        const [current] = await tx.select(authUserColumns).from(user)
+          .where(eq(user.id, id)).limit(1);
+        return current?.isActive ? current : null;
+      }
+      await tx.delete(emailVerificationToken).where(eq(emailVerificationToken.userId, id));
+      return claimed;
+    });
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to claim pending OAuth user"
+    );
+  }
+}
+
 export async function ensureAuthOAuthUser(
   email: string,
   profile?: {
@@ -396,10 +428,13 @@ export async function ensureAuthOAuthUser(
   }
 ): Promise<{ user: AuthDbUser; isNewUser: boolean }> {
   const normalizedEmail = normalizeEmailValue(email);
-  const [existing] = await getAuthUsersByEmail(normalizedEmail);
+  const [found] = await getAuthUsersByEmail(normalizedEmail);
 
-  if (existing) {
-    if (!existing.isActive) {
+  if (found) {
+    const existing = found.isActive
+      ? found
+      : await claimPendingAuthUserForOAuth(found.id);
+    if (!existing) {
       throw new ChatSDKError("forbidden:auth", "account_inactive");
     }
 
@@ -460,11 +495,14 @@ export async function ensureAuthOAuthUser(
     if (!raceWinner) {
       throw new Error("oauth_user_not_created");
     }
-    if (!raceWinner.isActive) {
+    const account = raceWinner.isActive
+      ? raceWinner
+      : await claimPendingAuthUserForOAuth(raceWinner.id);
+    if (!account) {
       throw new ChatSDKError("forbidden:auth", "account_inactive");
     }
 
-    return { user: raceWinner, isNewUser: false };
+    return { user: account, isNewUser: false };
   } catch (error) {
     if (error instanceof ChatSDKError) {
       throw error;

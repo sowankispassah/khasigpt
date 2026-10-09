@@ -221,7 +221,7 @@ async function exchangeGoogleCodeForHandoff({
     if (
       !userInfoResponse.ok ||
       !userInfo.email ||
-      userInfo.email_verified === false
+      userInfo.email_verified !== true
     ) {
       return { params: { error: "google_email_unverified" }, type: "error" };
     }

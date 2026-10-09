@@ -3009,6 +3009,28 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Button text linking to the sign-in page.",
   },
   {
+    key: "verify_email.confirm.message",
+    defaultText:
+      "Press the button below to verify your email and activate your account. If you didn't sign up, you can close this page.",
+    description: "Prompt before the user confirms email verification.",
+  },
+  {
+    key: "verify_email.confirm.button",
+    defaultText: "Verify email",
+    description: "Button that confirms email verification.",
+  },
+  {
+    key: "verify_email.confirm.pending",
+    defaultText: "Verifying...",
+    description: "Email verification button label while pending.",
+  },
+  {
+    key: "verify_email.confirm.failed",
+    defaultText:
+      "We couldn't verify your email right now. Please try again in a few minutes.",
+    description: "Error shown when email verification could not complete.",
+  },
+  {
     key: "offline.title",
     defaultText: "You're offline",
     description: "Heading for the offline page.",
