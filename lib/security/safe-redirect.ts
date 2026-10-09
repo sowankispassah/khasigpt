@@ -13,7 +13,12 @@ export function sanitizeRedirectPath(
       return fallback;
     }
     const nextPath = `${resolved.pathname}${resolved.search}${resolved.hash}`;
-    return nextPath.startsWith("/") ? nextPath : fallback;
+    // A same-origin input such as "/.//evil.com" normalizes to "//evil.com",
+    // which browsers and new URL(path, origin) treat as another host.
+    if (!nextPath.startsWith("/") || /^\/[/\\]/.test(nextPath)) {
+      return fallback;
+    }
+    return nextPath;
   } catch {
     return fallback;
   }
