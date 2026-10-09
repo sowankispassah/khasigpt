@@ -9,6 +9,7 @@ import {
   recordCouponRedemptionFromTransaction,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import { runPostCreditStep } from "@/lib/payments/post-credit";
 import {
   getRazorpayClient,
   verifyPaymentSignature,
@@ -49,7 +50,9 @@ export async function POST(request: Request) {
 
   if (transaction.status === "paid") {
     after(async () => { await deliverReceiptEmail(orderId).catch(() => { console.error("[receipts] Delivery scheduling failed", { orderId }); }); });
-    const balance = await getUserBalanceSummary(session.user.id);
+    const balance = await runPostCreditStep(orderId, "balance", () =>
+      getUserBalanceSummary(session.user.id)
+    );
     return NextResponse.json({
       ok: true,
       alreadyProcessed: true,
@@ -94,7 +97,9 @@ export async function POST(request: Request) {
     // The Razorpay webhook may have credited this order a moment earlier.
     const latest = await getPaymentTransactionByOrderId({ orderId });
     if (latest?.status === "paid") {
-      const balance = await getUserBalanceSummary(session.user.id);
+      const balance = await runPostCreditStep(orderId, "balance", () =>
+        getUserBalanceSummary(session.user.id)
+      );
       return NextResponse.json({
         ok: true,
         alreadyProcessed: true,
@@ -115,15 +120,6 @@ export async function POST(request: Request) {
       userId: session.user.id,
       planId: transaction.planId,
     });
-    after(async () => { await deliverReceiptEmail(orderId).catch(() => { console.error("[receipts] Delivery scheduling failed", { orderId }); }); });
-    await recordCouponRedemptionFromTransaction(transaction);
-
-    const balance = await getUserBalanceSummary(session.user.id);
-
-    return NextResponse.json({
-      ok: true,
-      balance,
-    });
   } catch (error) {
     await markPaymentTransactionFailed({ orderId });
 
@@ -134,4 +130,21 @@ export async function POST(request: Request) {
     console.error("Failed to finalize Razorpay payment", error);
     return new ChatSDKError("bad_request:api").toResponse();
   }
+
+  // The order is credited. Follow-up failures are logged and still answer
+  // success; a null balance makes the client refresh it.
+  await runPostCreditStep(orderId, "receipt", () =>
+    after(async () => { await deliverReceiptEmail(orderId).catch(() => { console.error("[receipts] Delivery scheduling failed", { orderId }); }); })
+  );
+  await runPostCreditStep(orderId, "coupon-redemption", () =>
+    recordCouponRedemptionFromTransaction(transaction)
+  );
+  const balance = await runPostCreditStep(orderId, "balance", () =>
+    getUserBalanceSummary(session.user.id)
+  );
+
+  return NextResponse.json({
+    ok: true,
+    balance,
+  });
 }

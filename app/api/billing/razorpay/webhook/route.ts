@@ -6,6 +6,7 @@ import {
   markPaymentTransactionProcessing,
   recordCouponRedemptionFromTransaction,
 } from "@/lib/db/queries";
+import { runPostCreditStep } from "@/lib/payments/post-credit";
 import { verifyWebhookSignature } from "@/lib/payments/razorpay";
 import { parseRazorpayPaymentEvent } from "@/lib/payments/razorpay-webhook";
 import { deliverReceiptEmail } from "@/lib/payments/receipts";
@@ -100,26 +101,36 @@ export async function POST(request: Request) {
     return respond(409, { ok: false, processing: true });
   }
 
+  let completed: Awaited<
+    ReturnType<typeof completePaymentTransactionWithSubscription>
+  >;
   try {
-    const completed = await completePaymentTransactionWithSubscription({
+    completed = await completePaymentTransactionWithSubscription({
       orderId,
       paymentId: event.paymentId,
       planId: transaction.planId,
       signature: `webhook:${event.event}`,
       userId: transaction.userId,
     });
-    if (!completed.alreadyProcessed) {
-      await recordCouponRedemptionFromTransaction(transaction);
-    }
-    after(async () => {
-      await deliverReceiptEmail(orderId).catch(() => {
-        console.error("[receipts] Delivery scheduling failed", { orderId });
-      });
-    });
-    return respond(200, { ok: true });
   } catch {
     await markPaymentTransactionFailed({ orderId }).catch(() => undefined);
     console.error("[razorpay-webhook] Failed to complete payment.", { orderId });
     return respond(500, { ok: false });
   }
+
+  // The order is credited. A redelivery would only see it paid, so follow-up
+  // failures are logged and still acknowledged.
+  if (!completed.alreadyProcessed) {
+    await runPostCreditStep(orderId, "coupon-redemption", () =>
+      recordCouponRedemptionFromTransaction(transaction)
+    );
+  }
+  await runPostCreditStep(orderId, "receipt", () =>
+    after(async () => {
+      await deliverReceiptEmail(orderId).catch(() => {
+        console.error("[receipts] Delivery scheduling failed", { orderId });
+      });
+    })
+  );
+  return respond(200, { ok: true });
 }

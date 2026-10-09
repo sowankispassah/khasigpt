@@ -10520,13 +10520,23 @@ export async function markPaymentTransactionFailed({
   orderId: string;
 }): Promise<void> {
   try {
+    // Never demote a paid order: a failed order can be locked and credited
+    // again, so only an order that has not been credited may become failed.
     await db
       .update(paymentTransaction)
       .set({
         status: PAYMENT_STATUS_FAILED,
         updatedAt: new Date(),
       })
-      .where(eq(paymentTransaction.orderId, orderId));
+      .where(
+        and(
+          eq(paymentTransaction.orderId, orderId),
+          inArray(paymentTransaction.status, [
+            PAYMENT_STATUS_PENDING,
+            PAYMENT_STATUS_PROCESSING,
+          ])
+        )
+      );
   } catch (error) {
     if (isTableMissingError(error)) {
       return;

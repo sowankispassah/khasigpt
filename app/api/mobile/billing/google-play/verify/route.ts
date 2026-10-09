@@ -21,6 +21,7 @@ import {
   hashGooglePlayPurchaseToken,
 } from "@/lib/payments/google-play";
 import { getAndroidProductIdForPlan } from "@/lib/payments/google-play-products";
+import { runPostCreditStep } from "@/lib/payments/post-credit";
 import { deliverReceiptEmail } from "@/lib/payments/receipts";
 import { couponsAllowed } from "@/lib/referrals/settings";
 
@@ -107,7 +108,9 @@ export async function POST(request: Request) {
     if (existing?.status === "paid") {
       after(async () => { await deliverReceiptEmail(orderId).catch(() => { console.error("[receipts] Delivery scheduling failed", { orderId }); }); });
       await recordCouponRedemptionFromTransaction(existing);
-      const balance = await getUserBalanceSummary(session.user.id);
+      const balance = await runPostCreditStep(orderId, "balance", () =>
+        getUserBalanceSummary(session.user.id)
+      );
       return NextResponse.json({ alreadyProcessed: true, balance, ok: true });
     }
 
@@ -193,40 +196,52 @@ export async function POST(request: Request) {
       );
     }
 
+    let completed: Awaited<
+      ReturnType<typeof completePaymentTransactionWithSubscription>
+    >;
     try {
-      const completed = await completePaymentTransactionWithSubscription({
+      completed = await completePaymentTransactionWithSubscription({
         orderId,
         paymentId: purchase.orderId ?? orderId,
         planId: plan.id,
         signature: tokenHash,
         userId: session.user.id,
       });
-      after(async () => { await deliverReceiptEmail(orderId).catch(() => { console.error("[receipts] Delivery scheduling failed", { orderId }); }); });
-      const completedTransaction = await getPaymentTransactionByOrderId({ orderId });
-      if (completedTransaction) await recordCouponRedemptionFromTransaction(completedTransaction);
-      await consumeGooglePlayProductPurchase({
-        packageName,
-        productId,
-        purchaseToken,
-      }).catch((error) => {
-        console.error("Failed to consume Google Play purchase after crediting", {
-          error,
-          orderId,
-          packageName,
-          productId,
-        });
-      });
-
-      const balance = await getUserBalanceSummary(session.user.id);
-      return NextResponse.json({
-        alreadyProcessed: completed.alreadyProcessed,
-        balance,
-        ok: true,
-      });
     } catch (error) {
       await markPaymentTransactionFailed({ orderId });
       throw error;
     }
+
+    // The purchase is credited. Follow-up failures are logged and still answer
+    // success; a null balance makes the app refresh it.
+    await runPostCreditStep(orderId, "receipt", () =>
+      after(async () => { await deliverReceiptEmail(orderId).catch(() => { console.error("[receipts] Delivery scheduling failed", { orderId }); }); })
+    );
+    await runPostCreditStep(orderId, "coupon-redemption", async () => {
+      const completedTransaction = await getPaymentTransactionByOrderId({ orderId });
+      if (completedTransaction) await recordCouponRedemptionFromTransaction(completedTransaction);
+    });
+    await consumeGooglePlayProductPurchase({
+      packageName,
+      productId,
+      purchaseToken,
+    }).catch((error) => {
+      console.error("Failed to consume Google Play purchase after crediting", {
+        error,
+        orderId,
+        packageName,
+        productId,
+      });
+    });
+
+    const balance = await runPostCreditStep(orderId, "balance", () =>
+      getUserBalanceSummary(session.user.id)
+    );
+    return NextResponse.json({
+      alreadyProcessed: completed.alreadyProcessed,
+      balance,
+      ok: true,
+    });
   } catch (error) {
     if (error instanceof ChatSDKError) {
       return googlePlayFailure(
