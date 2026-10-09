@@ -28,7 +28,7 @@ import {
   type UserBalanceSummary,
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
-import { getAdminRequestSession } from "@/lib/security/admin-session";
+import { requireAdminPageSession } from "@/lib/security/admin-session";
 import { AdminUserCreditsCell, AdminUserRow } from "./admin-user-row";
 import { AdminUsersTable } from "./admin-users-table";
 import { MarkUsersViewed } from "./mark-users-viewed";
@@ -78,7 +78,7 @@ export default async function AdminUsersPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await getAdminRequestSession();
+  const session = await requireAdminPageSession();
   const currentUserId = session?.user?.id;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const requestedPage = parsePage(resolvedSearchParams?.page);

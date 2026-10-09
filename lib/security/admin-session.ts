@@ -1,5 +1,6 @@
 import "server-only";
 
+import { redirect } from "next/navigation";
 import { cache } from "react";
 import { auth } from "@/app/(auth)/auth";
 import { getAuthUserRoleById } from "@/lib/db/auth-queries";
@@ -35,3 +36,12 @@ export async function getActiveAdminSession() {
   // Preserve the existing session contract after confirming its current role.
   return session;
 }
+
+// RSC requests can render a page segment without its layout, so every admin
+// layout and page must confirm authority itself before reading data. The
+// confirmation is shared within one render request only, never across requests.
+export const requireAdminPageSession = cache(async () => {
+  const session = await getActiveAdminSession();
+  if (!session) redirect("/");
+  return session;
+});

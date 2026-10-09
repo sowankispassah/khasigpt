@@ -17,7 +17,10 @@ import {
   sanitizeForumContent,
 } from "@/lib/forum/utils";
 import { registerTranslationKeys } from "@/lib/i18n/dictionary";
-import { getAdminRequestSession } from "@/lib/security/admin-session";
+import {
+  getActiveAdminSession,
+  requireAdminPageSession,
+} from "@/lib/security/admin-session";
 import {
   ForumCategoriesPanel,
   ForumDiscussionsPanel,
@@ -31,8 +34,8 @@ const THREAD_LIMIT = 40;
 const POST_LIMIT = 80;
 
 async function requireAdmin() {
-  const session = await getAdminRequestSession();
-  if (!session?.user || session.user.role !== "admin") {
+  const session = await getActiveAdminSession();
+  if (!session) {
     redirect("/");
   }
   return session;
@@ -389,7 +392,7 @@ async function getAdminForumData() {
 }
 
 export default async function AdminForumPage() {
-  await requireAdmin();
+  await requireAdminPageSession();
   const forumState = await adminQueryResult({
     fallback: {
       categories: [],

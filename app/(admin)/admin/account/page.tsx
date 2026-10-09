@@ -10,6 +10,7 @@ import {
   listRechargeRecords,
 } from "@/lib/db/queries";
 import type { ModelConfig } from "@/lib/db/schema";
+import { requireAdminPageSession } from "@/lib/security/admin-session";
 import {
   getFallbackUsdToInrRate,
   getUsdToInrRate,
@@ -47,6 +48,7 @@ export default async function AdminAccountPage({
 }: {
   searchParams?: Promise<SearchParams>;
 }) {
+  await requireAdminPageSession();
   const raw = (searchParams ? await searchParams : undefined) ?? {};
   const from = parseDay(raw.from);
   const to = parseDay(raw.to);

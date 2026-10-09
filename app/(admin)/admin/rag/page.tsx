@@ -1,5 +1,4 @@
 import nextDynamic from "next/dynamic";
-import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { AdminPageLoading } from "@/components/admin/admin-page-loading";
 import { AdminNotice, AdminPageHeader } from "@/components/admin/admin-ui";
@@ -15,7 +14,7 @@ import {
   listAdminRagEntries,
   listUserAddedKnowledgeEntries,
 } from "@/lib/rag/service";
-import { getAdminRequestSession } from "@/lib/security/admin-session";
+import { requireAdminPageSession } from "@/lib/security/admin-session";
 import { parseBooleanSetting } from "@/lib/settings/boolean-setting";
 import { withTimeout } from "@/lib/utils/async";
 import { RagSettingsPanels } from "./rag-sections";
@@ -71,11 +70,7 @@ function serializeDate(value: Date | string): string {
 }
 
 export default async function AdminRagPage() {
-  const session = await getAdminRequestSession();
-
-  if (!session?.user || session.user.role !== "admin") {
-    redirect("/");
-  }
+  const session = await requireAdminPageSession();
 
   const fallbackAnalytics = {
     totalEntries: 0,

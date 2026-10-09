@@ -1,16 +1,15 @@
 import { RefreshCw } from "lucide-react";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { AdminPageHeader } from "@/components/admin/admin-ui";
 import { getChatStorageSummary } from "@/lib/admin/chat-storage";
 import { adminQueryResult } from "@/lib/admin/safe-query";
-import { getActiveAdminSession } from "@/lib/security/admin-session";
+import { requireAdminPageSession } from "@/lib/security/admin-session";
 import { StorageText, StorageView } from "./storage-view";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminStoragePage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
-  if (!await getActiveAdminSession()) redirect("/");
+  await requireAdminPageSession();
   const raw = Number((await searchParams).page ?? 1);
   const page = Number.isSafeInteger(raw) && raw > 0 && raw <= 10000 ? raw : 1;
   const result = await adminQueryResult({ label: "storage", fallback: null, promise: getChatStorageSummary(page) });

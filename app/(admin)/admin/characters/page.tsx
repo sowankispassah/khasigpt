@@ -2,6 +2,7 @@ import nextDynamic from "next/dynamic";
 import { AdminPageLoading } from "@/components/admin/admin-page-loading";
 import { adminQueryResult } from "@/lib/admin/safe-query";
 import { listCharactersForAdmin } from "@/lib/db/queries";
+import { requireAdminPageSession } from "@/lib/security/admin-session";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ const AdminCharactersManager = nextDynamic(
 );
 
 export default async function AdminCharactersPage() {
+  await requireAdminPageSession();
   const charactersState = await adminQueryResult({
     fallback: [] as Awaited<ReturnType<typeof listCharactersForAdmin>>,
     label: "characters.list",

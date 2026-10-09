@@ -1,10 +1,12 @@
 import { AdminPageHeader } from "@/components/admin/admin-ui";
 import { AdminLiveUsers } from "@/components/admin-live-users";
 import { EditableTranslation } from "@/components/translation-edit-provider";
+import { requireAdminPageSession } from "@/lib/security/admin-session";
 
 export const dynamic = "force-dynamic";
 
-export default function AdminLiveUsersPage() {
+export default async function AdminLiveUsersPage() {
+  await requireAdminPageSession();
   return (
     <div className="flex flex-col gap-6">
       <AdminPageHeader

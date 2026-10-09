@@ -12,6 +12,7 @@ import {
   getAccountDeletionRequestCount,
   listAccountDeletionRequests,
 } from "@/lib/db/queries";
+import { requireAdminPageSession } from "@/lib/security/admin-session";
 import {
   DeletionNoticeBanner,
   DeletionRequestFilters,
@@ -58,6 +59,7 @@ export default async function AdminAccountDeletionPage({
 }: {
   searchParams?: Promise<Record<string, SearchParamValue>>;
 }) {
+  await requireAdminPageSession();
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const requestedPage = parsePage(resolvedSearchParams?.page);
   const status = parseStatus(resolvedSearchParams?.status);

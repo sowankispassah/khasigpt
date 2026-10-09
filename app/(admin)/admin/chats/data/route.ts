@@ -1,16 +1,16 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
-import { auth } from "@/app/(auth)/auth";
 import { noStoreHeaders } from "@/lib/api/cache";
 import { getChatCount, listChats } from "@/lib/db/queries";
+import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 import { withTimeout } from "@/lib/utils/async";
 
 const ADMIN_CHATS_DATA_TIMEOUT_MS = 5000;
 
-export async function GET(request: Request) {
-  const session = await auth();
+export async function GET(request: NextRequest) {
+  const admin = await requireAdminApiUser(request);
 
-  if (!session || session.user?.role !== "admin") {
+  if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

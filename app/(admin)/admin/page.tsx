@@ -35,6 +35,7 @@ import {
   type AdminOverviewSnapshot,
   getAdminOverviewSnapshot,
 } from "@/lib/db/queries";
+import { requireAdminPageSession } from "@/lib/security/admin-session";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +82,7 @@ function ago(value: Date | string) {
 }
 
 export default async function AdminOverviewPage() {
+  await requireAdminPageSession();
   // Trends are optional: start them now and stream them in after the snapshot.
   const trendsPromise = adminQueryResult<AdminDashboardTrends | null>({
     fallback: null,

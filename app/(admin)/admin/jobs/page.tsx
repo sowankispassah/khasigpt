@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
-import { auth } from "@/app/(auth)/auth";
 import { AdminPageHeader } from "@/components/admin/admin-ui";
 import { AdminJobsRunnerModeControl } from "@/components/admin-jobs-runner-mode-control";
 import { AdminJobsScrapeControl } from "@/components/admin-jobs-scrape-control";
@@ -64,7 +63,10 @@ import {
   setManagedJobSourceEnabled,
   setManagedJobSourceLocationScope,
 } from "@/lib/jobs/source-registry";
-import { getAdminRequestSession } from "@/lib/security/admin-session";
+import {
+  getActiveAdminSession,
+  requireAdminPageSession,
+} from "@/lib/security/admin-session";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { withTimeout } from "@/lib/utils/async";
 import {
@@ -372,8 +374,7 @@ function formatUtcDateToLocalInput({
 async function saveJobsScrapeScheduleAction(formData: FormData) {
   "use server";
 
-  const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+  if (!(await getActiveAdminSession())) {
     redirect("/");
   }
 
@@ -432,8 +433,7 @@ async function saveJobsScrapeScheduleAction(formData: FormData) {
 async function saveJobsRunnerModeAction(formData: FormData) {
   "use server";
 
-  const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+  if (!(await getActiveAdminSession())) {
     redirect("/");
   }
 
@@ -462,8 +462,7 @@ async function saveJobsRunnerModeAction(formData: FormData) {
 async function saveOneTimeJobsScrapeAction(formData: FormData) {
   "use server";
 
-  const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+  if (!(await getActiveAdminSession())) {
     redirect("/");
   }
 
@@ -496,8 +495,7 @@ async function saveOneTimeJobsScrapeAction(formData: FormData) {
 async function clearOneTimeJobsScrapeAction() {
   "use server";
 
-  const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+  if (!(await getActiveAdminSession())) {
     redirect("/");
   }
 
@@ -511,8 +509,7 @@ async function clearOneTimeJobsScrapeAction() {
 async function saveJobsPdfExtractionSettingsAction(formData: FormData) {
   "use server";
 
-  const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+  if (!(await getActiveAdminSession())) {
     redirect("/");
   }
 
@@ -541,8 +538,7 @@ async function saveJobsPdfExtractionSettingsAction(formData: FormData) {
 async function addScrapeSourceAction(formData: FormData) {
   "use server";
 
-  const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+  if (!(await getActiveAdminSession())) {
     redirect("/");
   }
 
@@ -577,8 +573,7 @@ async function addScrapeSourceAction(formData: FormData) {
 async function toggleScrapeSourceAction(formData: FormData) {
   "use server";
 
-  const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+  if (!(await getActiveAdminSession())) {
     redirect("/");
   }
 
@@ -600,8 +595,7 @@ async function toggleScrapeSourceAction(formData: FormData) {
 async function setScrapeSourceLocationScopeAction(formData: FormData) {
   "use server";
 
-  const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+  if (!(await getActiveAdminSession())) {
     redirect("/");
   }
 
@@ -623,8 +617,7 @@ async function setScrapeSourceLocationScopeAction(formData: FormData) {
 async function deleteScrapeSourceAction(formData: FormData) {
   "use server";
 
-  const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+  if (!(await getActiveAdminSession())) {
     redirect("/");
   }
 
@@ -640,8 +633,7 @@ async function deleteScrapeSourceAction(formData: FormData) {
 async function createManualJobAction(formData: FormData) {
   "use server";
 
-  const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+  if (!(await getActiveAdminSession())) {
     redirect("/");
   }
 
@@ -684,8 +676,7 @@ async function createManualJobAction(formData: FormData) {
 async function deleteManualJobAction(formData: FormData) {
   "use server";
 
-  const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+  if (!(await getActiveAdminSession())) {
     redirect("/");
   }
 
@@ -715,8 +706,7 @@ async function deleteManualJobAction(formData: FormData) {
 async function updateJobStatusAction(formData: FormData) {
   "use server";
 
-  const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+  if (!(await getActiveAdminSession())) {
     redirect("/");
   }
 
@@ -797,10 +787,7 @@ export default async function AdminJobsPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await getAdminRequestSession();
-  if (!session?.user || session.user.role !== "admin") {
-    redirect("/");
-  }
+  await requireAdminPageSession();
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const requestedPage = parsePage(resolvedSearchParams?.page);
   const jobsOffset = (requestedPage - 1) * ADMIN_JOBS_PAGE_SIZE;

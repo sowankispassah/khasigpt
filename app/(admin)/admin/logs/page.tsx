@@ -6,6 +6,7 @@ import {
 } from "@/components/admin/admin-ui";
 import { adminQueryResult } from "@/lib/admin/safe-query";
 import { getAuditLogCount, listAuditLog } from "@/lib/db/queries";
+import { requireAdminPageSession } from "@/lib/security/admin-session";
 import { AuditLogTable } from "./audit-log-view";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +24,7 @@ export default async function AdminAuditLogPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requireAdminPageSession();
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const requestedPage = parsePage(resolvedSearchParams?.page);
   const offset = (requestedPage - 1) * AUDIT_LOG_PAGE_SIZE;

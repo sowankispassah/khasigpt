@@ -11,6 +11,7 @@ import {
 import { registerTranslationKeys } from "@/lib/i18n/dictionary";
 import { getAllLanguages, type LanguageOption } from "@/lib/i18n/languages";
 import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
+import { requireAdminPageSession } from "@/lib/security/admin-session";
 import { TranslationSearchForm } from "./translation-search-form";
 import {
   PublishTranslationsForm,
@@ -117,6 +118,7 @@ export default async function AdminTranslationsPage({
 }: {
   searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
+  await requireAdminPageSession();
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const staticKeysState = await adminQueryResult({
     fallback: null,

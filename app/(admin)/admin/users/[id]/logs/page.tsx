@@ -14,6 +14,7 @@ import {
   type UserAuditIdentity,
 } from "@/lib/db/queries";
 import type { AuditLog } from "@/lib/db/schema";
+import { requireAdminPageSession } from "@/lib/security/admin-session";
 
 export const dynamic = "force-dynamic";
 
@@ -142,6 +143,7 @@ export default async function AdminUserLogsPage({
   params: Promise<{ id: string }>;
   searchParams?: Promise<{ offset?: string }>;
 }) {
+  await requireAdminPageSession();
   const { id } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const offsetParam = resolvedSearchParams?.offset ?? "0";

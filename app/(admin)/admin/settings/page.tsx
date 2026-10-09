@@ -59,6 +59,7 @@ import {
   normalizeLiveTranslationLanguages,
   resolveLiveTranslationLanguageCode,
 } from "@/lib/live-translation/config";
+import { requireAdminPageSession } from "@/lib/security/admin-session";
 import {
   buildFeatureAccessSnapshotFromValues,
   loadFeatureAccessSettingsByKeys,
@@ -587,6 +588,7 @@ export default async function AdminSettingsPage({
 }: {
   searchParams?: Promise<AdminSettingsSearchParams>;
 }) {
+  await requireAdminPageSession();
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const notice = resolvedSearchParams?.notice;
 

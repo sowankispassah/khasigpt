@@ -47,6 +47,7 @@ import {
   listLanguagesWithSettings,
   type listPricingPlans,
 } from "@/lib/db/queries";
+import { requireAdminPageSession } from "@/lib/security/admin-session";
 import { getFallbackUsdToInrRate, getUsdToInrRate } from "@/lib/services/exchange-rate";
 import {
   loadFeatureAccessSettingsByKeys,
@@ -962,6 +963,7 @@ export default async function AdminPricingPage({
 }: {
   searchParams?: Promise<{ notice?: string }>;
 }) {
+  await requireAdminPageSession();
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const queryTimeoutMs = getAdminQueryTimeoutMs(3500);
   const plansState = await adminQueryResult({

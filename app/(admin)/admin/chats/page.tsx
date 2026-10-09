@@ -2,6 +2,7 @@ import nextDynamic from "next/dynamic";
 import { AdminPageLoading } from "@/components/admin/admin-page-loading";
 import { adminQueryResult } from "@/lib/admin/safe-query";
 import { type ChatListItem, getChatCount, listChats } from "@/lib/db/queries";
+import { requireAdminPageSession } from "@/lib/security/admin-session";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,7 @@ const AdminChatTables = nextDynamic(() => import("./tables").then((module) => mo
 });
 
 export default async function AdminChatsPage() {
+  await requireAdminPageSession();
   const [activeChats, deletedChats, activeTotal, deletedTotal] = await Promise.all([
     adminQueryResult({
       fallback: [] as Awaited<ReturnType<typeof listChats>>,

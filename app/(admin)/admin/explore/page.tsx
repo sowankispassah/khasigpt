@@ -2,11 +2,13 @@ import { AdminPageHeader } from "@/components/admin/admin-ui";
 import { ExploreAdminManager } from "@/components/admin/explore-admin-manager";
 import { ExploreProviderSettings } from "@/components/admin/explore-provider-settings";
 import { listExploreCategories } from "@/lib/explore/service";
+import { requireAdminPageSession } from "@/lib/security/admin-session";
 import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 
 export default async function ExploreAdminPage() {
+  await requireAdminPageSession();
   const categories = await withTimeout(
     listExploreCategories({ admin: true }),
     8_000
