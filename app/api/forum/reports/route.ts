@@ -57,7 +57,7 @@ export async function POST(request: Request) {
         `Reason: ${reason}`,
         `User details: ${details || "[None provided]"}`,
         `Reporter ID: ${session.user.id}`,
-        `Reported user: ${target.authorName} (${target.authorId})`,
+        `Reported user: ${target.authorName}${target.authorEmail ? ` <${target.authorEmail}>` : ""} (${target.authorId})`,
         `Thread: ${target.threadTitle} (${target.threadId})`,
         `Post ID: ${target.postId || "[Thread]"}`,
         `Forum URL: https://khasigpt.com/forum/${target.threadSlug}`,

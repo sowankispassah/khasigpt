@@ -53,19 +53,17 @@ export function buildForumExcerpt(content: string, maxLength = 280) {
     .trim()}…`;
 }
 
+export const FORUM_USER_FALLBACK_NAME = "Community member";
+
+// Forum names are public, so never fall back to an email address.
 export function formatForumUserName(
   firstName: string | null | undefined,
-  lastName: string | null | undefined,
-  email: string | null | undefined
+  lastName: string | null | undefined
 ) {
   const fullName = [firstName?.trim(), lastName?.trim()]
     .filter(Boolean)
     .join(" ")
     .trim();
 
-  if (fullName.length > 0) {
-    return fullName;
-  }
-
-  return email ?? "Community member";
+  return fullName.length > 0 ? fullName : FORUM_USER_FALLBACK_NAME;
 }

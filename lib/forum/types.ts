@@ -5,7 +5,6 @@ export type ForumUserSummary = {
   displayName: string;
   firstName: string | null;
   lastName: string | null;
-  email: string | null;
   avatarUrl: string | null;
   role: string | null;
   isAdmin: boolean;

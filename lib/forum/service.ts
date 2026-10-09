@@ -136,7 +136,6 @@ function mapUser(row: {
   id: string;
   firstName: string | null;
   lastName: string | null;
-  email: string | null;
   image?: string | null;
   role?: string | null;
 }): ForumUserSummary {
@@ -146,11 +145,10 @@ function mapUser(row: {
     id: row.id,
     firstName: row.firstName,
     lastName: row.lastName,
-    email: row.email,
     avatarUrl: row.image ?? null,
     role,
     isAdmin,
-    displayName: formatForumUserName(row.firstName, row.lastName, row.email),
+    displayName: formatForumUserName(row.firstName, row.lastName),
   };
 }
 
@@ -277,13 +275,11 @@ export async function getForumOverview(
         authorId: user.id,
         authorFirstName: user.firstName,
         authorLastName: user.lastName,
-        authorEmail: user.email,
         authorImage: user.image,
         authorRole: user.role,
         lastReplyUserId: lastReplyUser.id,
         lastReplyFirstName: lastReplyUser.firstName,
         lastReplyLastName: lastReplyUser.lastName,
-        lastReplyEmail: lastReplyUser.email,
         lastReplyImage: lastReplyUser.image,
         lastReplyRole: lastReplyUser.role,
       })
@@ -450,7 +446,6 @@ export async function getForumOverview(
         id: row.authorId,
         firstName: row.authorFirstName,
         lastName: row.authorLastName,
-        email: row.authorEmail,
         image: row.authorImage ?? null,
         role: row.authorRole ?? null,
       }),
@@ -459,7 +454,6 @@ export async function getForumOverview(
             id: row.lastReplyUserId,
             firstName: row.lastReplyFirstName,
             lastName: row.lastReplyLastName,
-            email: row.lastReplyEmail,
             image: row.lastReplyImage ?? null,
             role: row.lastReplyRole ?? null,
           })
@@ -522,13 +516,11 @@ export async function getForumThreadDetail({
         authorId: user.id,
         authorFirstName: user.firstName,
         authorLastName: user.lastName,
-        authorEmail: user.email,
         authorImage: user.image,
         authorRole: user.role,
         lastReplyUserId: lastReplyUser.id,
         lastReplyFirstName: lastReplyUser.firstName,
         lastReplyLastName: lastReplyUser.lastName,
-        lastReplyEmail: lastReplyUser.email,
         lastReplyImage: lastReplyUser.image,
         lastReplyRole: lastReplyUser.role,
       })
@@ -583,7 +575,6 @@ export async function getForumThreadDetail({
           authorId: forumPost.authorId,
           authorFirstName: user.firstName,
           authorLastName: user.lastName,
-          authorEmail: user.email,
           authorImage: user.image,
           authorRole: user.role,
           content: forumPost.content,
@@ -688,7 +679,6 @@ export async function getForumThreadDetail({
         id: row.authorId,
         firstName: row.authorFirstName,
         lastName: row.authorLastName,
-        email: row.authorEmail,
         image: row.authorImage ?? null,
         role: row.authorRole ?? null,
       }),
@@ -728,7 +718,6 @@ export async function getForumThreadDetail({
         id: threadRow.authorId,
         firstName: threadRow.authorFirstName,
         lastName: threadRow.authorLastName,
-        email: threadRow.authorEmail,
         image: threadRow.authorImage ?? null,
         role: threadRow.authorRole ?? null,
       }),
@@ -737,7 +726,6 @@ export async function getForumThreadDetail({
             id: threadRow.lastReplyUserId,
             firstName: threadRow.lastReplyFirstName,
             lastName: threadRow.lastReplyLastName,
-            email: threadRow.lastReplyEmail,
             image: threadRow.lastReplyImage ?? null,
             role: threadRow.lastReplyRole ?? null,
           })
@@ -1091,7 +1079,6 @@ export async function listForumBlockedUsers(blockerId: string) {
       id: user.id,
       firstName: user.firstName,
       lastName: user.lastName,
-      email: user.email,
     })
     .from(forumUserBlock)
     .innerJoin(user, eq(forumUserBlock.blockedId, user.id))
@@ -1100,7 +1087,7 @@ export async function listForumBlockedUsers(blockerId: string) {
     .limit(200);
   return rows.map((row) => ({
     id: row.id,
-    displayName: formatForumUserName(row.firstName, row.lastName, row.email),
+    displayName: formatForumUserName(row.firstName, row.lastName),
   }));
 }
 
@@ -1174,7 +1161,9 @@ export async function getForumReportTarget({
   }).from(user).where(eq(user.id, authorId)).limit(1);
   return {
     authorId,
-    authorName: formatForumUserName(author?.firstName ?? null, author?.lastName ?? null, author?.email ?? null),
+    authorName: formatForumUserName(author?.firstName ?? null, author?.lastName ?? null),
+    // Admin-only: written to the moderation inbox, never returned to the reporter.
+    authorEmail: author?.email ?? null,
     excerpt: (post?.content ?? thread.summary).slice(0, 1500),
     postId: post?.id ?? null,
     threadId: thread.id,

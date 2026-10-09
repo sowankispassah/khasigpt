@@ -147,8 +147,7 @@ function formatRelative(value: string, locale: string) {
 }
 
 function initialsFromUser(user: ForumUserSummary) {
-  const base =
-    user.displayName || user.firstName || user.lastName || user.email || "F";
+  const base = [user.firstName, user.lastName].filter(Boolean).join(" ");
   const letters = base
     .split(" ")
     .filter(Boolean)
@@ -275,15 +274,10 @@ export function ThreadDetailClient({
         id: viewer.id,
         firstName: viewer.firstName,
         lastName: viewer.lastName,
-        email: viewer.email,
         role: viewerRole,
         isAdmin,
         avatarUrl: viewerAvatarUrl,
-        displayName: formatForumUserName(
-          viewer.firstName,
-          viewer.lastName,
-          viewer.email
-        ),
+        displayName: formatForumUserName(viewer.firstName, viewer.lastName),
       };
       const timestamp = new Date().toISOString();
       const newPost: ForumPostListItemPayload = {
@@ -368,9 +362,16 @@ export function ThreadDetailClient({
     }
   };
 
+  // The viewer's own email only greets them in their composer placeholder.
+  const viewerFullName = [viewer.firstName, viewer.lastName]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(" ");
   const viewerName =
     viewer.name ??
-    formatForumUserName(viewer.firstName, viewer.lastName, viewer.email);
+    (viewerFullName ||
+      viewer.email ||
+      formatForumUserName(viewer.firstName, viewer.lastName));
   const translatedCategoryName = useMemo(
     () =>
       translate(
