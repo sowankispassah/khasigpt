@@ -30,6 +30,10 @@ import { resolveLanguageModel } from "@/lib/ai/providers";
 import { classifyToolIntent } from "@/lib/ai/tool-intent-classifier";
 import { verifyToolIntentToken } from "@/lib/ai/web-search-intent-token";
 import {
+  observeDispatchedInput,
+  resolveAbortedGenerationUsage,
+} from "@/lib/billing/abort-billing";
+import {
   calculateBillableInputTokens,
   estimateTokenCountFromText,
 } from "@/lib/billing/cost-plus";
@@ -1310,8 +1314,11 @@ export async function POST(request: Request) {
       ? await getTextGenerationPricing(modelConfig.id)
       : undefined;
     let reservedSearchCredits = 0;
+    // Set once the paid chat stream passes admission and reaches the provider.
+    let admittedInputEstimate: (() => number) | null = null;
     const walletLanguageModel = generationPricing && generationLease
-      ? budgetedModel({ model: resolveLanguageModel(modelConfig), provider: modelConfig.provider,
+      ? budgetedModel({ model: observeDispatchedInput(resolveLanguageModel(modelConfig),
+            (estimate) => { admittedInputEstimate = estimate; }), provider: modelConfig.provider,
           modelId: modelConfig.providerModelId, pricing: generationPricing,
           balance: () => (generationLease?.balance ?? 0) - reservedSearchCredits })
       : resolveLanguageModel(modelConfig);
@@ -3917,6 +3924,8 @@ export async function POST(request: Request) {
 
     let latestStepResult: StepResult<any> | null = null;
     let streamedText = "";
+    let streamedReasoning = "";
+    let noOutputGenerated = false;
     let clientAbortHandled = false;
 
     const handleClientAbort = () => {
@@ -3927,26 +3936,36 @@ export async function POST(request: Request) {
       }
       clientAbortHandled = true;
 
-      if (latestStepUsage) {
+      // Provider usage wins. Otherwise a paid stream that reached the provider
+      // is charged its estimated input plus streamed text and reasoning; a
+      // generation that already failed without output is not charged.
+      const abortUsage = resolveAbortedGenerationUsage({
+        admittedInputEstimate: noOutputGenerated ? null : admittedInputEstimate,
+        fallbackInputTokens: estimatedInputTokens,
+        paid: hasActiveCredits,
+        providerUsage: latestStepUsage,
+        streamedReasoning,
+        streamedText,
+      });
+      if (abortUsage?.source === "provider") {
+        const stepUsage = abortUsage.usage;
         void (async () => {
           await persistAssistantSnapshot(latestStepResult ?? undefined);
-          void queueUsageReport(latestStepUsage, { persistContext: false });
+          void queueUsageReport(stepUsage, { persistContext: false });
         })();
         return;
       }
 
       const partialText = streamedText.trim();
-      if (partialText.length > 0) {
-        const estimatedOutputTokens = estimateTokenCountFromText(partialText);
-        const inputTokens = Math.max(1, estimatedInputTokens || 1);
+      if (abortUsage) {
         const fallbackUsage: AppUsage = {
-          inputTokens,
-          outputTokens: estimatedOutputTokens,
-          totalTokens: inputTokens + estimatedOutputTokens,
+          ...abortUsage.usage,
           modelId: modelConfig.providerModelId,
         };
 
-        void (async () => {
+        // Shares the single usage report, so a late provider report cannot
+        // record again and the lease is released only after this charge.
+        usageReportPromise = (async () => {
           try {
             await persistAssistantSnapshot(undefined, partialText);
             await recordUsageReport(fallbackUsage, { persistContext: false });
@@ -4054,6 +4073,8 @@ export async function POST(request: Request) {
             maybeLogFirstChunk();
           }
           streamedText += chunk.text;
+        } else if (chunk.type === "reasoning-delta") {
+          streamedReasoning += chunk.text;
         }
       },
       abortSignal: request.signal,
@@ -4089,7 +4110,10 @@ export async function POST(request: Request) {
       })
       .catch((error) => {
         if (isNoOutputGeneratedError(error)) {
-          resolveUsageReady?.();
+          noOutputGenerated = true;
+          // An aborted paid stream may still be recording its charge; that
+          // report resolves usageReady once it is recorded.
+          if (!usageReportPromise) resolveUsageReady?.();
           return;
         }
         console.warn("Unable to resolve stream usage", safeAiErrorDiagnostics(error));
