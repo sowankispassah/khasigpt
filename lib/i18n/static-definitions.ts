@@ -1041,16 +1041,6 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Description of the personal knowledge section on the mobile profile screen.",
   },
   {
-    key: "profile.location.title",
-    defaultText: "Location",
-    description: "Title of the location section on the mobile profile screen.",
-  },
-  {
-    key: "profile.location.description",
-    defaultText: "Save your current location to power nearby business searches. Location is optional.",
-    description: "Description of the location section on the mobile profile screen.",
-  },
-  {
     key: "recharge.info.secure.body_play",
     defaultText: "Payments are completed in Google Play's secure checkout.",
     description: "Native app recharge note naming Google Play as the payment provider.",
@@ -1074,11 +1064,6 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "subscriptions.error.partial_details",
     defaultText: "Some subscription details could not be refreshed. Showing the last available data.",
     description: "Mobile subscriptions notice when the server returns degraded data and the last loaded details stay on screen.",
-  },
-  {
-    key: "profile.location.last_updated_label",
-    defaultText: "Last updated",
-    description: "Label before the time the profile location was last saved.",
   },
   {
     key: "subscriptions.plan_overview.days_left",
@@ -1249,11 +1234,6 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "profile.nav.security",
     defaultText: "Security",
     description: "Profile section index entry for the password section.",
-  },
-  {
-    key: "profile.nav.location",
-    defaultText: "Location",
-    description: "Profile section index entry for the location section.",
   },
   {
     key: "profile.danger.title",
@@ -6753,17 +6733,6 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   { key: "profile.picture.library", defaultText: "Photo library", description: "Native profile image library action." },
   { key: "profile.picture.camera_permission_title", defaultText: "Camera permission required", description: "Native profile camera permission dialog title." },
   { key: "profile.picture.camera_permission_body", defaultText: "Allow camera access in Android settings to take a profile photo.", description: "Native profile camera permission explanation." },
-  { key: "profile.location.status.requesting", defaultText: "Requesting your location (optional)...", description: "Native profile location request status." },
-  { key: "profile.location.status.saved", defaultText: "Location saved.", description: "Native profile location saved status." },
-  { key: "profile.location.error.permission_denied", defaultText: "Location permission was denied. You can enable it in Android settings.", description: "Native profile location permission error." },
-  { key: "profile.location.permission_title", defaultText: "Location permission required", description: "Native profile location permission dialog title." },
-  { key: "profile.location.error.capture_failed", defaultText: "Unable to get location. Please try again later.", description: "Native profile location capture error." },
-  { key: "profile.location.latitude_label", defaultText: "Latitude", description: "Native profile latitude label." },
-  { key: "profile.location.longitude_label", defaultText: "Longitude", description: "Native profile longitude label." },
-  { key: "profile.location.accuracy_label", defaultText: "Accuracy", description: "Native profile location accuracy label." },
-  { key: "profile.location.not_captured", defaultText: "Location not captured yet.", description: "Native profile empty location state." },
-  { key: "profile.location.saving", defaultText: "Saving...", description: "Native profile location save pending label." },
-  { key: "profile.location.save_button", defaultText: "Save current location", description: "Native profile location save action." },
   { key: "profile.personal_knowledge.saved", defaultText: "Personal knowledge saved for review.", description: "Native personal knowledge saved status." },
   { key: "profile.personal_knowledge.error", defaultText: "Unable to save personal knowledge.", description: "Native personal knowledge save error." },
   { key: "profile.personal_knowledge.delete_title", defaultText: "Delete personal knowledge?", description: "Native personal knowledge delete confirmation title." },

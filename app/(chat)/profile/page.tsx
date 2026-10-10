@@ -92,14 +92,6 @@ export default async function ProfilePage() {
       firstName={currentUser?.firstName ?? session.user.firstName ?? null}
       initialAvatar={initialAvatar}
       lastName={currentUser?.lastName ?? session.user.lastName ?? null}
-      location={{
-        accuracy: currentUser?.locationAccuracy ?? null,
-        latitude: currentUser?.locationLatitude ?? null,
-        longitude: currentUser?.locationLongitude ?? null,
-        updatedAt: currentUser?.locationUpdatedAt
-          ? new Date(currentUser.locationUpdatedAt).toISOString()
-          : null,
-      }}
       memberSince={currentUser?.createdAt ?? null}
       personalKnowledgeEntries={personalKnowledgeEntries}
       sessionName={session.user.name ?? null}

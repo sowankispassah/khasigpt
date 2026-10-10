@@ -7,7 +7,6 @@ import { updateAuthUserProfileFields } from "@/lib/db/auth-queries";
 import {
   createAuditLogEntry,
   updateUserActiveState,
-  updateUserLocation,
 } from "@/lib/db/queries";
 import {
   createPersonalKnowledgeEntry,
@@ -260,53 +259,6 @@ export async function savePersonalKnowledgeAction(input: {
 export type DeletePersonalKnowledgeResult =
   | { success: true }
   | { success: false; error: string };
-
-export async function updateUserLocationAction(input: {
-  latitude: number;
-  longitude: number;
-  accuracy?: number | null;
-}): Promise<{ success: boolean; error?: string }> {
-  const user = await requireUser();
-  const clientInfo = await getClientInfoFromHeaders();
-
-  const lat = Number(input.latitude);
-  const lng = Number(input.longitude);
-  const accuracy = Number(input.accuracy);
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return { success: false, error: "Invalid coordinates" };
-  }
-
-  try {
-    await updateUserLocation({
-      id: user.id,
-      latitude: lat,
-      longitude: lng,
-      accuracy: Number.isFinite(accuracy) ? accuracy : null,
-      consent: true,
-    });
-
-    await createAuditLogEntry({
-      actorId: user.id,
-      action: "user.location.update",
-      target: { userId: user.id },
-      metadata: {
-        latitude: lat,
-        longitude: lng,
-        accuracy: Number.isFinite(accuracy) ? accuracy : undefined,
-      },
-      subjectUserId: user.id,
-      ...clientInfo,
-    });
-
-    revalidatePath("/profile");
-    return { success: true };
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unable to save location";
-    return { success: false, error: message };
-  }
-}
 
 export async function deletePersonalKnowledgeAction({
   entryId,

@@ -16,7 +16,6 @@ import { EditableTranslation } from "@/components/translation-edit-provider";
 import { AvatarForm } from "./avatar-form";
 import { BackToHomeButton } from "./back-to-home-button";
 import { DeactivateAccountForm } from "./deactivate-account-form";
-import { LocationSection } from "./location-section";
 import { NameForm } from "./name-form";
 import { PasswordForm } from "./password-form";
 import {
@@ -44,12 +43,6 @@ export type ProfileViewProps = {
   firstName: string | null;
   initialAvatar: string | null;
   lastName: string | null;
-  location: {
-    accuracy: number | null;
-    latitude: number | null;
-    longitude: number | null;
-    updatedAt: string | null;
-  };
   memberSince: Date | null;
   personalKnowledgeEntries: SerializedPersonalKnowledgeEntry[];
   sessionName: string | null;
@@ -59,7 +52,6 @@ const SECTION_IDS = {
   danger: "profile-danger-zone",
   details: "profile-personal-details",
   knowledge: "profile-personal-knowledge",
-  location: "profile-location",
   security: "profile-security",
 } as const;
 
@@ -248,7 +240,6 @@ export function ProfileView({
   firstName,
   initialAvatar,
   lastName,
-  location,
   memberSince,
   personalKnowledgeEntries,
   sessionName,
@@ -282,16 +273,6 @@ export function ProfileView({
           defaultText="Security"
           description="Profile section index entry for the password section."
           translationKey="profile.nav.security"
-        />
-      ),
-    },
-    {
-      id: SECTION_IDS.location,
-      label: (
-        <EditableTranslation
-          defaultText="Location"
-          description="Profile section index entry for the location section."
-          translationKey="profile.nav.location"
         />
       ),
     },
@@ -388,14 +369,6 @@ export function ProfileView({
           >
             <PasswordForm />
           </AccountSection>
-
-          <LocationSection
-            id={SECTION_IDS.location}
-            initialAccuracy={location.accuracy}
-            initialLatitude={location.latitude}
-            initialLongitude={location.longitude}
-            updatedAt={location.updatedAt}
-          />
 
           <AccountSection
             bodyClassName="divide-y p-0 sm:p-0"
