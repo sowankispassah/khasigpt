@@ -1,239 +1,314 @@
+import Link from "next/link";
+import {
+  AdminPageHeader,
+  AdminStatusPill,
+} from "@/components/admin/admin-ui";
+import { adminQueryResult } from "@/lib/admin/safe-query";
 import {
   listTranslationEntries,
   type TranslationTableEntry,
 } from "@/lib/db/queries";
+import { registerTranslationKeys } from "@/lib/i18n/dictionary";
+import { getAllLanguages, type LanguageOption } from "@/lib/i18n/languages";
+import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
+import { requireAdminPageSession } from "@/lib/security/admin-session";
+import { TranslationSearchForm } from "./translation-search-form";
 import {
-  getAllLanguages,
-  type LanguageOption,
-} from "@/lib/i18n/languages";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { ActionSubmitButton } from "@/components/action-submit-button";
+  PublishTranslationsForm,
+  type SectionDefinition,
+  SelectedTranslationSection,
+  TRANSLATION_PAGE_SIZE,
+  type TranslationSectionGroup,
+  TranslationSectionNavigation,
+  TranslationSummary,
+  TranslationsEmpty,
+  TranslationsWarning,
+} from "./translations-view";
 
-import {
-  publishTranslationsAction,
-  saveDefaultTextAction,
-  saveTranslationValueAction,
-} from "./translation-actions";
+const TRANSLATION_SECTION_DEFINITIONS: SectionDefinition[] = [
+  {
+    id: "forum",
+    label: "Forum Page",
+    description: "Thread listings, discussion composer, and community UI copy.",
+    prefixes: ["forum."],
+  },
+  {
+    id: "home",
+    label: "Home Page",
+    description: "Landing hero, feature highlights, and CTA blocks.",
+    prefixes: ["home.", "landing.", "hero.", "greeting."],
+  },
+  {
+    id: "auth",
+    label: "Authentication",
+    description: "Login, registration, and password reset flows.",
+    prefixes: ["auth.", "login.", "register.", "complete_profile."],
+  },
+  {
+    id: "profile",
+    label: "Profile & User Menu",
+    description: "Profile forms, account settings, and user dropdown copy.",
+    prefixes: ["profile.", "user_menu.", "settings."],
+  },
+  {
+    id: "billing",
+    label: "Billing & Subscriptions",
+    description: "Subscriptions dashboard, recharge flows, and billing UI.",
+    prefixes: ["subscriptions.", "recharge.", "billing."],
+  },
+  {
+    id: "chat",
+    label: "Chat & Response Generation",
+    description:
+      "Chat controls, thinking and reasoning labels, voice states, and live response progress.",
+    prefixes: ["chat.", "voice.", "news."],
+  },
+  {
+    id: "image",
+    label: "Image Generation",
+    description: "Chat image generation labels, prompts, and states.",
+    prefixes: ["image."],
+  },
+  {
+    id: "about",
+    label: "About & Contact",
+    description: "About page sections and contact form labels.",
+    prefixes: ["about.", "contact."],
+  },
+  {
+    id: "privacy",
+    label: "Privacy Policy",
+    description: "Privacy policy headings and paragraphs.",
+    prefixes: ["privacy."],
+  },
+  {
+    id: "terms",
+    label: "Terms of Service",
+    description: "Terms of service content blocks.",
+    prefixes: ["terms."],
+  },
+];
+
+const FALLBACK_SECTION: SectionDefinition = {
+  id: "general",
+  label: "Shared & Other",
+  description:
+    "Strings that are reused across multiple pages or not yet categorized.",
+  prefixes: [],
+};
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminTranslationsPage() {
-  const [languages, entries] = await Promise.all([
-    getAllLanguages(),
-    listTranslationEntries(),
+// Static definitions only change with a deploy, so sync them once per server
+// instance instead of on every visit. A failed sync is retried next visit.
+let staticKeysRegistration: Promise<void> | null = null;
+
+function ensureStaticTranslationKeysRegistered() {
+  staticKeysRegistration ??= registerTranslationKeys(
+    STATIC_TRANSLATION_DEFINITIONS
+  ).catch((error) => {
+    staticKeysRegistration = null;
+    throw error;
+  });
+  return staticKeysRegistration;
+}
+
+export default async function AdminTranslationsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  await requireAdminPageSession();
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const staticKeysState = await adminQueryResult({
+    fallback: null,
+    label: "translations.register-static-keys",
+    promise: ensureStaticTranslationKeysRegistered(),
+    timeoutMs: 3000,
+  });
+  const [languagesState, entriesState] = await Promise.all([
+    adminQueryResult({
+      fallback: [] as LanguageOption[],
+      label: "translations.languages",
+      promise: getAllLanguages(),
+    }),
+    adminQueryResult({
+      fallback: [] as TranslationTableEntry[],
+      label: "translations.entries",
+      promise: listTranslationEntries(),
+    }),
   ]);
+  const languages = languagesState.data;
+  const entries = entriesState.data;
+
+  const queryParam = resolvedSearchParams?.q;
+  const rawQuery = Array.isArray(queryParam)
+    ? (queryParam[0] ?? "")
+    : typeof queryParam === "string"
+      ? queryParam
+      : "";
+  const searchQuery = rawQuery.trim().toLowerCase();
 
   const activeLanguages = languages.filter((language) => language.isActive);
   const nonDefaultLanguages = activeLanguages.filter(
     (language) => !language.isDefault
   );
+  const filteredEntries =
+    searchQuery.length > 0
+      ? entries.filter((entry) => matchesQuery(entry, searchQuery))
+      : entries;
+  const sectionGroups =
+    filteredEntries.length > 0 ? organizeEntriesBySection(filteredEntries) : [];
+  const sectionParam = resolvedSearchParams?.section;
+  const rawSectionId = Array.isArray(sectionParam)
+    ? (sectionParam[0] ?? "")
+    : typeof sectionParam === "string"
+      ? sectionParam
+      : "";
+  const pageParam = resolvedSearchParams?.page;
+  const requestedPage = Math.max(
+    1,
+    Number.parseInt(
+      Array.isArray(pageParam)
+        ? (pageParam[0] ?? "1")
+        : (pageParam ?? "1"),
+      10
+    ) || 1
+  );
+  const selectedSection =
+    sectionGroups.find((section) => section.id === rawSectionId) ??
+    sectionGroups[0] ??
+    null;
+  const totalSectionEntries = selectedSection?.entries.length ?? 0;
+  const totalSectionPages = Math.max(
+    1,
+    Math.ceil(totalSectionEntries / TRANSLATION_PAGE_SIZE)
+  );
+  const sectionPage = Math.min(requestedPage, totalSectionPages);
+  const pagedSectionEntries = selectedSection
+    ? selectedSection.entries.slice(
+        (sectionPage - 1) * TRANSLATION_PAGE_SIZE,
+        sectionPage * TRANSLATION_PAGE_SIZE
+      )
+    : [];
+
+  const entriesUsable = entriesState.ok && languagesState.ok;
 
   return (
-    <div className="space-y-6">
-      <header className="space-y-1.5">
-        <h1 className="text-2xl font-semibold">Translations</h1>
-        <p className="text-muted-foreground text-sm">
-          Manage default English copy and provide localized text. Leave a
-          translation blank to fall back to the English text. Need to wire a new
-          string? Wrap it in the translation helper and it will appear here
-          automatically.
-        </p>
-      </header>
-
-      <TranslationSummary
-        languages={activeLanguages}
-        totalEntries={entries.length}
+    <div className="flex flex-col gap-6">
+      <AdminPageHeader
+        actions={<PublishTranslationsForm disabled={!entriesUsable} />}
+        description="Manage default English copy and provide localized text. Leave a translation blank to fall back to the English text. New strings wrapped in the translation helper appear here automatically."
+        meta={
+          entriesState.ok ? (
+            <AdminStatusPill>{`${entries.length.toLocaleString()} strings`}</AdminStatusPill>
+          ) : null
+        }
+        navHref="/admin/translations"
+        title="Translations"
       />
 
-      {entries.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-muted/40 p-8 text-center text-muted-foreground">
-          No translation keys have been registered yet. Introduce translations
-          in your components using the translation helper to populate this list.
+      <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
+        <div className="border-b p-4">
+          <TranslationSearchForm defaultValue={rawQuery} />
         </div>
-      ) : (
-        <TranslationTable
-          entries={entries}
-          nonDefaultLanguages={nonDefaultLanguages}
+        <TranslationSummary
+          entriesConfirmed={entriesState.ok}
+          languagesConfirmed={languagesState.ok}
+          languages={activeLanguages}
+          searchQuery={searchQuery}
+          totalEntries={entries.length}
+          visibleEntries={filteredEntries.length}
         />
+      </section>
+
+      {(!staticKeysState.ok || !languagesState.ok || !entriesState.ok) && (
+        <TranslationsWarning
+          message={[
+            !staticKeysState.ok
+              ? "Static translation key registration failed."
+              : null,
+            !languagesState.ok ? "Languages could not be confirmed." : null,
+            !entriesState.ok ? "Translation rows could not be confirmed." : null,
+          ]
+            .filter((message): message is string => Boolean(message))
+            .join(" ")}
+        />
+      )}
+
+      {!entriesState.ok ? (
+        <TranslationsEmpty title="Unable to load translation keys">
+          Refresh this admin section to retry.
+        </TranslationsEmpty>
+      ) : entries.length === 0 ? (
+        <TranslationsEmpty title="No translation keys have been registered yet">
+          Introduce translations in your components using the translation
+          helper to populate this list.
+        </TranslationsEmpty>
+      ) : filteredEntries.length === 0 ? (
+        <TranslationsEmpty title={`No translations matched “${rawQuery.trim()}”`}>
+          Try a different search term or{" "}
+          <Link className="cursor-pointer underline" data-nav href="/admin/translations">
+            clear the search
+          </Link>
+          .
+        </TranslationsEmpty>
+      ) : (
+        <>
+          <TranslationSectionNavigation
+            activeSectionId={selectedSection?.id ?? null}
+            searchQuery={rawQuery}
+            sections={sectionGroups}
+          />
+          <SelectedTranslationSection
+            nonDefaultLanguages={nonDefaultLanguages}
+            page={sectionPage}
+            searchParams={resolvedSearchParams}
+            section={selectedSection}
+            visibleEntries={pagedSectionEntries}
+          />
+        </>
       )}
     </div>
   );
 }
 
-function TranslationSummary({
-  languages,
-  totalEntries,
-}: {
-  languages: LanguageOption[];
-  totalEntries: number;
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border bg-background p-4 text-sm">
-      <div className="flex flex-col">
-        <span className="font-semibold text-base">
-          {totalEntries} registered {totalEntries === 1 ? "string" : "strings"}
-        </span>
-        <span className="text-muted-foreground">
-          {languages.length} active {languages.length === 1 ? "language" : "languages"}
-        </span>
-      </div>
-      <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
-        <div className="flex flex-wrap gap-2">
-          {languages.map((language) => (
-            <span
-              className="inline-flex items-center rounded-full border border-border bg-muted/50 px-3 py-1 text-xs font-medium tracking-wide"
-              key={language.id}
-            >
-              {language.name}
-              {language.isDefault ? (
-                <span className="ml-2 rounded-full bg-primary px-2 py-0.5 text-[10px] uppercase text-primary-foreground">
-                  Default
-                </span>
-              ) : null}
-            </span>
-          ))}
-        </div>
-        <form action={publishTranslationsAction}>
-          <ActionSubmitButton
-            pendingLabel="Publishing..."
-            size="sm"
-            type="submit"
-            variant="default"
-            successMessage="Translations published"
-          >
-            Publish translations
-          </ActionSubmitButton>
-        </form>
-      </div>
-    </div>
-  );
+function organizeEntriesBySection(
+  entries: TranslationTableEntry[]
+): TranslationSectionGroup[] {
+  const definitions = [...TRANSLATION_SECTION_DEFINITIONS, FALLBACK_SECTION];
+  const sectionMap = new Map<string, TranslationSectionGroup>();
+
+  for (const definition of definitions) {
+    sectionMap.set(definition.id, { ...definition, entries: [] });
+  }
+
+  for (const entry of entries) {
+    const matchedSection =
+      TRANSLATION_SECTION_DEFINITIONS.find((definition) =>
+        definition.prefixes.some((prefix) => entry.key.startsWith(prefix))
+      ) ?? FALLBACK_SECTION;
+
+    sectionMap.get(matchedSection.id)?.entries.push(entry);
+  }
+
+  return definitions
+    .map((definition) => sectionMap.get(definition.id))
+    .filter(Boolean) as TranslationSectionGroup[];
 }
 
-function TranslationTable({
-  entries,
-  nonDefaultLanguages,
-}: {
-  entries: TranslationTableEntry[];
-  nonDefaultLanguages: LanguageOption[];
-}) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[720px] border-collapse">
-        <thead>
-          <tr className="border-b bg-muted/50 text-sm text-muted-foreground">
-            <th className="px-4 py-3 text-left font-medium text-xs uppercase tracking-wide">
-              Key
-            </th>
-            <th className="px-4 py-3 text-left font-medium text-xs uppercase tracking-wide">
-              English (default)
-            </th>
-            {nonDefaultLanguages.map((language) => (
-              <th
-                className="px-4 py-3 text-left font-medium text-xs uppercase tracking-wide"
-                key={language.id}
-              >
-                {language.name}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {entries.map((entry) => (
-            <tr key={entry.keyId} className="align-top">
-              <td className="whitespace-nowrap px-4 py-4 text-sm">
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium">{entry.key}</span>
-                  {entry.description ? (
-                    <span className="text-muted-foreground text-xs">
-                      {entry.description}
-                    </span>
-                  ) : null}
-                </div>
-              </td>
-              <td className="px-4 py-4">
-                <form
-                  action={saveDefaultTextAction}
-                  className="flex flex-col gap-2 text-sm"
-                >
-                  <input name="keyId" type="hidden" value={entry.keyId} />
-                  <Textarea
-                    defaultValue={entry.defaultText}
-                    name="defaultText"
-                    rows={3}
-                  />
-                  <Input
-                    defaultValue={entry.description ?? ""}
-                    name="description"
-                    placeholder="Optional description"
-                  />
-                  <div className="flex items-center gap-2">
-                    <ActionSubmitButton
-                      pendingLabel="Saving..."
-                      size="sm"
-                      type="submit"
-                      variant="outline"
-                      successMessage="Default text saved"
-                    >
-                      Save
-                    </ActionSubmitButton>
-                    <span className="text-muted-foreground text-xs">
-                      Updated{" "}
-                      {entry.updatedAt
-                        ? entry.updatedAt.toLocaleString()
-                        : "never"}
-                    </span>
-                  </div>
-                </form>
-              </td>
-              {nonDefaultLanguages.map((language) => {
-                const translation = entry.translations[language.code];
-                return (
-                  <td className="px-4 py-4" key={`${entry.keyId}-${language.id}`}>
-                    <form
-                      action={saveTranslationValueAction}
-                      className="flex flex-col gap-2 text-sm"
-                    >
-                      <input name="keyId" type="hidden" value={entry.keyId} />
-                      <input
-                        name="languageCode"
-                        type="hidden"
-                        value={language.code}
-                      />
-                      <Textarea
-                        defaultValue={translation?.value ?? ""}
-                        name="translationValue"
-                        placeholder={`Enter ${language.name} translation`}
-                        rows={3}
-                      />
-                      <div className="flex items-center gap-2">
-                        <ActionSubmitButton
-                          pendingLabel="Saving..."
-                          size="sm"
-                          type="submit"
-                          variant="outline"
-                          successMessage={
-                            translation?.value
-                              ? `${language.name} translation saved`
-                              : `${language.name} translation cleared (falls back to English)`
-                          }
-                        >
-                          {translation?.value ? "Update" : "Save"}
-                        </ActionSubmitButton>
-                        <span className="text-muted-foreground text-xs">
-                          {translation?.updatedAt
-                            ? `Updated ${translation.updatedAt.toLocaleString()}`
-                            : "Not provided"}
-                        </span>
-                      </div>
-                    </form>
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+function matchesQuery(entry: TranslationTableEntry, query: string): boolean {
+  if (!query) {
+    return true;
+  }
+  const haystacks = [
+    entry.key,
+    entry.defaultText ?? "",
+    entry.description ?? "",
+    ...Object.values(entry.translations).map(
+      (translation) => translation.value ?? ""
+    ),
+  ];
+
+  return haystacks.some((text) => (text ?? "").toLowerCase().includes(query));
 }

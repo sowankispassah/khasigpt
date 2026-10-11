@@ -1,0 +1,13 @@
+node_modules
+dist
+.DS_Store
+.env
+
+# Ignore the output video from Git but not videos you import into src/.
+out
+
+# Regenerate with: python scripts/make_music.py
+public/reel-music.wav
+# Regenerate with: ffmpeg -i public/source/promo-final.mp4 -vn -ac 2 -ar 48000 public/promo-final-audio.wav
+public/promo-final-audio.wav
+__pycache__/

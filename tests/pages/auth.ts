@@ -9,28 +9,33 @@ export class AuthPage {
   }
 
   async gotoLogin() {
-    await this.page.goto("/login");
-    await expect(this.page.getByRole("heading")).toContainText("Sign In");
+    await this.page.goto("/login?credentials=1");
+    await expect(
+      this.page.getByRole("heading", { name: "Sign In To KhasiGPT" })
+    ).toBeVisible();
   }
 
   async gotoRegister() {
-    await this.page.goto("/register");
-    await expect(this.page.getByRole("heading")).toContainText("Sign Up");
+    await this.page.goto("/register?credentials=1");
+    await expect(
+      this.page.getByRole("heading", { name: "Sign Up To KhasiGPT" })
+    ).toBeVisible();
   }
 
   async register(email: string, password: string) {
     await this.gotoRegister();
-    await this.page.getByPlaceholder("user@acme.com").click();
-    await this.page.getByPlaceholder("user@acme.com").fill(email);
+    await this.page.getByLabel("Email Address").click();
+    await this.page.getByLabel("Email Address").fill(email);
     await this.page.getByLabel("Password").click();
     await this.page.getByLabel("Password").fill(password);
-    await this.page.getByRole("button", { name: "Sign Up" }).click();
+    await this.page.getByLabel("I agree to the").check();
+    await this.page.getByRole("button", { name: "Sign Up", exact: true }).click();
   }
 
   async login(email: string, password: string) {
     await this.gotoLogin();
-    await this.page.getByPlaceholder("user@acme.com").click();
-    await this.page.getByPlaceholder("user@acme.com").fill(email);
+    await this.page.getByLabel("Email Address").click();
+    await this.page.getByLabel("Email Address").fill(email);
     await this.page.getByLabel("Password").click();
     await this.page.getByLabel("Password").fill(password);
     await this.page.getByRole("button", { name: "Sign In" }).click();
@@ -38,11 +43,11 @@ export class AuthPage {
 
   async logout(email: string, password: string) {
     await this.login(email, password);
-    await this.page.waitForURL("/");
+    await this.page.waitForURL("/chat");
 
-    await this.openSidebar();
-
-    const userNavButton = this.page.getByTestId("user-nav-button");
+    const userNavButton = this.page.getByRole("button", {
+      name: /Open user menu/,
+    });
     await expect(userNavButton).toBeVisible();
 
     await userNavButton.click();
@@ -53,17 +58,18 @@ export class AuthPage {
     await expect(authMenuItem).toContainText("Sign out");
 
     await authMenuItem.click();
-
-    const userEmail = this.page.getByTestId("user-email");
-    await expect(userEmail).toContainText("Guest");
+    await this.page.waitForURL("/login");
   }
 
   async expectToastToContain(text: string) {
     await expect(this.page.getByTestId("toast")).toContainText(text);
   }
 
-  async openSidebar() {
-    const sidebarToggleButton = this.page.getByTestId("sidebar-toggle-button");
-    await sidebarToggleButton.click();
+  async openUserMenu() {
+    const userNavButton = this.page.getByRole("button", {
+      name: /Open user menu/,
+    });
+    await expect(userNavButton).toBeVisible();
+    await userNavButton.click();
   }
 }

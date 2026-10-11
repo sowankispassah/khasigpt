@@ -1,0 +1,13 @@
+{
+  "regions": ["hnd1"],
+  "crons": [
+    {
+      "path": "/api/cron/chat-storage-cleanup",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/jobs-scrape",
+      "schedule": "30 0 * * *"
+    }
+  ]
+}

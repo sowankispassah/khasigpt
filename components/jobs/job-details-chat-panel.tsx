@@ -1,0 +1,305 @@
+"use client";
+
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
+import { useCallback, useEffect, useState } from "react";
+import { useSWRConfig } from "swr";
+import { unstable_serialize } from "swr/infinite";
+import { Messages } from "@/components/messages";
+import { MultimodalInput } from "@/components/multimodal-input";
+import { getChatHistoryPaginationKeyForMode } from "@/components/sidebar-history";
+import { toast } from "@/components/toast";
+import { EditableTranslation } from "@/components/translation-edit-provider";
+import type { VisibilityType } from "@/components/visibility-selector";
+import { VisibilitySelector } from "@/components/visibility-selector";
+import type { JobCard } from "@/lib/jobs/types";
+import type { Attachment, ChatMessage } from "@/lib/types";
+import { fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
+import { FloatingChatPopup } from "./floating-chat-popup";
+
+type JobDetailsChatPanelProps = {
+  chatId?: string | null;
+  defaultOpen?: boolean;
+  documentUploadsEnabled: boolean;
+  initialHasMoreHistory?: boolean;
+  initialChatLanguage: string;
+  initialChatModel: string;
+  initialMessages?: ChatMessage[];
+  initialOldestMessageAt?: string | null;
+  initialVisibilityType?: VisibilityType;
+  isReadonly?: boolean;
+  jobContext?: JobCard;
+  embedded?: boolean;
+  restoreHistory?: boolean;
+  onBeforeSubmit?: (prompt: string) => Promise<void>;
+};
+
+export function JobDetailsChatPanel({
+  chatId = null,
+  defaultOpen = false,
+  documentUploadsEnabled,
+  initialHasMoreHistory = false,
+  initialChatLanguage,
+  initialChatModel,
+  initialMessages = [],
+  initialOldestMessageAt = null,
+  initialVisibilityType = "private",
+  isReadonly = false,
+  jobContext,
+  embedded = false,
+  restoreHistory = false,
+  onBeforeSubmit,
+}: JobDetailsChatPanelProps) {
+  const { mutate } = useSWRConfig();
+  const [resolvedChatId] = useState(() => chatId ?? generateUUID());
+  const [isVisible, setIsVisible] = useState(defaultOpen);
+  const [input, setInput] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [hasMoreHistory, setHasMoreHistory] = useState(initialHasMoreHistory);
+  const [oldestMessageAt, setOldestMessageAt] = useState(
+    initialOldestMessageAt
+  );
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyReady, setHistoryReady] = useState(!restoreHistory);
+  const [historyFailed, setHistoryFailed] = useState(false);
+  const [historyAttempt, setHistoryAttempt] = useState(0);
+  const currentModelId = initialChatModel;
+  const [currentLanguageCode, setCurrentLanguageCode] =
+    useState(initialChatLanguage);
+
+  const {
+    messages,
+    setMessages,
+    sendMessage,
+    status,
+    stop,
+    regenerate,
+  } = useChat<ChatMessage>({
+    id: resolvedChatId,
+    messages: initialMessages,
+    experimental_throttle: 100,
+    generateId: generateUUID,
+    transport: new DefaultChatTransport({
+      api: "/api/chat",
+      fetch: fetchWithErrorHandlers,
+      prepareSendMessagesRequest(request) {
+        return {
+          body: {
+            id: request.id,
+            message: request.messages.at(-1),
+            selectedLanguage: currentLanguageCode,
+            selectedVisibilityType: initialVisibilityType,
+            chatMode: jobContext ? "jobs" : "default",
+            ...(jobContext ? { jobPostingId: jobContext.id, originJobPostingId: jobContext.id } : {}),
+            ...request.body,
+          },
+        };
+      },
+    }),
+    onError: (error) => {
+      const message =
+        error instanceof Error ? error.message : String(error ?? "");
+      toast({
+        type: "error",
+        description: message || "Unable to send your message right now.",
+      });
+    },
+    onData: (part) => {
+      if (part.type === "data-messageTimestamp") {
+        setMessages((current) => current.map((message) => message.id === part.data.id
+          ? { ...message, metadata: { ...message.metadata, createdAt: part.data.createdAt } }
+          : message));
+      }
+    },
+    onFinish: () => {
+      if (onBeforeSubmit) {
+        void mutate(unstable_serialize(getChatHistoryPaginationKeyForMode("all")));
+      }
+    },
+  });
+
+  const handleShow = useCallback(() => {
+    setIsVisible(true);
+  }, []);
+
+  const handleHide = useCallback(() => {
+    setIsVisible(false);
+  }, []);
+
+  const handleLanguageChange = useCallback((languageCode: string) => {
+    const normalized = languageCode.trim().toLowerCase();
+    if (!normalized) {
+      return;
+    }
+    setCurrentLanguageCode(normalized);
+  }, []);
+
+  useEffect(() => {
+    setIsVisible(defaultOpen);
+  }, [defaultOpen]);
+
+  useEffect(() => {
+    if (!restoreHistory) return;
+    void historyAttempt;
+    let cancelled = false;
+    setHistoryReady(false);
+    setHistoryFailed(false);
+    fetchWithErrorHandlers(`/api/chat/${resolvedChatId}/messages?limit=60`)
+      .then((response) => response.json())
+      .then((data) => {
+        if (cancelled) return;
+        setMessages(Array.isArray(data.messages) ? data.messages : []);
+        setHasMoreHistory(data.hasMore === true);
+        setOldestMessageAt(data.oldestMessageAt ?? null);
+        setHistoryReady(true);
+      }).catch(() => { if (!cancelled) setHistoryFailed(true); });
+    return () => { cancelled = true; };
+  }, [restoreHistory, resolvedChatId, setMessages, historyAttempt]);
+
+  useEffect(() => {
+    setHasMoreHistory(initialHasMoreHistory);
+    setOldestMessageAt(initialOldestMessageAt);
+    setIsLoadingHistory(false);
+  }, [initialHasMoreHistory, initialOldestMessageAt]);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (isLoadingHistory || !hasMoreHistory) {
+      return;
+    }
+
+    setIsLoadingHistory(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("limit", "60");
+      if (oldestMessageAt) {
+        params.set("before", oldestMessageAt);
+      }
+
+      const response = await fetchWithErrorHandlers(
+        `/api/chat/${resolvedChatId}/messages?${params.toString()}`
+      );
+      const data = (await response.json()) as {
+        hasMore?: boolean;
+        messages?: ChatMessage[];
+        oldestMessageAt?: string | null;
+      };
+
+      const incomingMessages = Array.isArray(data.messages)
+        ? data.messages
+        : [];
+      if (incomingMessages.length > 0) {
+        setMessages((previous) => [...incomingMessages, ...previous]);
+      }
+
+      if (typeof data.hasMore === "boolean") {
+        setHasMoreHistory(data.hasMore);
+      } else {
+        setHasMoreHistory(false);
+      }
+
+      if ("oldestMessageAt" in data) {
+        setOldestMessageAt(
+          typeof data.oldestMessageAt === "string" ? data.oldestMessageAt : null
+        );
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error ?? "");
+      toast({
+        type: "error",
+        description: message || "Unable to load earlier messages.",
+      });
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, [hasMoreHistory, isLoadingHistory, oldestMessageAt, resolvedChatId, setMessages]);
+
+  const emptyState = (
+    <div className="rounded-[20px] border border-dashed border-border/60 bg-muted/20 px-5 py-8 text-center text-muted-foreground text-sm">
+      <EditableTranslation translationKey="chat.popup.start" defaultText="Send a message to get started." />
+    </div>
+  );
+
+  const content = !historyReady ? (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-muted-foreground text-sm" aria-live="polite">
+      <EditableTranslation translationKey={historyFailed ? "chat.popup.load_error" : "chat.popup.loading"} defaultText={historyFailed ? "Unable to load this chat. Please try again." : "Loading chat..."} />
+      {historyFailed ? <button className="cursor-pointer rounded-full border px-4 py-2" onClick={() => setHistoryAttempt((attempt) => attempt + 1)} type="button"><EditableTranslation translationKey="common.retry" defaultText="Retry" /></button> : null}
+    </div>
+  ) : (
+      <div className="min-h-0 flex flex-1 flex-col overflow-hidden">
+        <div className="min-h-0 flex flex-1 overflow-hidden">
+          <Messages
+            chatId={resolvedChatId}
+            hasMoreHistory={hasMoreHistory}
+            header={messages.every((message) => message.parts.some((part) => part.type === "data-exploreContext")) ? emptyState : undefined}
+            headerFullWidth={false}
+            isArtifactVisible={false}
+            isGeneratingImage={false}
+            isLoadingHistory={isLoadingHistory}
+            isReadonly={isReadonly}
+            messages={messages}
+            onLoadMoreHistory={loadOlderMessages}
+            regenerate={regenerate}
+            selectedModelId={currentModelId}
+            selectedVisibilityType={initialVisibilityType}
+            sendMessage={sendMessage}
+            setMessages={setMessages}
+            showGreeting={false}
+            showScrollbar={true}
+            status={status}
+            suggestedPrompts={[]}
+            votes={[]}
+          />
+        </div>
+        {isReadonly ? null : (
+          <div className="shrink-0 border-t border-border/60 bg-background/95 p-3 md:p-4">
+            <MultimodalInput
+              attachments={attachments}
+              autoFocus={isVisible}
+              chatId={resolvedChatId}
+              documentUploadsEnabled={documentUploadsEnabled}
+              voiceChatEnabled={false}
+              imageGenerationCanGenerate={false}
+              imageGenerationEnabled={false}
+              imageGenerationRequiresPaidCredits={false}
+              imageGenerationSelected={false}
+              input={input}
+              isGeneratingImage={false}
+              messages={messages}
+              onGenerateImage={async () => {}}
+              onBeforeSubmit={onBeforeSubmit}
+              onLanguageChange={handleLanguageChange}
+              onToggleImageMode={() => {}}
+              selectedLanguageCode={currentLanguageCode}
+              selectedVisibilityType={initialVisibilityType}
+              sendMessage={sendMessage}
+              setAttachments={setAttachments}
+              setInput={setInput}
+              setMessages={setMessages}
+              status={status}
+              stop={stop}
+            />
+          </div>
+        )}
+      </div>
+  );
+  if (embedded) return content;
+  return (
+    <FloatingChatPopup
+      controls={
+        isReadonly ? null : (
+          <VisibilitySelector
+            chatId={resolvedChatId}
+            showOnMobile={true}
+            selectedVisibilityType={initialVisibilityType}
+          />
+        )
+      }
+      isVisible={isVisible}
+      onClose={handleHide}
+      onOpen={handleShow}
+    >
+      {content}
+    </FloatingChatPopup>
+  );
+}

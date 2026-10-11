@@ -1,19 +1,20 @@
-import { NextResponse } from "next/server";
-
+import { after, NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
 import {
-  createUserSubscription,
+  completePaymentTransactionWithSubscription,
   getPaymentTransactionByOrderId,
   getUserBalanceSummary,
   markPaymentTransactionFailed,
-  markPaymentTransactionPaid,
   markPaymentTransactionProcessing,
+  recordCouponRedemptionFromTransaction,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import { runPostCreditStep } from "@/lib/payments/post-credit";
 import {
   getRazorpayClient,
   verifyPaymentSignature,
 } from "@/lib/payments/razorpay";
+import { deliverReceiptEmail } from "@/lib/payments/receipts";
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -48,7 +49,10 @@ export async function POST(request: Request) {
   }
 
   if (transaction.status === "paid") {
-    const balance = await getUserBalanceSummary(session.user.id);
+    after(async () => { await deliverReceiptEmail(orderId).catch(() => { console.error("[receipts] Delivery scheduling failed", { orderId }); }); });
+    const balance = await runPostCreditStep(orderId, "balance", () =>
+      getUserBalanceSummary(session.user.id)
+    );
     return NextResponse.json({
       ok: true,
       alreadyProcessed: true,
@@ -66,7 +70,10 @@ export async function POST(request: Request) {
   const razorpay = getRazorpayClient();
   const order = await razorpay.orders.fetch(orderId);
 
-  if (order.amount !== transaction.amount || order.currency !== transaction.currency) {
+  if (
+    order.amount !== transaction.amount ||
+    order.currency !== transaction.currency
+  ) {
     await markPaymentTransactionFailed({ orderId });
     return new ChatSDKError(
       "bad_request:api",
@@ -87,6 +94,18 @@ export async function POST(request: Request) {
   });
 
   if (!locked) {
+    // The Razorpay webhook may have credited this order a moment earlier.
+    const latest = await getPaymentTransactionByOrderId({ orderId });
+    if (latest?.status === "paid") {
+      const balance = await runPostCreditStep(orderId, "balance", () =>
+        getUserBalanceSummary(session.user.id)
+      );
+      return NextResponse.json({
+        ok: true,
+        alreadyProcessed: true,
+        balance,
+      });
+    }
     return new ChatSDKError(
       "bad_request:api",
       "Payment is being processed. Please try again in a few moments."
@@ -94,22 +113,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    await createUserSubscription({
-      userId: session.user.id,
-      planId: transaction.planId,
-    });
-
-    await markPaymentTransactionPaid({
+    await completePaymentTransactionWithSubscription({
       orderId,
       paymentId,
       signature,
-    });
-
-    const balance = await getUserBalanceSummary(session.user.id);
-
-    return NextResponse.json({
-      ok: true,
-      balance,
+      userId: session.user.id,
+      planId: transaction.planId,
     });
   } catch (error) {
     await markPaymentTransactionFailed({ orderId });
@@ -121,4 +130,21 @@ export async function POST(request: Request) {
     console.error("Failed to finalize Razorpay payment", error);
     return new ChatSDKError("bad_request:api").toResponse();
   }
+
+  // The order is credited. Follow-up failures are logged and still answer
+  // success; a null balance makes the client refresh it.
+  await runPostCreditStep(orderId, "receipt", () =>
+    after(async () => { await deliverReceiptEmail(orderId).catch(() => { console.error("[receipts] Delivery scheduling failed", { orderId }); }); })
+  );
+  await runPostCreditStep(orderId, "coupon-redemption", () =>
+    recordCouponRedemptionFromTransaction(transaction)
+  );
+  const balance = await runPostCreditStep(orderId, "balance", () =>
+    getUserBalanceSummary(session.user.id)
+  );
+
+  return NextResponse.json({
+    ok: true,
+    balance,
+  });
 }

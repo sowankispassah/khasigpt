@@ -1,7 +1,8 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useTransition } from "react";
 
 import { useTranslation } from "@/components/language-provider";
 
@@ -18,6 +19,7 @@ export function DailyUsageRangeSelect({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { translate } = useTranslation();
+  const [isPending, startTransition] = useTransition();
 
   const paramsSnapshot = useMemo(
     () => new URLSearchParams(searchParams.toString()),
@@ -31,8 +33,10 @@ export function DailyUsageRangeSelect({
       nextParams.delete("sessionsPage");
 
       const query = nextParams.toString();
-      router.replace(query ? `${pathname}?${query}` : pathname, {
-        scroll: false,
+      startTransition(() => {
+        router.replace(query ? `${pathname}?${query}` : pathname, {
+          scroll: false,
+        });
       });
     },
     [paramsSnapshot, pathname, router]
@@ -41,13 +45,15 @@ export function DailyUsageRangeSelect({
   return (
     <div className="flex items-center gap-2 text-sm">
       <label
-        className="text-xs font-medium text-muted-foreground"
+        className="font-medium text-muted-foreground text-xs"
         htmlFor="daily-usage-range"
       >
         {translate("subscriptions.range.label", "Range")}
       </label>
       <select
-        className="rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-busy={isPending}
+        className="h-10 cursor-pointer rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+        disabled={isPending}
         id="daily-usage-range"
         onChange={handleChange}
         value={String(currentRange)}
@@ -61,6 +67,9 @@ export function DailyUsageRangeSelect({
           </option>
         ))}
       </select>
+      {isPending ? (
+        <Loader2 aria-hidden="true" className="size-4 animate-spin text-muted-foreground" />
+      ) : null}
     </div>
   );
 }

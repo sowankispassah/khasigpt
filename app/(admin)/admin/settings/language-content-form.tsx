@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-import type { LanguageOption } from "@/lib/i18n/languages";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
+import { AdminStatusPill } from "@/components/admin/admin-ui";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import type { LanguageOption } from "@/lib/i18n/languages";
 
 type LanguageContentFormProps = {
   language: LanguageOption;
@@ -16,7 +16,7 @@ type LanguageContentFormProps = {
         success: true;
         languageCode: string;
       }
-    | void
+    | undefined
   >;
   contentLabel?: string;
   placeholders?: {
@@ -49,12 +49,12 @@ export function LanguageContentForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  const defaultPlaceholder =
-    placeholders?.default ?? `Enter ${contentLabel}`;
+  const defaultPlaceholder = placeholders?.default ?? `Enter ${contentLabel}`;
   const localizedPlaceholder =
     placeholders?.localized ?? `Provide localized ${contentLabel}`;
   const helperDefault =
-    helperText?.default ?? "Shown to visitors when no localized version is available.";
+    helperText?.default ??
+    "Shown to visitors when no localized version is available.";
   const helperLocalized =
     helperText?.localized ??
     `Displayed when ${language.name} is selected. Falls back to the default language if left blank.`;
@@ -63,8 +63,7 @@ export function LanguageContentForm({
   const savingText = savingLabel ?? "Saving…";
   const successStatus =
     successMessage ?? `Saved ${language.name} ${contentLabel}`;
-  const successToast =
-    toastMessage ?? successStatus;
+  const successToast = toastMessage ?? successStatus;
   const failureText = `Failed to save ${language.name} ${contentLabel}`;
 
   useEffect(() => {
@@ -81,10 +80,10 @@ export function LanguageContentForm({
     setIsSubmitting(true);
     setStatusMessage(savingText);
 
-    void (async () => {
+    (async () => {
       try {
         const result = await onSubmit(formData);
-        if (result && result.success) {
+        if (result?.success) {
           toast({
             type: "success",
             description: successToast,
@@ -109,35 +108,46 @@ export function LanguageContentForm({
 
   return (
     <form
-      className="flex flex-col gap-4 rounded-lg border bg-background p-4"
+      className="flex min-w-0 flex-col gap-3 rounded-lg bg-muted/40 p-4"
       onSubmit={handleSubmit}
     >
       <div className="flex flex-col gap-2">
-        <label className="text-sm font-semibold" htmlFor={`content-${language.code}`}>
-          {language.name}
-        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <label
+            className="font-semibold text-sm"
+            htmlFor={`content-${language.code}`}
+          >
+            {language.name}
+          </label>
+          {language.isDefault ? (
+            <AdminStatusPill tone="info">Default</AdminStatusPill>
+          ) : null}
+        </div>
         <Textarea
-          className="min-h-[16rem]"
+          className="min-h-[16rem] bg-background"
+          disabled={isSubmitting}
           id={`content-${language.code}`}
-          value={value}
           onChange={(event) => setValue(event.target.value)}
           placeholder={
-            language.isDefault
-              ? defaultPlaceholder
-              : localizedPlaceholder
+            language.isDefault ? defaultPlaceholder : localizedPlaceholder
           }
-          disabled={isSubmitting}
           required
+          value={value}
         />
         <p className="text-muted-foreground text-xs">
           {language.isDefault ? helperDefault : helperLocalized}
         </p>
       </div>
-      <div className="flex items-center justify-between">
-        <div className="text-muted-foreground text-xs" aria-live="polite">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div aria-live="polite" className="text-muted-foreground text-xs">
           {statusMessage}
         </div>
-        <Button disabled={isSubmitting} type="submit" variant="default">
+        <Button
+          className="cursor-pointer"
+          disabled={isSubmitting}
+          type="submit"
+          variant="default"
+        >
           {isSubmitting ? (
             <span className="flex items-center gap-2">
               <span className="h-4 w-4 animate-spin">
@@ -146,7 +156,7 @@ export function LanguageContentForm({
               <span>{savingText}</span>
             </span>
           ) : (
-            <>{saveButtonLabel}</>
+            saveButtonLabel
           )}
         </Button>
       </div>

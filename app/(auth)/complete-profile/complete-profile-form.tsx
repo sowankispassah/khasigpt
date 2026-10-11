@@ -1,15 +1,11 @@
 "use client";
 
-import { useActionState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-
-import { SubmitButton } from "@/components/submit-button";
+import { useActionState, useEffect, useMemo } from "react";
 import { useTranslation } from "@/components/language-provider";
+import { SubmitButton } from "@/components/submit-button";
 
-import {
-  submitDateOfBirthAction,
-  type CompleteProfileState,
-} from "./actions";
+import { type CompleteProfileState, submitDateOfBirthAction } from "./actions";
 
 const initialState: CompleteProfileState = { status: "idle" };
 
@@ -34,6 +30,7 @@ export function CompleteProfileForm({
   useEffect(() => {
     if (state.status === "success") {
       router.replace("/");
+      router.refresh();
     }
   }, [state.status, router]);
 
@@ -45,7 +42,7 @@ export function CompleteProfileForm({
   return (
     <form action={formAction} className="space-y-4">
       <div className="flex flex-col gap-2">
-        <label className="text-sm font-medium" htmlFor="firstName">
+        <label className="font-medium text-sm" htmlFor="firstName">
           {translate("complete_profile.first_name.label", "First name")}
         </label>
         <input
@@ -62,7 +59,7 @@ export function CompleteProfileForm({
         />
       </div>
       <div className="flex flex-col gap-2">
-        <label className="text-sm font-medium" htmlFor="lastName">
+        <label className="font-medium text-sm" htmlFor="lastName">
           {translate("complete_profile.last_name.label", "Last name")}
         </label>
         <input
@@ -79,14 +76,14 @@ export function CompleteProfileForm({
         />
       </div>
       <div className="flex flex-col gap-2">
-        <label className="text-sm font-medium" htmlFor="dob">
+        <label className="font-medium text-sm" htmlFor="dob">
           {translate("complete_profile.dob.label", "Date of birth")}
         </label>
         <input
           className="rounded-md border bg-background px-3 py-2 text-sm"
+          defaultValue={defaultDateOfBirth ?? undefined}
           id="dob"
           max={maxDate}
-          defaultValue={defaultDateOfBirth ?? undefined}
           name="dob"
           required
           type="date"
@@ -99,7 +96,7 @@ export function CompleteProfileForm({
         </p>
       </div>
       {state.status === "error" ? (
-        <p className="text-sm text-destructive">{state.message}</p>
+        <p className="text-destructive text-sm">{state.message}</p>
       ) : null}
       <SubmitButton isSuccessful={state.status === "success"}>
         {translate("complete_profile.submit", "Save and continue")}

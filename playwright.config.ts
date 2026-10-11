@@ -23,15 +23,16 @@ const baseURL = `http://localhost:${PORT}`;
  * See https://playwright.dev/docs/test-configuration.
  */
 export default defineConfig({
+  outputDir: process.env.ISOLATED_TEST_RUN === "1" ? "./tmp/isolated-test-results" : "./test-results",
   testDir: "./tests",
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
-  retries: 0,
+  retries: process.env.PLAYWRIGHT ? 1 : 0,
   /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 2 : 8,
+  workers: process.env.PLAYWRIGHT ? 1 : process.env.CI ? 2 : 8,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: "html",
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
@@ -99,9 +100,19 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: "pnpm dev",
-    url: `${baseURL}/ping`,
+    // Match the production build's Turbopack pipeline. Next 16's Webpack dev
+    // manifest writer can expose a partially written JSON file on Windows.
+    command: process.env.ISOLATED_TEST_RUN === "1"
+      ? process.env.ISOLATED_TEST_SERVER === "production"
+        ? "node tests/support/production-server.cjs"
+        : "node node_modules/next/dist/bin/next dev --turbopack"
+      : "npm run dev",
+    url: `${baseURL}`,
     timeout: 120 * 1000,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !process.env.CI && process.env.ISOLATED_TEST_RUN !== "1",
+    env: {
+      PORT: String(PORT),
+      SKIP_APP_SETTING_CACHE: "1",
+    },
   },
 });

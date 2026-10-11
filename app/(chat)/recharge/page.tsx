@@ -1,64 +1,93 @@
 "use server";
 
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-
-import { auth } from "@/app/(auth)/auth";
+import { redirect } from "next/navigation";
+import type { ReactNode } from "react";
+import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
+import { AccountPageShell } from "@/components/account/account-ui";
 import { RechargePlans } from "@/components/recharge-plans";
+import { EditableTranslation } from "@/components/translation-edit-provider";
+import { loadPricingReadModel } from "@/lib/api/read-models";
+import { getUserBalanceSummary } from "@/lib/db/queries";
 import {
-  getUserBalanceSummary,
-  listPricingPlans,
-  getAppSetting,
-} from "@/lib/db/queries";
-import { RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
-import {
-  getTranslationBundle,
-  getTranslationsForKeys,
+  getTranslationValuesForKeys,
 } from "@/lib/i18n/dictionary";
+import { couponsAllowed } from "@/lib/referrals/settings";
+import { withTimeout } from "@/lib/utils/async";
+import { getChatRouteSession } from "../chat-route-session";
+import {
+  RechargeBalanceCard,
+  RechargeHowItWorks,
+  RechargePartialNotice,
+  RechargeUnavailable,
+} from "./recharge-view";
+
+const PRICING_TIMEOUT_MS = 7000;
+const BALANCE_TIMEOUT_MS = 7000;
+const PLAN_TRANSLATIONS_TIMEOUT_MS = 4000;
 
 export default async function RechargePage() {
-  const session = await auth();
+  const session = await getChatRouteSession();
 
   if (!session?.user) {
     redirect("/login?callbackUrl=/recharge");
   }
 
+  const couponsEnabled = await couponsAllowed(session.user.role).catch(() => false);
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
 
-  const [plans, balance, recommendedPlanSetting] = await Promise.all([
-    listPricingPlans({ includeInactive: false }),
-    getUserBalanceSummary(session.user.id),
-    getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
+  const [pricing, balance] = await Promise.all([
+    withTimeout(loadPricingReadModel(), PRICING_TIMEOUT_MS, () => {
+      console.error("[recharge] Pricing read timed out.", {
+        timeoutMs: PRICING_TIMEOUT_MS,
+      });
+    }).catch((error) => {
+      console.error("[recharge] Pricing read failed.", error);
+      return null;
+    }),
+    withTimeout(getUserBalanceSummary(session.user.id), BALANCE_TIMEOUT_MS, () => {
+      console.error("[recharge] Balance read timed out.", {
+        timeoutMs: BALANCE_TIMEOUT_MS,
+      });
+    }).catch((error) => {
+      console.error("[recharge] Balance read failed.", error);
+      return null;
+    }),
   ]);
 
-  const planTranslationDefinitions = plans.flatMap((plan) => [
-    {
-      key: `recharge.plan.${plan.id}.name`,
-      defaultText: plan.name,
-      description: `Pricing plan name for ${plan.name}`,
-    },
-    {
-      key: `recharge.plan.${plan.id}.description`,
-      defaultText: plan.description ?? "",
-      description: `Pricing plan details for ${plan.name}`,
-    },
+  if (!pricing) {
+    return <RechargeUnavailablePage />;
+  }
+
+  const {
+    imageGenerationEnabledForAll,
+    plans,
+    recommendedPlanId: recommendedPlanSetting,
+  } = pricing;
+
+  const planTranslationKeys = plans.flatMap((plan) => [
+    `recharge.plan.${plan.id}.name`,
+    `recharge.plan.${plan.id}.description`,
   ]);
 
-  const [bundle, planTranslations] = await Promise.all([
-    getTranslationBundle(preferredLanguage),
-    planTranslationDefinitions.length > 0
-      ? getTranslationsForKeys(preferredLanguage, planTranslationDefinitions)
-      : Promise.resolve<Record<string, string>>({}),
-  ]);
+  const planTranslations =
+    planTranslationKeys.length > 0
+      ? await withTimeout(
+          getTranslationValuesForKeys(preferredLanguage, planTranslationKeys),
+          PLAN_TRANSLATIONS_TIMEOUT_MS,
+          () => {
+            console.error("[recharge] Plan translation read timed out.", {
+              timeoutMs: PLAN_TRANSLATIONS_TIMEOUT_MS,
+            });
+          }
+        ).catch((error) => {
+          console.error("[recharge] Plan translation read failed.", error);
+          return {} as Record<string, string>;
+        })
+      : ({} as Record<string, string>);
 
-  const dictionary = bundle.dictionary;
-
-  const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
-
-  const activePlanId = balance.plan?.id ?? null;
+  const activePlanId = balance?.plan?.id ?? null;
   const sortedPlans = [...plans].sort((a, b) => {
     if (a.priceInPaise === b.priceInPaise) {
       return a.tokenAllowance - b.tokenAllowance;
@@ -67,17 +96,19 @@ export default async function RechargePage() {
   });
 
   let recommendedPlanId: string | null =
-    recommendedPlanSetting && sortedPlans.some((plan) => plan.id === recommendedPlanSetting)
+    recommendedPlanSetting &&
+    sortedPlans.some((plan) => plan.id === recommendedPlanSetting)
       ? recommendedPlanSetting
       : null;
 
   if (!recommendedPlanId) {
-    let highestPrice = -Infinity;
-    let highestAllowance = -Infinity;
+    let highestPrice = Number.NEGATIVE_INFINITY;
+    let highestAllowance = Number.NEGATIVE_INFINITY;
     for (const plan of sortedPlans) {
       if (
         plan.priceInPaise > highestPrice ||
-        (plan.priceInPaise === highestPrice && plan.tokenAllowance > highestAllowance)
+        (plan.priceInPaise === highestPrice &&
+          plan.tokenAllowance > highestAllowance)
       ) {
         recommendedPlanId = plan.id;
         highestPrice = plan.priceInPaise;
@@ -86,20 +117,17 @@ export default async function RechargePage() {
     }
   }
 
-  const expiryFormatter = new Intl.DateTimeFormat("en-IN", {
-    dateStyle: "medium",
-  });
   const localizedPlans = sortedPlans.map((plan) => {
     const nameKey = `recharge.plan.${plan.id}.name`;
     const descriptionKey = `recharge.plan.${plan.id}.description`;
 
-    const localizedName =
-      planTranslations[nameKey]?.trim().length
-        ? planTranslations[nameKey]
-        : plan.name;
+    const localizedName = planTranslations[nameKey]?.trim().length
+      ? planTranslations[nameKey]
+      : plan.name;
 
     const rawDescription = plan.description ?? "";
-    const translatedDescription = planTranslations[descriptionKey]?.trim() ?? "";
+    const translatedDescription =
+      planTranslations[descriptionKey]?.trim() ?? "";
     const localizedDescription =
       translatedDescription.length > 0
         ? translatedDescription
@@ -115,34 +143,23 @@ export default async function RechargePage() {
   });
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-12 px-4 py-12">
-      <header className="flex flex-col gap-6">
-        <div>
-          <Link
-            className="inline-flex items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-primary/80"
-            href="/"
-          >
-            <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-            {t("navigation.back_to_home", "Back to home")}
-          </Link>
-        </div>
-        <div className="mx-auto flex max-w-2xl flex-col gap-3 text-center">
-          <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            {t("recharge.tagline", "Pricing")}
-          </span>
-          <h1 className="text-3xl font-semibold md:text-4xl">
-            {t("recharge.title", "Choose your plan")}
-          </h1>
-          <p className="text-muted-foreground text-sm md:text-base">
-            {t(
-              "recharge.subtitle",
-              "Unlock more capacity and features by picking a plan that scales with your needs. Activate instantly and start building without interruption."
-            )}
-          </p>
-        </div>
-      </header>
-
+    <RechargePageFrame>
+      {!balance ? <RechargePartialNotice /> : null}
+      <RechargeBalanceCard
+        balance={
+          balance
+            ? {
+                creditsRemaining: balance.creditsRemaining,
+                creditsTotal: balance.creditsTotal,
+                expiresAt: balance.expiresAt,
+              }
+            : null
+        }
+      />
       <RechargePlans
+        couponsEnabled={couponsEnabled}
+        activePlanId={activePlanId}
+        imageGenerationEnabledForAll={imageGenerationEnabledForAll}
         plans={localizedPlans.map((plan) => ({
           id: plan.id,
           name: plan.name,
@@ -152,7 +169,6 @@ export default async function RechargePage() {
           billingCycleDays: plan.billingCycleDays,
           isActive: plan.isActive,
         }))}
-        activePlanId={activePlanId}
         recommendedPlanId={recommendedPlanId}
         user={{
           name: session.user.name ?? null,
@@ -160,37 +176,46 @@ export default async function RechargePage() {
           contact: null,
         }}
       />
-
-      <section className="rounded-2xl border bg-card/80 p-6 shadow-sm">
-        <h2 className="text-lg font-semibold">
-          {t("recharge.current_balance.title", "Current balance")}
-        </h2>
-        <dl className="mt-4 grid gap-6 sm:grid-cols-2">
-          <div>
-            <dt className="text-muted-foreground text-xs uppercase tracking-wide">
-              {t("recharge.current_balance.remaining", "Credits remaining")}
-            </dt>
-            <dd className="mt-2 text-2xl font-semibold">
-              {balance.creditsRemaining.toLocaleString()}{" "}
-              <span className="text-muted-foreground text-sm font-normal">
-                / {balance.creditsTotal.toLocaleString()}
-              </span>
-            </dd>
-          </div>
-          {balance.expiresAt ? (
-            <div>
-              <dt className="text-muted-foreground text-xs uppercase tracking-wide">
-                {t("recharge.current_balance.valid_until", "Credits valid until")}
-              </dt>
-              <dd className="mt-2 text-lg font-semibold">
-                {expiryFormatter.format(balance.expiresAt)}
-              </dd>
-            </div>
-          ) : null}
-        </dl>
-      </section>
-    </div>
+      <RechargeHowItWorks />
+    </RechargePageFrame>
   );
 }
 
+function RechargePageFrame({ children }: { children: ReactNode }) {
+  return (
+    <AccountPageShell
+      back={
+        <BackToHomeButton
+          label="Back to home"
+          translationKey="navigation.back_to_home"
+          variant="pill"
+        />
+      }
+      description={
+        <EditableTranslation
+          defaultText="Unlock more capacity and features by picking a plan that scales with your needs. Activate instantly and start building without interruption."
+          translationKey="recharge.subtitle"
+        />
+      }
+      eyebrow={
+        <EditableTranslation defaultText="Pricing" translationKey="recharge.tagline" />
+      }
+      title={
+        <EditableTranslation
+          defaultText="Choose your plan"
+          translationKey="recharge.title"
+        />
+      }
+    >
+      {children}
+    </AccountPageShell>
+  );
+}
 
+function RechargeUnavailablePage() {
+  return (
+    <RechargePageFrame>
+      <RechargeUnavailable />
+    </RechargePageFrame>
+  );
+}

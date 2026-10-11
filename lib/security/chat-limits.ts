@@ -1,0 +1,7 @@
+export const CHAT_MAX_BODY_BYTES = 128 * 1024;
+export const CHAT_MAX_PARTS = 12;
+export const CHAT_MAX_TEXT_CHARS = 8_000;
+export const CHAT_MAX_ATTACHMENTS = 4;
+export const CHAT_MAX_CONTEXT_TEXT_BYTES = 512 * 1024;
+export const CHAT_FREE_MAX_OUTPUT_TOKENS = 2048;
+export const CHAT_PAID_MAX_OUTPUT_TOKENS = 4096;

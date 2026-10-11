@@ -1,8 +1,20 @@
+import { del, getDownloadUrl, put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 
 import { auth } from "@/app/(auth)/auth";
-import { getUserById, updateUserImage } from "@/lib/db/queries";
+import {
+  clearActiveUserProfileImage,
+  getActiveUserProfileImage,
+  setActiveUserProfileImage,
+} from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import { enforceAvatarUploadLimit } from "@/lib/security/avatar-upload-limit";
+import {
+  RequestBodyLimitError,
+  readBoundedFormData,
+  requestLimitResponse,
+} from "@/lib/security/request-body";
+import { validateImageBytes } from "@/lib/uploads/image-validation";
 
 const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
 const ALLOWED_IMAGE_TYPES = new Set([
@@ -12,6 +24,13 @@ const ALLOWED_IMAGE_TYPES = new Set([
   "image/webp",
 ]);
 
+function shouldDeleteBlob(url: string | null): url is string {
+  if (!url) {
+    return false;
+  }
+  return url.startsWith("https://") && url.includes("vercel-storage.com");
+}
+
 export async function POST(request: Request) {
   const session = await auth();
 
@@ -19,47 +38,91 @@ export async function POST(request: Request) {
     return new ChatSDKError("unauthorized:api").toResponse();
   }
 
-  const formData = await request.formData();
+  const limited = await enforceAvatarUploadLimit(session.user.id);
+  if (limited) return limited;
+  let formData: FormData;
+  try {
+    formData = await readBoundedFormData(
+      request,
+      MAX_IMAGE_SIZE_BYTES + 16 * 1024,
+    );
+  } catch (error) {
+    return error instanceof RequestBodyLimitError
+      ? requestLimitResponse()
+      : new ChatSDKError("bad_request:api").toResponse();
+  }
+  if ([...formData.keys()].length !== 1)
+    return new ChatSDKError("bad_request:api").toResponse();
   const file = formData.get("image");
 
   if (!(file instanceof Blob)) {
     return new ChatSDKError(
       "bad_request:api",
-      "A valid image file is required."
+      "A valid image file is required.",
     ).toResponse();
   }
 
   if (file.size > MAX_IMAGE_SIZE_BYTES) {
     return new ChatSDKError(
       "bad_request:api",
-      "Profile images must be 2MB or smaller."
+      "Profile images must be 2MB or smaller.",
     ).toResponse();
   }
 
-  const mimeType = file.type || "image/png";
+  let mimeType: string;
+  try {
+    mimeType = await validateImageBytes(
+      Buffer.from(await file.arrayBuffer()),
+      true,
+    );
+  } catch {
+    return new ChatSDKError("bad_request:api").toResponse();
+  }
 
   if (!ALLOWED_IMAGE_TYPES.has(mimeType)) {
     return new ChatSDKError(
       "bad_request:api",
-      "Only PNG, JPG, or WEBP images are supported."
+      "Only PNG, JPG, or WEBP images are supported.",
     ).toResponse();
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const base64 = buffer.toString("base64");
-  const dataUrl = `data:${mimeType};base64,${base64}`;
+  const extension =
+    mimeType === "image/png"
+      ? "png"
+      : mimeType === "image/webp"
+        ? "webp"
+        : "jpg";
+  const objectKey = `avatars/${session.user.id}/${crypto.randomUUID()}.${extension}`;
 
-  const updated = await updateUserImage({
-    id: session.user.id,
-    image: dataUrl,
+  const activeImage = await getActiveUserProfileImage({
+    userId: session.user.id,
   });
+  const previousImage = activeImage?.imageUrl ?? null;
+
+  const blob = await put(objectKey, file, {
+    access: "public",
+    contentType: mimeType,
+    addRandomSuffix: false,
+  });
+
+  const updated = await setActiveUserProfileImage({
+    userId: session.user.id,
+    imageUrl: blob.downloadUrl,
+    source: "upload",
+  });
+
+  if (shouldDeleteBlob(previousImage)) {
+    del(previousImage).catch((error) => {
+      console.error("Failed to delete previous avatar blob", error);
+    });
+  }
 
   return NextResponse.json({
     ok: true,
-    image: dataUrl,
+    image: blob.downloadUrl,
     updatedAt:
-      updated?.updatedAt instanceof Date
-        ? updated.updatedAt.toISOString()
+      updated?.record?.createdAt instanceof Date
+        ? updated.record.createdAt.toISOString()
         : new Date().toISOString(),
   });
 }
@@ -71,17 +134,25 @@ export async function DELETE() {
     return new ChatSDKError("unauthorized:api").toResponse();
   }
 
-  const updated = await updateUserImage({
-    id: session.user.id,
-    image: null,
+  const activeImage = await getActiveUserProfileImage({
+    userId: session.user.id,
   });
+
+  await clearActiveUserProfileImage({ userId: session.user.id });
+
+  const imageToDelete = activeImage?.imageUrl ?? null;
+  if (shouldDeleteBlob(imageToDelete)) {
+    del(imageToDelete).catch((error) => {
+      console.error("Failed to delete avatar blob", error);
+    });
+  }
 
   return NextResponse.json({
     ok: true,
     image: null,
     updatedAt:
-      updated?.updatedAt instanceof Date
-        ? updated.updatedAt.toISOString()
+      activeImage?.createdAt instanceof Date
+        ? activeImage.createdAt.toISOString()
         : new Date().toISOString(),
   });
 }
@@ -93,13 +164,24 @@ export async function GET() {
     return new ChatSDKError("unauthorized:api").toResponse();
   }
 
-  const record = await getUserById(session.user.id);
+  const activeImage = await getActiveUserProfileImage({
+    userId: session.user.id,
+  });
+  const imageUrl = activeImage?.imageUrl ?? null;
+  let signedImage: string | null = null;
+  if (imageUrl) {
+    try {
+      signedImage = getDownloadUrl(imageUrl);
+    } catch (_error) {
+      signedImage = /^(data:|https?:\/\/)/.test(imageUrl) ? imageUrl : null;
+    }
+  }
 
   return NextResponse.json({
-    image: record?.image ?? null,
+    image: signedImage,
     updatedAt:
-      record?.updatedAt instanceof Date
-        ? record.updatedAt.toISOString()
-        : record?.updatedAt ?? null,
+      activeImage?.createdAt instanceof Date
+        ? activeImage.createdAt.toISOString()
+        : (activeImage?.createdAt ?? null),
   });
 }

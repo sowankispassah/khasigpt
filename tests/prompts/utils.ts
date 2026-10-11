@@ -253,12 +253,7 @@ As we move forward, Silicon Valley continues to reinvent itself. While some pred
 
   if (compareMessages(recentMessage, TEST_PROMPTS.GET_WEATHER_CALL)) {
     return [
-      {
-        type: "tool-call",
-        toolCallId: "call_456",
-        toolName: "getWeather",
-        input: JSON.stringify({ latitude: 37.7749, longitude: -122.4194 }),
-      },
+      ...textToDeltas("The current temperature in San Francisco is 17°C."),
       {
         type: "finish",
         finishReason: "stop",
@@ -278,5 +273,12 @@ As we move forward, Silicon Valley continues to reinvent itself. While some pred
     ];
   }
 
-  return [{ id: "6", type: "text-delta", delta: "Unknown test prompt!" }];
+  return [
+    ...textToDeltas("Unknown test prompt!"),
+    {
+      type: "finish",
+      finishReason: "stop",
+      usage: { inputTokens: 3, outputTokens: 10, totalTokens: 13 },
+    },
+  ];
 };

@@ -5,6 +5,7 @@ import { useCallback } from "react";
 import { Button } from "@/components/ui/button";
 
 type TableRow = {
+  accountType: string;
   chatId: string;
   userEmail: string;
   createdAt: string;
@@ -31,6 +32,7 @@ export function ExportButton({ rows }: Props) {
     const header = [
       "Chat ID",
       "User",
+      "Account type",
       "Created at",
       "Input tokens",
       "Output tokens",
@@ -48,6 +50,7 @@ export function ExportButton({ rows }: Props) {
         [
           row.chatId,
           `"${row.userEmail.replace(/"/g, '""')}"`,
+          `"${row.accountType.replace(/"/g, '""')}"`,
           row.createdAt,
           row.inputTokens.toFixed(0),
           row.outputTokens.toFixed(0),

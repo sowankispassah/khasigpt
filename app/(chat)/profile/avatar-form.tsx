@@ -1,24 +1,23 @@
 "use client";
 
+import { Camera } from "lucide-react";
+import Image from "next/image";
+import { useSession } from "next-auth/react";
 import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
   type ChangeEvent,
   type FormEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
 } from "react";
-import { useSession } from "next-auth/react";
 import { useSWRConfig } from "swr";
-
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LoaderIcon } from "@/components/icons";
-import {
-  getAvatarColor,
-  getInitials,
-} from "@/components/user-dropdown-menu";
 import { useTranslation } from "@/components/language-provider";
+import { EditableTranslation } from "@/components/translation-edit-provider";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { getAvatarColor, getInitials } from "@/components/user-dropdown-menu";
 
 const ACCEPTED_TYPES = [
   "image/png",
@@ -33,26 +32,29 @@ type AvatarFormProps = {
   initialImage: string | null;
   userName?: string | null;
   userEmail?: string | null;
+  /** Identity details shown beside the avatar. */
+  children?: ReactNode;
 };
 
 export function AvatarForm({
+  children,
   initialImage,
   userEmail,
   userName,
 }: AvatarFormProps) {
   const { data: sessionData, update } = useSession();
   const { mutate } = useSWRConfig();
+  const [savedImage, setSavedImage] = useState<string | null>(initialImage);
   const [preview, setPreview] = useState<string | null>(initialImage);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [pendingAction, setPendingAction] = useState<"upload" | "remove" | null>(
-    null
-  );
+  const [pendingAction, setPendingAction] = useState<
+    "upload" | "remove" | null
+  >(null);
   const [message, setMessage] = useState<string | null>(null);
   const [messageType, setMessageType] = useState<"success" | "error" | null>(
     null
   );
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const { translate } = useTranslation();
 
   const initials = useMemo(
@@ -65,15 +67,19 @@ export function AvatarForm({
   );
 
   useEffect(() => {
-    if (!selectedFile) {
-      setPreview(initialImage);
-    }
-  }, [initialImage, selectedFile]);
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<{ image: string | null }>;
+      setSavedImage(custom.detail?.image ?? null);
+      setPreview(custom.detail?.image ?? null);
+    };
+    window.addEventListener("user-avatar-updated", handler);
+    return () => window.removeEventListener("user-avatar-updated", handler);
+  }, []);
 
   useEffect(() => {
-    let currentPreview = preview;
+    const currentPreview = preview;
     return () => {
-      if (currentPreview && currentPreview.startsWith("blob:")) {
+      if (currentPreview?.startsWith("blob:")) {
         URL.revokeObjectURL(currentPreview);
       }
     };
@@ -92,12 +98,14 @@ export function AvatarForm({
     if (!file) {
       setSelectedFile(null);
       if (!selectedFile) {
-        setPreview(initialImage);
+        setPreview(savedImage);
       }
       return;
     }
 
-    if (!ACCEPTED_TYPES.includes(file.type as (typeof ACCEPTED_TYPES)[number])) {
+    if (
+      !ACCEPTED_TYPES.includes(file.type as (typeof ACCEPTED_TYPES)[number])
+    ) {
       setSelectedFile(null);
       setMessageType("error");
       setMessage(
@@ -121,16 +129,13 @@ export function AvatarForm({
       return;
     }
 
-    if (preview && preview.startsWith("blob:")) {
+    if (preview?.startsWith("blob:")) {
       URL.revokeObjectURL(preview);
     }
 
+    const objectUrl = URL.createObjectURL(file);
     setSelectedFile(file);
-    setPreview(URL.createObjectURL(file));
-  };
-
-  const handleChooseImage = () => {
-    fileInputRef.current?.click();
+    setPreview(objectUrl);
   };
 
   const handleUpload = async (event: FormEvent<HTMLFormElement>) => {
@@ -178,27 +183,31 @@ export function AvatarForm({
         image: string;
         updatedAt?: string | null;
       };
-      const newVersion =
-        body.updatedAt ?? new Date().toISOString();
-      setSelectedFile(null);
+      const newVersion = body.updatedAt ?? new Date().toISOString();
+      setSavedImage(body.image);
       setPreview(body.image);
+      setSelectedFile(null);
       setMessageType("success");
       setMessage(
-        translate(
-          "profile.picture.success.upload",
-          "Profile picture updated."
-        )
+        translate("profile.picture.success.upload", "Profile picture updated.")
       );
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("user-avatar-updated", {
+            detail: { image: body.image, version: newVersion },
+          })
+        );
+      }
       const currentVersion = sessionData?.user.imageVersion ?? null;
       const currentKey =
         currentVersion === undefined
           ? null
           : `/api/profile/avatar?v=${encodeURIComponent(currentVersion ?? "none")}`;
       if (currentKey) {
-        void mutate(currentKey, undefined, false);
+        await mutate(currentKey, undefined, false);
       }
       const nextKey = `/api/profile/avatar?v=${encodeURIComponent(newVersion)}`;
-      void mutate(
+      await mutate(
         nextKey,
         { image: body.image, updatedAt: newVersion },
         false
@@ -247,28 +256,32 @@ export function AvatarForm({
         image: null;
         updatedAt?: string | null;
       };
-      const newVersion =
-        body.updatedAt ?? new Date().toISOString();
+      const newVersion = body.updatedAt ?? new Date().toISOString();
 
-      setSelectedFile(null);
+      setSavedImage(null);
       setPreview(null);
+      setSelectedFile(null);
       setMessageType("success");
       setMessage(
-        translate(
-          "profile.picture.success.remove",
-          "Profile picture removed."
-        )
+        translate("profile.picture.success.remove", "Profile picture removed.")
       );
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("user-avatar-updated", {
+            detail: { image: null, version: newVersion },
+          })
+        );
+      }
       const currentVersion = sessionData?.user.imageVersion ?? null;
       const currentKey =
         currentVersion === undefined
           ? null
           : `/api/profile/avatar?v=${encodeURIComponent(currentVersion ?? "none")}`;
       if (currentKey) {
-        void mutate(currentKey, undefined, false);
+        await mutate(currentKey, undefined, false);
       }
       const nextKey = `/api/profile/avatar?v=${encodeURIComponent(newVersion)}`;
-      void mutate(nextKey, { image: null, updatedAt: newVersion }, false);
+      await mutate(nextKey, { image: null, updatedAt: newVersion }, false);
       await update?.({ user: { imageVersion: newVersion } });
     } catch (error) {
       console.error("Failed to remove profile image", error);
@@ -285,89 +298,142 @@ export function AvatarForm({
     }
   };
 
-  const showRemoveButton = Boolean(preview);
+  const showRemoveButton = Boolean(savedImage);
+  const fileInputId = "profile-avatar-file";
+  const savingLabel = (
+    <span className="flex items-center gap-2">
+      <span className="h-4 w-4 animate-spin">
+        <LoaderIcon size={16} />
+      </span>
+      <span>
+        <EditableTranslation
+          defaultText="Saving..."
+          translationKey="profile.picture.saving"
+        />
+      </span>
+    </span>
+  );
 
   return (
-    <form className="space-y-4" onSubmit={handleUpload}>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <Avatar className="h-20 w-20 overflow-hidden">
-          <AvatarImage alt="Profile picture" className="object-cover" src={preview ?? undefined} />
-          <AvatarFallback
-            className="text-lg font-semibold uppercase text-white"
-            style={{ backgroundColor: avatarColor }}
-          >
-            {initials}
-          </AvatarFallback>
+    <form
+      className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6"
+      onSubmit={handleUpload}
+    >
+      <div className="relative shrink-0 self-start sm:self-center">
+        <Avatar className="size-24 overflow-hidden ring-4 ring-card">
+          {preview ? (
+            <Image
+              alt="Profile avatar"
+              className="h-full w-full object-cover"
+              height={96}
+              src={preview}
+              unoptimized
+              width={96}
+            />
+          ) : (
+            <AvatarFallback
+              className="font-semibold text-2xl text-white uppercase"
+              style={{ backgroundColor: avatarColor }}
+            >
+              {initials}
+            </AvatarFallback>
+          )}
         </Avatar>
-
-        <div className="flex flex-col gap-2">
-          <input
-            accept={ACCEPTED_TYPES.join(",")}
-            className="hidden"
-            onChange={handleFileChange}
-            ref={fileInputRef}
-            type="file"
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={handleChooseImage} type="button" variant="outline">
-              {translate("profile.picture.choose", "Choose image")}
-            </Button>
-            <Button disabled={isSaving || !selectedFile} type="submit">
-              {isSaving && pendingAction === "upload" ? (
-                <span className="flex items-center gap-2">
-                  <span className="h-4 w-4 animate-spin">
-                    <LoaderIcon size={16} />
-                  </span>
-                  <span>
-                    {translate("profile.picture.saving", "Saving...")}
-                  </span>
-                </span>
-              ) : selectedFile ? (
-                translate("profile.picture.save_changes", "Save changes")
-              ) : (
-                translate("profile.picture.upload", "Upload")
-              )}
-            </Button>
-            {showRemoveButton ? (
-              <Button
-                disabled={isSaving}
-                onClick={handleRemove}
-                type="button"
-                variant="ghost"
-              >
-                {isSaving && pendingAction === "remove" ? (
-                  <span className="flex items-center gap-2">
-                    <span className="h-4 w-4 animate-spin">
-                      <LoaderIcon size={16} />
-                    </span>
-                    <span>
-                      {translate("profile.picture.saving", "Saving...")}
-                    </span>
-                  </span>
-                ) : (
-                  translate("profile.picture.remove", "Remove")
-                )}
-              </Button>
-            ) : null}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {translate(
-              "profile.picture.size_help",
-              "PNG, JPG, or WEBP up to 2 MB."
-            )}
-          </p>
-        </div>
+        <label
+          className="absolute right-0 bottom-0 flex size-9 cursor-pointer items-center justify-center rounded-full border bg-background text-foreground shadow-sm transition-colors hover:bg-muted"
+          htmlFor={fileInputId}
+          title={translate("profile.picture.choose", "Choose image")}
+        >
+          <Camera aria-hidden="true" className="size-4" />
+          <span className="sr-only">
+            <EditableTranslation
+              defaultText="Choose image"
+              translationKey="profile.picture.choose"
+            />
+          </span>
+        </label>
+        <input
+          accept={ACCEPTED_TYPES.join(",")}
+          className="sr-only"
+          disabled={isSaving}
+          id={fileInputId}
+          onChange={handleFileChange}
+          onClick={(event) => {
+            event.currentTarget.value = "";
+          }}
+          type="file"
+        />
       </div>
 
-      {message ? (
-        <p
-          className={`text-xs ${
-            messageType === "error" ? "text-destructive" : "text-emerald-600"
-          }`}
-        >
-          {message}
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
+        {children}
+        <div className="flex flex-wrap items-center gap-2">
+          <label
+            className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg border border-input bg-background px-4 font-medium text-sm transition-colors hover:bg-muted"
+            htmlFor={fileInputId}
+          >
+            <EditableTranslation
+              defaultText="Choose image"
+              translationKey="profile.picture.choose"
+            />
+          </label>
+          <Button
+            className="h-10 cursor-pointer rounded-lg"
+            disabled={isSaving || !selectedFile}
+            type="submit"
+          >
+            {isSaving && pendingAction === "upload" ? (
+              savingLabel
+            ) : selectedFile ? (
+              <EditableTranslation
+                defaultText="Save changes"
+                translationKey="profile.picture.save_changes"
+              />
+            ) : (
+              <EditableTranslation
+                defaultText="Upload"
+                translationKey="profile.picture.upload"
+              />
+            )}
+          </Button>
+          {showRemoveButton ? (
+            <Button
+              className="h-10 cursor-pointer rounded-lg"
+              disabled={isSaving}
+              onClick={handleRemove}
+              type="button"
+              variant="ghost"
+            >
+              {isSaving && pendingAction === "remove" ? (
+                savingLabel
+              ) : (
+                <EditableTranslation
+                  defaultText="Remove"
+                  translationKey="profile.picture.remove"
+                />
+              )}
+            </Button>
+          ) : null}
+        </div>
+        <p className="text-muted-foreground text-xs">
+          <EditableTranslation
+            defaultText="PNG, JPG, or WEBP up to 2 MB."
+            translationKey="profile.picture.size_help"
+          />
         </p>
-      ) : null}
+        {message ? (
+          <p
+            aria-live="polite"
+            className={
+              messageType === "error"
+                ? "text-destructive text-sm"
+                : "text-emerald-700 text-sm dark:text-emerald-400"
+            }
+          >
+            {message}
+          </p>
+        ) : null}
+      </div>
     </form>
   );
 }

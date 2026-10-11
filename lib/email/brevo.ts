@@ -1,6 +1,37 @@
-import * as Brevo from "@getbrevo/brevo";
+import {
+  SendSmtpEmail,
+  TransactionalEmailsApi,
+  TransactionalEmailsApiApiKeys,
+} from "@getbrevo/brevo";
 
+import { contactReplyAddress } from "@/lib/email/contact-inbound";
 import { ChatSDKError } from "@/lib/errors";
+import { type ReceiptData, receiptAmount, receiptEmailKey, receiptFilename } from "@/lib/payments/receipt-data";
+
+export async function sendPaymentReceiptEmail({ receipt, pdf }: { receipt: ReceiptData; pdf: Buffer }) {
+  const apiKey = process.env.BREVO_API_KEY;
+  const senderEmail = process.env.BREVO_SENDER_EMAIL;
+  if (!apiKey || !senderEmail) throw new Error("Receipt email configuration unavailable");
+  const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST", headers: { "api-key": apiKey, "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(15_000),
+    body: JSON.stringify({
+      sender: { email: senderEmail, name: process.env.BREVO_SENDER_NAME ?? "KhasiGPT" },
+      to: [{ email: receipt.email }],
+      subject: `Your KhasiGPT receipt ${receipt.number}`,
+      headers: { idempotencyKey: receiptEmailKey(receipt.orderId) },
+      textContent: `Thank you for your purchase.\nPlan: ${receipt.planName}\nAmount paid: ${receiptAmount(receipt)}\nReceipt: ${receipt.number}\nYour PDF receipt is attached. You can also download it from Recharge history in your profile.\nhttps://khasigpt.com/subscriptions`,
+      htmlContent: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:24px"><h1>KhasiGPT</h1><h2>Payment receipt</h2><p>Thank you for your purchase.</p><p><strong>Plan:</strong> ${escapeHtml(receipt.planName)}<br><strong>Amount paid:</strong> ${escapeHtml(receiptAmount(receipt))}<br><strong>Receipt:</strong> ${receipt.number}</p><p>Your PDF receipt is attached. You can also download it from Recharge history in your profile.</p><p><a href="https://khasigpt.com/subscriptions">View recharge history</a></p></div>`,
+      attachment: [{ name: receiptFilename(receipt), content: pdf.toString("base64") }],
+    }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => null) as { code?: string } | null;
+    if (response.status === 400 && error?.code === "duplicate_parameter") return;
+    throw new Error(`Receipt email rejected (${response.status})`);
+  }
+}
 
 type VerificationEmailPayload = {
   toEmail: string;
@@ -14,8 +45,14 @@ type PasswordResetEmailPayload = {
   resetUrl: string;
 };
 
-let brevoEmailClient: InstanceType<typeof Brevo.TransactionalEmailsApi> | null =
-  null;
+type AccountDeletionVerificationPayload = {
+  toEmail: string;
+  toName?: string | null;
+  verificationUrl: string;
+  referenceId: string;
+};
+
+let brevoEmailClient: TransactionalEmailsApi | null = null;
 
 function getBrevoClient() {
   if (brevoEmailClient) {
@@ -31,12 +68,12 @@ function getBrevoClient() {
     );
   }
 
-  const client = new Brevo.TransactionalEmailsApi();
-  client.setApiKey(Brevo.TransactionalEmailsApiApiKeys.apiKey, apiKey);
+  const client = new TransactionalEmailsApi();
+  client.setApiKey(TransactionalEmailsApiApiKeys.apiKey, apiKey);
 
   const partnerKey = process.env.BREVO_PARTNER_KEY;
   if (partnerKey) {
-    client.setApiKey(Brevo.TransactionalEmailsApiApiKeys.partnerKey, partnerKey);
+    client.setApiKey(TransactionalEmailsApiApiKeys.partnerKey, partnerKey);
   }
 
   brevoEmailClient = client;
@@ -59,20 +96,20 @@ export async function sendVerificationEmail({
   }
 
   const client = getBrevoClient();
-  const email = new Brevo.SendSmtpEmail();
+  const email = new SendSmtpEmail();
 
   email.subject = "Please verify your email address";
   email.sender = { email: senderEmail, name: senderName };
   email.replyTo = { email: senderEmail, name: senderName };
   email.to = [{ email: toEmail, name: toName ?? undefined }];
   email.textContent =
-    `Thanks for signing up for AI Chatbot!\n\n` +
+    "Thanks for signing up to KhasiGPT.\n\n" +
     `Please confirm your address by opening the link below:\n${verificationUrl}\n\n` +
-    `If you didn’t create an account, you can ignore this message.`;
+    "If you didn’t create an account, you can ignore this message.";
   email.htmlContent = `
     <html>
       <body style="font-family: Arial, sans-serif;">
-        <p>Thanks for signing up for AI Chatbot!</p>
+        <p>Thanks for signing up to KhasiGPT.</p>
         <p>Click the button below to verify your email address and activate your account.</p>
         <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0;">
           <tr>
@@ -96,7 +133,9 @@ export async function sendVerificationEmail({
   } catch (error) {
     throw new ChatSDKError(
       "bad_request:api",
-      error instanceof Error ? error.message : "Failed to send verification email"
+      error instanceof Error
+        ? error.message
+        : "Failed to send verification email"
     );
   }
 }
@@ -117,20 +156,20 @@ export async function sendPasswordResetEmail({
   }
 
   const client = getBrevoClient();
-  const email = new Brevo.SendSmtpEmail();
+  const email = new SendSmtpEmail();
 
-  email.subject = "Reset your AI Chatbot password";
+  email.subject = "Reset your KhasiGPT password";
   email.sender = { email: senderEmail, name: senderName };
   email.replyTo = { email: senderEmail, name: senderName };
   email.to = [{ email: toEmail, name: toName ?? undefined }];
   email.textContent =
-    `We received a request to reset your AI Chatbot password.\n\n` +
+    "We received a request to reset your KhasiGPT password.\n\n" +
     `You can choose a new password using the link below:\n${resetUrl}\n\n` +
     `If you didn't make this request, you can safely ignore this email.`;
   email.htmlContent = `
     <html>
       <body style="font-family: Arial, sans-serif;">
-        <p>We received a request to reset your AI Chatbot password.</p>
+        <p>We received a request to reset your KhasiGPT password.</p>
         <p>Click the button below to choose a new password.</p>
         <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0;">
           <tr>
@@ -159,7 +198,77 @@ export async function sendPasswordResetEmail({
   } catch (error) {
     throw new ChatSDKError(
       "bad_request:api",
-      error instanceof Error ? error.message : "Failed to send password reset email"
+      error instanceof Error
+        ? error.message
+        : "Failed to send password reset email"
+    );
+  }
+}
+
+export async function sendAccountDeletionVerificationEmail({
+  toEmail,
+  toName,
+  verificationUrl,
+  referenceId,
+}: AccountDeletionVerificationPayload) {
+  const senderEmail = process.env.BREVO_SENDER_EMAIL;
+  const senderName = process.env.BREVO_SENDER_NAME ?? "Support";
+
+  if (!senderEmail) {
+    throw new ChatSDKError(
+      "bad_request:api",
+      "Brevo sender email is not configured"
+    );
+  }
+
+  const client = getBrevoClient();
+  const email = new SendSmtpEmail();
+
+  email.subject = "Verify your account deletion request";
+  email.sender = { email: senderEmail, name: senderName };
+  email.replyTo = { email: senderEmail, name: senderName };
+  email.to = [{ email: toEmail, name: toName ?? undefined }];
+  email.textContent =
+    `We received an account deletion request for ${toEmail}.\n\n` +
+    `Reference ID: ${referenceId}\n\n` +
+    `Verify this request by opening the link below:\n${verificationUrl}\n\n` +
+    "If you did not request account deletion, contact support immediately.";
+  email.htmlContent = `
+    <html>
+      <body style="font-family: Arial, sans-serif;">
+        <p>We received an account deletion request for ${toEmail}.</p>
+        <p><strong>Reference ID:</strong> ${referenceId}</p>
+        <p>Click the button below to verify this request. We will not process a signed-out deletion request until the email address is verified.</p>
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0;">
+          <tr>
+            <td style="background-color:#1f2937;border-radius:6px;">
+              <a
+                href="${verificationUrl}"
+                target="_blank"
+                rel="noopener"
+                style="display:block;padding:12px 24px;font-weight:600;color:#ffffff;text-decoration:none;font-family:Arial,sans-serif;border-radius:6px;cursor:pointer;"
+              >
+                Verify deletion request
+              </a>
+            </td>
+          </tr>
+        </table>
+        <p>Or copy and paste this link into your browser:<br />
+          <a href="${verificationUrl}">${verificationUrl}</a>
+        </p>
+        <p>If you did not request account deletion, contact support immediately.</p>
+      </body>
+    </html>
+  `;
+
+  try {
+    await client.sendTransacEmail(email);
+  } catch (error) {
+    throw new ChatSDKError(
+      "bad_request:api",
+      error instanceof Error
+        ? error.message
+        : "Failed to send account deletion verification email"
     );
   }
 }
@@ -169,6 +278,7 @@ type ContactMessagePayload = {
   senderEmail: string;
   subject: string;
   message: string;
+  attachments?: import("@/lib/db/schema").ContactAttachment[];
 };
 
 export async function sendContactMessageEmail({
@@ -176,6 +286,7 @@ export async function sendContactMessageEmail({
   senderEmail,
   subject,
   message,
+  attachments = [],
 }: ContactMessagePayload) {
   const supportEmail = process.env.BREVO_SENDER_EMAIL;
   const supportName = process.env.BREVO_SENDER_NAME ?? "Support";
@@ -188,7 +299,7 @@ export async function sendContactMessageEmail({
   }
 
   const client = getBrevoClient();
-  const email = new Brevo.SendSmtpEmail();
+  const email = new SendSmtpEmail();
 
   email.subject = subject.trim().length > 0 ? subject : "New contact request";
   email.sender = { email: supportEmail, name: supportName };
@@ -207,6 +318,8 @@ export async function sendContactMessageEmail({
     </html>
   `;
 
+  if (attachments.length) email.attachment = await (await import("@/lib/contact/attachments")).contactAttachmentEmailParts(attachments);
+
   try {
     await client.sendTransacEmail(email);
   } catch (error) {
@@ -215,4 +328,47 @@ export async function sendContactMessageEmail({
       error instanceof Error ? error.message : "Failed to send contact message"
     );
   }
+}
+
+export function contactReplySubject(subject: string) {
+  const safeSubject = subject.replace(/[\r\n]+/g, " ").trim() || "Your KhasiGPT enquiry";
+  return (/^re\s*:/i.test(safeSubject) ? safeSubject : `Re: ${safeSubject}`).slice(0, 240);
+}
+
+function escapeEmailHtml(value: string) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+export function contactReplyHtml(body: string) {
+  return `<html><body><p style="white-space:pre-wrap;font-family:Arial,sans-serif">${escapeEmailHtml(body)}</p></body></html>`;
+}
+
+export async function sendContactReplyEmail({
+  messageId,
+  toEmail,
+  toName,
+  subject,
+  body,
+  attachments = [],
+}: {
+  messageId: string;
+  toEmail: string;
+  toName: string;
+  subject: string;
+  body: string;
+  attachments?: import("@/lib/db/schema").ContactAttachment[];
+}) {
+  const senderEmail = process.env.BREVO_SENDER_EMAIL;
+  const senderName = process.env.BREVO_SENDER_NAME ?? "Support";
+  if (!senderEmail) throw new ChatSDKError("bad_request:api", "Brevo sender email is not configured");
+
+  const email = new SendSmtpEmail();
+  email.subject = contactReplySubject(subject);
+  email.sender = { email: senderEmail, name: senderName };
+  email.replyTo = { email: contactReplyAddress(messageId) ?? senderEmail, name: senderName };
+  email.to = [{ email: toEmail, name: toName }];
+  email.textContent = body || "Please see the attached file.";
+  email.htmlContent = contactReplyHtml(body || "Please see the attached file.");
+  if (attachments.length) email.attachment = await (await import("@/lib/contact/attachments")).contactAttachmentEmailParts(attachments);
+  await getBrevoClient().sendTransacEmail(email);
 }

@@ -1,15 +1,19 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { useEffect, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
+import { EditableTranslation } from "@/components/translation-edit-provider";
+import { updateNameAction } from "./actions";
 import {
-  type UpdateProfileNameState,
-  updateNameAction,
-} from "./actions";
-
-const initialState: UpdateProfileNameState = { status: "idle" };
+  PROFILE_INPUT_CLASS,
+  PROFILE_PRIMARY_BUTTON_CLASS,
+  ProfileField,
+  ProfileFormFooter,
+  ProfileStatusText,
+} from "./profile-ui";
 
 type NameFormProps = {
   initialFirstName: string | null;
@@ -17,29 +21,16 @@ type NameFormProps = {
 };
 
 export function NameForm({ initialFirstName, initialLastName }: NameFormProps) {
+  const router = useRouter();
   const { translate } = useTranslation();
   const [firstName, setFirstName] = useState(initialFirstName ?? "");
   const [lastName, setLastName] = useState(initialLastName ?? "");
+  const [isSaving, setIsSaving] = useState(false);
+  const [status, setStatus] = useState<{
+    message: string;
+    type: "error" | "success";
+  } | null>(null);
   const { update: updateSession } = useSession();
-
-  const [state, formAction, isPending] = useActionState<
-    UpdateProfileNameState,
-    FormData
-  >(async (prev, formData) => {
-    const result = await updateNameAction(prev, formData);
-    if (result.status === "success") {
-      const submittedFirst = formData.get("firstName")?.toString() ?? "";
-      const submittedLast = formData.get("lastName")?.toString() ?? "";
-      setFirstName(submittedFirst);
-      setLastName(submittedLast);
-      await updateSession({
-        firstName: submittedFirst,
-        lastName: submittedLast,
-        name: [submittedFirst, submittedLast].filter(Boolean).join(" "),
-      });
-    }
-    return result;
-  }, initialState);
 
   useEffect(() => {
     setFirstName(initialFirstName ?? "");
@@ -49,82 +40,136 @@ export function NameForm({ initialFirstName, initialLastName }: NameFormProps) {
     setLastName(initialLastName ?? "");
   }, [initialLastName]);
 
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isSaving) {
+      return;
+    }
+    const formData = new FormData(event.currentTarget);
+    setIsSaving(true);
+    setStatus(null);
+
+    try {
+      const result = await updateNameAction({ status: "idle" }, formData);
+      if (result.status !== "success") {
+        setStatus({
+          message:
+            result.status === "error" && result.reason === "invalid"
+              ? translate(
+                  "profile.name.invalid",
+                  "Enter a first and last name of up to 64 characters each."
+                )
+              : translate("profile.name.error", "Unable to update profile."),
+          type: "error",
+        });
+        return;
+      }
+
+      setFirstName(result.firstName);
+      setLastName(result.lastName);
+      setStatus({
+        message: translate(
+          "profile.name.success",
+          "Profile details updated successfully."
+        ),
+        type: "success",
+      });
+      await updateSession({}).catch((error) => {
+        console.error("[profile/name] Failed to refresh session.", error);
+      });
+      router.refresh();
+    } catch {
+      setStatus({
+        message: translate(
+          "profile.name.error",
+          "Unable to update profile."
+        ),
+        type: "error",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
-    <form
-      action={formAction}
-      className="rounded-lg border bg-card p-6 shadow-sm space-y-4"
-    >
-      <div>
-        <h2 className="text-lg font-semibold">
-          {translate("profile.name.title", "Personal details")}
-        </h2>
-        <p className="text-muted-foreground text-sm">
-          {translate(
-            "profile.name.description",
-            "Update the name that appears across the product."
-          )}
-        </p>
-      </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-2">
-          <label className="text-sm font-medium" htmlFor="profile-first-name">
-            {translate("profile.name.first_label", "First name")}
-          </label>
+    <form className="space-y-5" onSubmit={handleSubmit}>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <ProfileField
+          htmlFor="profile-first-name"
+          label={
+            <EditableTranslation
+              defaultText="First name"
+              translationKey="profile.name.first_label"
+            />
+          }
+        >
           <input
-            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            autoComplete="given-name"
+            className={PROFILE_INPUT_CLASS}
             id="profile-first-name"
+            maxLength={64}
             name="firstName"
+            onChange={(event) => setFirstName(event.target.value)}
             required
             type="text"
             value={firstName}
-            onChange={(event) => setFirstName(event.target.value)}
           />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium" htmlFor="profile-last-name">
-            {translate("profile.name.last_label", "Last name")}
-          </label>
+        </ProfileField>
+        <ProfileField
+          htmlFor="profile-last-name"
+          label={
+            <EditableTranslation
+              defaultText="Last name"
+              translationKey="profile.name.last_label"
+            />
+          }
+        >
           <input
-            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            autoComplete="family-name"
+            className={PROFILE_INPUT_CLASS}
             id="profile-last-name"
+            maxLength={64}
             name="lastName"
+            onChange={(event) => setLastName(event.target.value)}
             required
             type="text"
             value={lastName}
-            onChange={(event) => setLastName(event.target.value)}
           />
-        </div>
+        </ProfileField>
       </div>
-      <div aria-live="polite" className="min-h-[1.25rem] text-sm">
-        {state.status === "error" ? (
-          <span className="text-destructive">{state.message}</span>
-        ) : state.status === "success" ? (
-          <span className="text-emerald-600">
-            {translate(
-              "profile.name.success",
-              "Profile details updated successfully."
+      <ProfileFormFooter
+        action={
+          <button
+            className={PROFILE_PRIMARY_BUTTON_CLASS}
+            disabled={isSaving}
+            type="submit"
+          >
+            {isSaving ? (
+              <>
+                <span className="h-4 w-4 animate-spin">
+                  <LoaderIcon size={16} />
+                </span>
+                <span>
+                  <EditableTranslation
+                    defaultText="Saving..."
+                    translationKey="profile.name.saving"
+                  />
+                </span>
+              </>
+            ) : (
+              <EditableTranslation
+                defaultText="Save changes"
+                translationKey="profile.name.save_button"
+              />
             )}
-          </span>
-        ) : null}
-      </div>
-      <button
-        className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
-        disabled={isPending}
-        type="submit"
-      >
-        {isPending ? (
-          <span className="flex items-center gap-2">
-            <span className="h-4 w-4 animate-spin">
-              <LoaderIcon size={16} />
-            </span>
-            <span>
-              {translate("profile.name.saving", "Saving...")}
-            </span>
-          </span>
-        ) : (
-          translate("profile.name.save_button", "Save changes")
-        )}
-      </button>
+          </button>
+        }
+        status={
+          status ? (
+            <ProfileStatusText type={status.type}>{status.message}</ProfileStatusText>
+          ) : null
+        }
+      />
     </form>
   );
 }

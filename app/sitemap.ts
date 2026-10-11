@@ -1,30 +1,22 @@
 import type { MetadataRoute } from "next";
+import { getActiveLanguages } from "@/lib/i18n/languages";
 
 const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://khasigpt.com";
 
+// Only list public pages that render for anonymous visitors. "/" and
+// "/<lang>" always redirect, and app pages require a session.
 const marketingRoutes = [
-  "/",
   "/about",
+  "/forum",
   "/privacy-policy",
   "/terms-of-service",
+  "/refund-policy",
 ];
+const localizedMarketingRoutes = ["/about", "/privacy-policy", "/terms-of-service"];
 
-const accountRoutes = [
-  "/login",
-  "/register",
-  "/forgot-password",
-  "/reset-password",
-  "/verify-email",
-];
+const accountRoutes = ["/login", "/register"];
 
-const appRoutes = [
-  "/chat",
-  "/chat/recharge",
-  "/chat/subscriptions",
-  "/chat/profile",
-];
-
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const lastModified = new Date();
 
   const buildEntries = (paths: string[]): MetadataRoute.Sitemap => {
@@ -32,13 +24,25 @@ export default function sitemap(): MetadataRoute.Sitemap {
       url: `${baseUrl}${path}`,
       lastModified,
       changeFrequency: "weekly",
-      priority: path === "/" ? 1 : 0.6,
+      priority: path === "/login" ? 1 : 0.6,
     }));
   };
 
+  let localeEntries: MetadataRoute.Sitemap = [];
+
+  try {
+    const languages = await getActiveLanguages();
+    const localizedPaths = languages.flatMap((language) =>
+      localizedMarketingRoutes.map((route) => `/${language.code}${route}`)
+    );
+    localeEntries = buildEntries(localizedPaths);
+  } catch {
+    // Ignore locale expansion failures in sitemap generation.
+  }
+
   return [
     ...buildEntries(marketingRoutes),
+    ...localeEntries,
     ...buildEntries(accountRoutes),
-    ...buildEntries(appRoutes),
   ];
 }

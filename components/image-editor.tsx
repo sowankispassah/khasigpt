@@ -1,4 +1,5 @@
 import cn from "classnames";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { LoaderIcon } from "./icons";
 
 type ImageEditorProps = {
@@ -30,11 +31,16 @@ export function ImageEditor({
               <LoaderIcon />
             </div>
           )}
-          <div>Generating Image...</div>
+          <div>
+            <EditableTranslation
+              defaultText="Generating..."
+              description="Loading label while an image is being generated."
+              translationKey="image.generate.loading"
+            />
+          </div>
         </div>
       ) : (
         <picture>
-          {/** biome-ignore lint/nursery/useImageSize: "Generated image without explicit size" */}
           <img
             alt={title}
             className={cn("h-fit w-full max-w-[800px]", {

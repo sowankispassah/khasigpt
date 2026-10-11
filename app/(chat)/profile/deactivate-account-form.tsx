@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useRef, useState } from "react";
-
+import { LoaderIcon } from "@/components/icons";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,8 +18,6 @@ import {
   type DeactivateAccountState,
   deactivateAccountAction,
 } from "./actions";
-import { useTranslation } from "@/components/language-provider";
-import { LoaderIcon } from "@/components/icons";
 
 const initialState: DeactivateAccountState = { status: "idle" };
 
@@ -29,87 +28,99 @@ export function DeactivateAccountForm() {
     DeactivateAccountState,
     FormData
   >(deactivateAccountAction, initialState);
-  const { translate } = useTranslation();
-
   return (
     <form
       action={formAction}
-      className="space-y-4 rounded-lg border border-destructive/40 bg-destructive/5 p-6 shadow-sm"
+      className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6"
       ref={formRef}
     >
-      <div className="space-y-1">
-        <h2 className="font-semibold text-destructive text-lg">
-          {translate("profile.deactivate.title", "Deactivate account")}
-        </h2>
+      <div className="min-w-0 space-y-1">
+        <h3 className="font-medium text-sm">
+          <EditableTranslation
+            defaultText="Deactivate account"
+            translationKey="profile.deactivate.title"
+          />
+        </h3>
         <p className="text-muted-foreground text-sm">
-          {translate(
-            "profile.deactivate.description",
-            "This process cannot be undone. You can contact support for any further assistance."
-          )}
+          <EditableTranslation
+            defaultText="This process cannot be undone. You can contact support for any further assistance."
+            translationKey="profile.deactivate.description"
+          />
         </p>
-      </div>
-
-      <div aria-live="polite" className="min-h-[1.25rem] text-sm">
         {state.status === "error" ? (
-          <span className="text-destructive">{state.message}</span>
+          <p aria-live="polite" className="text-destructive text-sm">
+            {state.message}
+          </p>
         ) : null}
       </div>
 
       <AlertDialog onOpenChange={setOpen} open={open}>
         <AlertDialogTrigger asChild>
           <button
-            className="inline-flex cursor-pointer items-center justify-center rounded-md bg-destructive px-4 py-2 font-medium text-destructive-foreground text-sm hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-70"
+            className="inline-flex h-10 w-full shrink-0 cursor-pointer items-center justify-center rounded-lg bg-destructive px-4 font-medium text-destructive-foreground text-sm transition-colors hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
             disabled={isPending}
             onClick={() => setOpen(true)}
             type="button"
           >
-            {translate("profile.deactivate.button", "Deactivate account")}
+            <EditableTranslation
+              defaultText="Deactivate account"
+              translationKey="profile.deactivate.button"
+            />
           </button>
         </AlertDialogTrigger>
         <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                {translate("profile.deactivate.confirm_title", "Are you sure?")}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {translate(
-                  "profile.deactivate.confirm_description",
-                  "Your account will be disabled and you will be signed out."
-                )}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={isPending}>
-                {translate("profile.deactivate.confirm_cancel", "Cancel")}
-              </AlertDialogCancel>
-              <AlertDialogAction
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive"
-                disabled={isPending}
-                onClick={(event) => {
-                  event.preventDefault();
-                  setOpen(false);
-                  formRef.current?.requestSubmit();
-                }}
-              >
-                {isPending ? (
-                  <span className="flex items-center gap-2">
-                    <span className="h-4 w-4 animate-spin">
-                      <LoaderIcon size={16} />
-                    </span>
-                    <span>
-                      {translate(
-                        "profile.deactivate.confirm_action_pending",
-                        "Deactivating..."
-                      )}
-                    </span>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              <EditableTranslation
+                defaultText="Are you sure?"
+                translationKey="profile.deactivate.confirm_title"
+              />
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              <EditableTranslation
+                defaultText="Your account will be disabled and you will be signed out."
+                translationKey="profile.deactivate.confirm_description"
+              />
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isPending}>
+              <EditableTranslation
+                defaultText="Cancel"
+                translationKey="profile.deactivate.confirm_cancel"
+              />
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive"
+              disabled={isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                setOpen(false);
+                formRef.current?.requestSubmit();
+              }}
+            >
+              {isPending ? (
+                <span className="flex items-center gap-2">
+                  <span className="h-4 w-4 animate-spin">
+                    <LoaderIcon size={16} />
                   </span>
-                ) : (
-                  translate("profile.deactivate.confirm_action", "Deactivate")
-                )}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+                  <span>
+                    <EditableTranslation
+                      defaultText="Deactivating..."
+                      translationKey="profile.deactivate.confirm_action_pending"
+                    />
+                  </span>
+                </span>
+              ) : (
+                <EditableTranslation
+                  defaultText="Deactivate"
+                  translationKey="profile.deactivate.confirm_action"
+                />
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </form>
   );
 }
