@@ -30,6 +30,7 @@ import {
   type AdminQueryResult,
   adminQueryResult,
 } from "@/lib/admin/safe-query";
+import { getAdminUserStatus } from "@/lib/admin/user-account-status";
 import {
   type AdminOverviewAudit,
   type AdminOverviewSnapshot,
@@ -286,18 +287,31 @@ function NewestUsersPanel({ overviewResult }: { overviewResult: OverviewResult }
                 </Link>
                 <p className="text-muted-foreground text-xs">{ago(user.createdAt)}</p>
               </div>
-              <AdminStatusPill tone={user.isActive ? "success" : "warning"}>
-                {user.isActive ? (
-                  <T description="Active account status pill." id="status.active" text="Active" />
-                ) : (
-                  <T description="Suspended account status pill." id="status.suspended" text="Suspended" />
-                )}
-              </AdminStatusPill>
+              <NewestUserStatusPill user={user} />
             </li>
           ))}
         </ul>
       )}
     </AdminPanel>
+  );
+}
+
+function NewestUserStatusPill({ user }: { user: AdminOverviewSnapshot["recentUsers"][number] }) {
+  const status = getAdminUserStatus({ ...user, isOnline: false });
+  return (
+    <AdminStatusPill tone={status === "active" ? "success" : "warning"}>
+      {status === "active" ? (
+        <T description="Active account status pill." id="status.active" text="Active" />
+      ) : status === "not_verified" ? (
+        <T
+          description="Status pill for an account still waiting for email verification."
+          id="status.not_verified"
+          text="Not verified"
+        />
+      ) : (
+        <T description="Suspended account status pill." id="status.suspended" text="Suspended" />
+      )}
+    </AdminStatusPill>
   );
 }
 

@@ -6955,6 +6955,7 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   { key: "admin.dashboard.users.empty", defaultText: "No users yet.", description: "Dashboard newest users empty state." },
   { key: "admin.dashboard.status.active", defaultText: "Active", description: "Active account status pill." },
   { key: "admin.dashboard.status.suspended", defaultText: "Suspended", description: "Suspended account status pill." },
+  { key: "admin.dashboard.status.not_verified", defaultText: "Not verified", description: "Status pill for an account still waiting for email verification." },
   { key: "admin.dashboard.chats.title", defaultText: "Latest chats", description: "Dashboard latest chats panel title." },
   { key: "admin.dashboard.chats.empty", defaultText: "No chats yet.", description: "Dashboard latest chats empty state." },
   { key: "admin.dashboard.chats.untitled", defaultText: "Untitled chat", description: "Fallback title for a chat without one on the dashboard." },

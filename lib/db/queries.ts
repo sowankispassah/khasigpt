@@ -608,7 +608,7 @@ export type ChatListItem = Chat & { userEmail: string | null };
 
 export type AdminOverviewUser = Pick<
   User,
-  "id" | "email" | "role" | "isActive" | "createdAt"
+  "id" | "email" | "role" | "isActive" | "emailVerificationPending" | "createdAt"
 >;
 
 export type AdminOverviewChat = Pick<
@@ -699,6 +699,7 @@ export async function getAdminOverviewSnapshot(): Promise<AdminOverviewSnapshot>
               "email",
               "role",
               "isActive",
+              "emailVerificationPending",
               "createdAt"
             FROM "User"
             ORDER BY "createdAt" DESC
